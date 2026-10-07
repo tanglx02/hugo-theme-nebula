@@ -42,6 +42,11 @@ KEY_URLS = ["/", "/posts/", "/categories/", "/tags/", "/archives/", "/about/", "
 # 显式排除：sitemap 中不该被当作 HTML 页面审计的路径
 SKIP_PREFIX = ("/search/", "/index.json", "/categories/", "/tags/", "/page/")
 
+# 已知的"故意缺失资源"白名单（压力测试数据）：用于验证图片缺失时的降级渲染，
+# 属于内容作者故意为之，不是主题缺陷。白名单必须显式列出并被计数打印，
+# 不允许静默忽略，避免掩盖真实问题。
+INTENTIONAL_MISSING = ("not-exist.png",)
+
 VIEWPORTS = {
     "320": {"width": 320, "height": 720},
     "375": {"width": 375, "height": 812},
@@ -148,9 +153,10 @@ def get_urls(base, full=False):
     return uniq, sitemap_ok
 
 
-def check_page(page, url, vp_name, is_mobile):
+def check_page(page, url, vp_name, is_mobile, ignored_log=None):
     problems = []
     console_errors, page_errors, failed = [], [], []
+    ignored_404 = []
 
     def on_console(msg):
         if msg.type == "error" and "livereload" not in msg.text:
@@ -161,6 +167,9 @@ def check_page(page, url, vp_name, is_mobile):
 
     def on_response(resp):
         if resp.status >= 400 and "livereload" not in resp.url:
+            if any(resp.url.endswith(x) for x in INTENTIONAL_MISSING):
+                ignored_404.append(resp.url)     # 故意缺失的测试资源，计数但不计缺陷
+                return
             failed.append(f"{resp.status} {resp.url}")
 
     page.on("console", on_console)
@@ -191,6 +200,9 @@ def check_page(page, url, vp_name, is_mobile):
     imgs = page.evaluate(IMG_JS)
     for im in imgs:
         if im["broken"]:
+            if any((im["src"] or "").endswith(x) for x in INTENTIONAL_MISSING):
+                ignored_404.append(im["src"])
+                continue
             problems.append({"type": "broken-image", "src": im["src"]})
         elif im["nw"] and im["nh"] and im["fit"] != "cover":
             ratio_n = im["nw"] / im["nh"]
@@ -208,6 +220,9 @@ def check_page(page, url, vp_name, is_mobile):
     if expect_404:
         console_errors = [c for c in console_errors if "404" not in c]
         failed = [f for f in failed if "does-not-exist" not in f]
+    # 若 404 全部来自"故意缺失的测试资源"，则控制台 404 报错一并豁免
+    if ignored_404 and not failed:
+        console_errors = [c for c in console_errors if "404" not in c]
     if status >= 400 and not expect_404:
         problems.append({"type": "http-status", "detail": str(status)})
     if console_errors:
@@ -220,6 +235,8 @@ def check_page(page, url, vp_name, is_mobile):
     page.remove_listener("console", on_console)
     page.remove_listener("pageerror", on_pageerror)
     page.remove_listener("response", on_response)
+    if ignored_log is not None and ignored_404:
+        ignored_log.append(f"{vp_name}px {url} :: {sorted(set(ignored_404))[:3]}")
     return problems
 
 
@@ -257,6 +274,7 @@ def run(h):
     report = {}
     by_type = {}
     total_problems = 0
+    ignored_log = []
 
     with sync_playwright() as p:
         for browser_name, vps in plan.items():
@@ -275,7 +293,7 @@ def run(h):
                 page = ctx.new_page()
                 vp_problems = 0
                 for url in urls:
-                    probs = check_page(page, url, vp, int(vp) <= 430)
+                    probs = check_page(page, url, vp, int(vp) <= 430, ignored_log)
                     if probs:
                         browser_report.setdefault(vp, {})[url] = probs
                         vp_problems += len(probs)
@@ -304,6 +322,11 @@ def run(h):
         for s in info["samples"]:
             print("   ", s)
     print(f"\nTOTAL PROBLEMS: {total_problems} -> {OUT}")
+    if ignored_log:
+        # 显式列出被豁免的项，避免"静默忽略"掩盖真实问题
+        print(f"已知故意缺失的测试资源（内容作者行为，已豁免）: {len(ignored_log)} 处")
+        for s in ignored_log[:4]:
+            print("   ", s)
 
 
 def main():

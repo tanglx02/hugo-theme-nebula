@@ -73,7 +73,10 @@ body {
 a { color: var(--brand); text-decoration: none; transition: color .2s ease; }
 a:hover { color: var(--brand-dark); }
 
-img { max-width: 100%; border-radius: var(--radius-sm); }
+/* height:auto 是配合 <img width height> 属性（防 CLS）的必要条件：
+   属性会作为 presentational hint 给出 height:<px>，若不显式 auto，
+   窄屏下 max-width:100% 只压宽度、高度不变 → 图片被纵向拉伸变形。 */
+img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
 
 h1, h2, h3, h4, h5, h6 {
   color: var(--text-strong);
