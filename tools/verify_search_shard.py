@@ -111,8 +111,9 @@ def main():
                 if state["n"] == 1:
                     return handler(route)
                 route.continue_()
-            run_case(browser, f"部分 shard {label}：提示部分失败且仍返回其他文章",
-                     [("**/search/*.json", selective)], "GOLF48000",
+            # 用"标题关键词"验证：正文 chunk 失败不应影响标题/摘要匹配，且不得误报无结果
+            run_case(browser, f"部分分块 {label}：提示部分失败且标题匹配仍可用",
+                     [("**/search/*.json", selective)], "一万字",
                      lambda pg: (("部分" in status_text(pg)) and pg.locator(".search-item").count() > 0
                                  and "没有找到" not in empty_text(pg),
                                  f'{pg.locator(".search-item").count()} 条, status="{status_text(pg)[:40]}"'))
@@ -129,14 +130,14 @@ def main():
                     route.fulfill(status=200, body="not-json-at-all", content_type="application/json")
                 else:
                     route.continue_()
-            run_case(browser, "部分 shard JSON 损坏：提示部分失败且仍返回结果",
-                     [("**/search/*.json", handler)], "GOLF48000",
+            run_case(browser, "部分分块 JSON 损坏：提示部分失败且标题匹配仍可用",
+                     [("**/search/*.json", handler)], "一万字",
                      lambda pg: (("部分" in status_text(pg)) and pg.locator(".search-item").count() > 0,
                                  f'{pg.locator(".search-item").count()} 条, status="{status_text(pg)[:40]}"'))
         corrupt_shard()
 
         # ---------- 全部 shard 失败 ----------
-        run_case(browser, "全部 shard 失败：明确提示且标题匹配仍可用",
+        run_case(browser, "全部分块失败：明确提示且标题匹配仍可用",
                  [("**/search/*.json", lambda route: route.fulfill(status=404, body="nope"))], "一万字",
                  lambda pg: (("部分" in status_text(pg)) and pg.locator(".search-item").count() > 0
                              and "没有找到" not in empty_text(pg),

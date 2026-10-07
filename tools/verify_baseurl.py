@@ -35,7 +35,7 @@ def _launch(module, **kw):
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SITE = os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog")
 HUGO_ARGS = shlex.split(os.environ.get("HUGO_ARGS", ""))
-HUGO = r"C:\Users\Administrator\.workbuddy\binaries\hugo\bin\hugo.exe"
+HUGO = os.environ.get("HUGO_BIN", "hugo")   # CI 中 hugo 已在 PATH；本地可用 HUGO_BIN 指定
 DEPLOY = os.path.join(ROOT, "tmp", "deploy")
 PY = sys.executable
 
