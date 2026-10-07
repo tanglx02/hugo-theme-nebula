@@ -204,19 +204,33 @@ layout: "archive"
 | 模式 | 行为 | 适用 |
 | --- | --- | --- |
 | `single` | 单个 `index.json` 包含全部正文 | 小型站点，最简单 |
-| `shard` | 主索引只含元数据，正文拆到 `search/<slug>.json`，前端并发加载 | 大型站点 |
+| `shard` | 主索引只含元数据，正文按**体积分块**（chunk）到 `search/chunk-N.json`，前端并发加载 | 中大型站点 |
 | `auto`（默认） | 按正文总体积自动在 single / shard 之间选择（阈值 `autoThreshold`） | 推荐 |
 
-实测数据（每篇约 3000 字，`auto` 默认阈值 500KB）：
+```toml
+[params.search]
+  enable = true
+  mode = "auto"          # auto | single | shard（兼容旧的 shard = true）
+  autoThreshold = 512000 # auto 模式阈值（字节）
+  chunkSize = 204800     # 分片模式下每个 chunk 的目标体积（字符数）
+  contentLimit = 0       # 单篇正文上限，0 = 不限制
+```
 
-| 文章数 | single 主索引 | auto 结果 |
-| --- | --- | --- |
-| 25 篇 | 225 KB | 单索引（未超阈值） |
-| 100 篇 | 899 KB | 分片 |
-| 300 篇 | 2.6 MB | 分片 |
-| 500 篇 | 4.4 MB | 分片（主索引约 10 KB + 500 个分片） |
+实测数据（每篇约 3000 字，Chromium，本地静态服务器）：
 
-搜索索引加载失败时会有明确提示：主索引失败显示错误并可**重试**；部分分片失败时提示"部分索引加载失败（N 篇未能加载）"且仍返回其他文章的结果（不会误报"没有找到"）。
+| 文章数 | 模式 | 主索引 | chunk 数 | 索引加载 | 搜索等待 | JS 堆 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 500 | single | 4.4 MB | – | 532 ms | 647 ms | 6.1 MB |
+| 500 | auto→shard | 84 KB | 22 | 163 ms | 248 ms | 5.9 MB |
+| 1000 | single | 8.8 MB | – | 1283 ms | 1322 ms | 8.6 MB |
+| 1000 | auto→shard | 168 KB | 44 | 331 ms | 379 ms | 8.8 MB |
+| 2000 | single | 17.6 MB | – | 3988 ms | 3989 ms | 23.5 MB |
+| 2000 | auto→shard | 338 KB | 87 | 1344 ms | 1347 ms | 25.7 MB |
+
+> 分片按**体积**合并（而不是每篇一个文件）：请求数与正文总量成正比，而不是与文章数成正比。
+> 2000 篇时若按文章分片会产生 2000 个请求，实测搜索延迟明显劣化。
+
+搜索索引加载失败时会有明确提示：主索引失败显示错误并可**重试**；部分分片失败时提示"部分索引加载失败（N 篇未能加载）"且仍返回其他文章的结果（**不会误报"没有找到"**）。
 
 ## 图片处理
 
@@ -243,22 +257,44 @@ series_order: 2          # 可选；缺省时按日期排序
 
 ## 多语言（i18n）
 
-主题内置 `i18n/zh-CN.yaml`、`zh-TW.yaml`、`en.yaml`。单语言站点无需配置；多语言站点示例：
+主题内置 `i18n/zh-CN.yaml`、`zh-TW.yaml`、`en.yaml`。**模板与 JS 中的 UI 文案全部来自 i18n**，
+JS 侧通过 `window.NEBULA_I18N` 注入（脚本内不硬编码文案，仅有英文兜底以防注入失败）。
+
+单语言站点无需配置；多语言站点示例（**注意 Hugo ≥ 0.158 用 `locale` 决定翻译包，仅改
+`defaultContentLanguage` 不够**）：
 
 ```toml
-defaultContentLanguage = 'zh-cn'
+defaultContentLanguage = 'zh-CN'
+locale = 'zh-CN'
+
 [languages]
-  [languages.zh-cn]
-    languageName = '简体中文'
+  [languages.zh-CN]
+    label = '简体中文'
     weight = 1
-    [languages.zh-cn.params]
+    [languages.zh-CN.params]
       description = '中文站点描述'
   [languages.en]
-    languageName = 'English'
+    label = 'English'
     weight = 2
 ```
 
-多语言站点会自动输出 `hreflang` 标签。JS 中的提示文案通过模板注入（`window.NEBULA_I18N`），不在脚本里硬编码。
+多语言站点会自动输出 `hreflang` 标签。
+
+### 导航菜单跟随语言
+
+给菜单项加 `identifier`，主题会查找 `menu.<identifier>` 词条（缺失时回退到 `name`，因此
+旧配置完全兼容）：
+
+```toml
+[[menu.main]]
+  identifier = 'posts'    # → i18n 词条 menu.posts
+  name = '文章'            # 回退值
+  url = '/posts/'
+  weight = 2
+```
+
+内置 identifier：`home` `posts` `categories` `tags` `archives` `about` `aboutMe`；
+自定义 identifier 只需在 `i18n/<lang>.yaml` 里补一个 `menu.<identifier>` 词条。
 
 ## Front Matter 字段
 
@@ -337,33 +373,100 @@ hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
 
 ## 测试与 CI
 
-CI（`.github/workflows/ci.yml`）在 GitHub Actions 上**真实运行**以下检查，任一失败即 CI 失败：
+### 退出码约定（这是 CI 门禁可信的前提）
+
+`tools/` 下所有测试脚本共用 `tools/_testlib.py`：
+
+| 情况 | 退出码 |
+| --- | --- |
+| 产品问题 / 断言失败 | 1 |
+| 测试脚本自身异常 | 1 |
+| 依赖缺失（playwright / pillow） | 1 |
+| 浏览器无法启动 | 1 |
+| 被测站点 / 静态服务器不可达 | 1 |
+| 一个用例都没执行到 | 1 |
+| 全部通过 | 0 |
+
+最后一个输出行是机器可读结果，便于 CI 与报告解析：
+
+```
+TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "total": 7}
+```
+
+> 没有这条约定的"打印 FAIL 但进程仍 exit 0"会让 CI 变成假绿灯 —— CI 是否可信，
+> 唯一标准是**失败时进程 exit≠0 且 GitHub Actions 真的变红**。
+
+### CI Job
+
+`.github/workflows/ci.yml` 在 GitHub Actions 上**真实运行**以下检查，任一失败即 CI 失败：
 
 | Job | 内容 |
 | --- | --- |
-| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 搜索索引完整性 → 草稿/未来排除 → livereload 检查 |
+| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 |
-| Static checks | 站内死链、索引完整性、功能断言（图片/Series/RSS/SEO/代码块/i18n）、多 Section 构建、auto 阈值分片 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互、灯箱 Focus Trap、搜索边界与竞态、分片失败处理、三种 baseURL 部署 |
+| Static checks | 死链、索引完整性、功能断言、**i18n 三语言构建与文案校验**、**多 Section 完整回归**、auto 阈值分片 |
+| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、灯箱 Focus Trap、搜索边界与竞态、**分片失败深层关键词语义**、三种 baseURL 部署 |
+| Release full-site audit | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 扫描 sitemap 中**全部页面** |
 
-本地运行（Windows 需设置 `HUGO_BIN`，本地有代理时设置 `PLAYWRIGHT_PROXY`）：
+> PR 阶段用抽样页面（`posts[:8]` + 分类/标签各 5 个）保证时长可控；
+> Release 阶段用全量页面。二者的覆盖面差异在验收报告里分别标注。
+
+### 本地运行
 
 ```bash
 export HUGO_BIN=/path/to/hugo          # Linux/macOS 可省略（默认 hugo）
+export PLAYWRIGHT_PROXY=http://127.0.0.1:port   # 本地有 HTTP 代理时才需要
 python3 tools/serve.py public 8080 &   # 独立静态服务器（勿用 hugo server 产物测试）
 
-python3 tools/link_check.py public                 # 死链
+python3 tools/link_check.py public                 # 死链（失败即 exit 1）
 python3 tools/check_index.py public/index.json     # 索引完整性
-python3 tools/check_features.py public             # 功能断言
+python3 tools/check_features.py public             # 功能断言（26 项）
+python3 tools/verify_i18n.py public zh-CN          # UI 文案是否来自 i18n
+SITE_DIR=exampleSite HUGO_ARGS='--source . --themesDir ../..' \
+  python3 tools/verify_multisection.py             # 多 Section 完整回归
 AUDIT_BROWSERS=chromium python3 tools/audit.py http://127.0.0.1:8080
 PW_BROWSERS=chromium python3 tools/interactions.py http://127.0.0.1:8080
 python3 tools/verify_lightbox.py http://127.0.0.1:8080 chromium
 python3 tools/verify_search_edge.py http://127.0.0.1:8080
 python3 tools/verify_search_shard.py http://127.0.0.1:8090 chromium
-python3 tools/bench_index.py 25,100,300,500        # 索引规模压测
+python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录体积/请求数/耗时/内存）
 ```
 
 ## 更新日志
+
+### v1.0.4 — CI 可靠性终验
+
+**测试体系（本轮重点）**
+
+- `tools/_testlib.py`：统一退出码约定 —— 断言失败 / 脚本异常 / 依赖缺失 / 浏览器启动失败 /
+  站点不可达 / 零用例执行，一律 `exit 1`；输出机器可读 `TEST-RESULT:` 行
+- 修复此前 `audit.py`、`interactions.py`、`verify_search_edge.py`、`verify_baseurl.py`、
+  `link_check.py` 只打印 FAIL 却 `exit 0` 的假绿问题（CI 因此无法捕捉真实回归）
+- `audit.py` 新增：sitemap 获取失败即失败、浏览器启动失败即失败、`AUDIT_FULL=1` 全站扫描
+- CI 新增 `Release full-site audit` job（仅 tag / 手动触发，sitemap 全量页面）
+- 新增 `tools/verify_i18n.py`（UI 文案来源校验）、`tools/verify_multisection.py`（多 Section 完整回归）
+
+**i18n 完整性**
+
+- 模板层 UI 文案迁移到 i18n（导航、面包屑、侧栏标题、分页 aria、日期格式、阅读时长、
+  归档/列表/词条统计、灯箱 aria、锚点 aria、404、评论、许可证默认文案）
+- 修复 `i18n` 占位符 Bug：Hugo 只解析 Go 模板语法 `{{ .n }}`，此前的 `{n}` 会原样输出
+  （页面上直接显示 `共 {posts} 篇文章`）
+- 菜单支持 `identifier` + `menu.*` 词条，导航随语言切换（`name` 作为回退，旧配置兼容）
+- JS 中不再硬编码任何 UI 文案（中文零残留，仅保留英文兜底）
+
+**搜索**
+
+- 分片失败时不再把"索引不全"显示成"没有找到"：新增 `search.partialNoResult` 文案
+- 新增深层关键词语义测试：失败分块的正文关键词不命中但明确提示、其他分块关键词仍命中、
+  标题/摘要匹配不受影响
+- 压测 500 / 1000 / 2000 篇（记录 chunk 数、请求数、体积、耗时、JS 堆），确认 2000 篇下
+  single 模式搜索 3.99s、分片模式 1.35s，并给出下一版优化方向
+
+**其他**
+
+- 新增 `tools/normalize_eol.py`、`tools/verify_multisection.py`；测试脚本全部跨平台（无本机硬编码路径）
+- `link_check.py` 对"故意断链"的测试夹具改为显式白名单 + 打印，不静默忽略
 
 ### v1.0.3
 

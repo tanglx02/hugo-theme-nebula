@@ -44,7 +44,7 @@
           <li class="{{ if eq $e.page.RelPermalink $current.RelPermalink }}current{{ end }}">
             <span class="series-idx">{{ add $i 1 }}</span>
             <a href="{{ $e.page.RelPermalink }}">{{ $e.page.Title }}</a>
-            {{- if eq $e.page.RelPermalink $current.RelPermalink }}<em class="series-now">当前</em>{{ end }}
+            {{- if eq $e.page.RelPermalink $current.RelPermalink }}<em class="series-now">{{ i18n "series.current" }}</em>{{ end }}
           </li>
         {{- end }}
       </ol>

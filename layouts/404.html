@@ -1,7 +1,7 @@
 {{ define "main" }}
 <div class="card notfound">
   <h1>404</h1>
-  <p>页面走丢了，可能是链接失效或文章已被移除。</p>
-  <a class="btn" href="{{ site.Home.RelPermalink }}">返回首页</a>
+  <p>{{ i18n "notFound.desc" }}</p>
+  <a class="btn" href="{{ site.Home.RelPermalink }}">{{ i18n "notFound.back" }}</a>
 </div>
 {{ end }}

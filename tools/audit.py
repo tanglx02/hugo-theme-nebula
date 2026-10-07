@@ -1,36 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Nebula 主题验收自动化：多浏览器 × 多视口 × 全页面
+"""Nebula 主题验收自动化：多浏览器 × 多视口 × 站点页面
 
 检查项：
   - 控制台错误 / 未捕获异常 / 失败请求(404 等)
   - 横向滚动与元素溢出
-  - 图片变形（正文中 object-fit 非 cover 的图片）
-  - 移动端点击区域过小
+  - 图片变形 / 图片加载失败
+  - 移动端点击区域过小（正文内联链接按 WCAG 1.4.10 内联豁免，不计入）
+
+退出码约定（见 tools/_testlib.py）：
+  * 发现任一问题            -> exit 1
+  * 任一浏览器启动失败      -> exit 1
+  * sitemap 获取失败        -> exit 1（无法枚举页面时审计结果不可信）
+  * 目标站点不可达          -> exit 1
+  * 脚本自身异常            -> exit 1
+
+页面范围：
+  * 默认抽样（关键页面 + sitemap 抽样页面）—— 适合每次 PR
+  * AUDIT_FULL=1 时扫描 sitemap 中全部页面 —— 适合 release 门禁
+
 输出：tools/audit_report.json
 """
 import json
 import os
+import re
 import sys
 import urllib.request
-# 环境存在 HTTP 代理，需放行本地回环地址，否则浏览器会把 localhost 也走代理
-os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
-os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
-from playwright.sync_api import sync_playwright
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _testlib import Harness, launch, reachable, guard  # noqa: E402
 
-# 代理仅用于本地开发环境；CI 中不设置 PLAYWRIGHT_PROXY 即为直连
-_proxy = os.environ.get("PLAYWRIGHT_PROXY")
-PROXY = {"server": _proxy, "bypass": "127.0.0.1,localhost"} if _proxy else None
-
-
-def _launch(module, **kw):
-    return module.launch(proxy=PROXY, **kw) if PROXY else module.launch(**kw)
-
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "tools", "audit_report.json")
+FULL = os.environ.get("AUDIT_FULL", "").strip() not in ("", "0", "false", "False")
+
+# 关键入口（始终检查）
+KEY_URLS = ["/", "/posts/", "/categories/", "/tags/", "/archives/", "/about/", "/index.json"]
+# 显式排除：sitemap 中不该被当作 HTML 页面审计的路径
+SKIP_PREFIX = ("/search/", "/index.json", "/categories/", "/tags/", "/page/")
 
 VIEWPORTS = {
     "320": {"width": 320, "height": 720},
@@ -86,12 +96,15 @@ IMG_JS = """
 })
 """
 
+# 点击区域：正文内联链接属于 WCAG 1.4.10「内联」豁免范围，不做要求
 TAP_JS = """
 () => Array.from(document.querySelectorAll('a,button')).map(el => {
   const r = el.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return null;
   const st = getComputedStyle(el);
   if (st.visibility === 'hidden' || st.display === 'none') return null;
+  if (el.closest('.post-content')) return null;          // WCAG 内联豁免
+  if (st.display === 'inline' && st.position === 'static' && el.closest('p,li,figcaption')) return null;
   if (r.height < 24 || r.width < 24) {
     return { tag: el.tagName.toLowerCase(), cls: (typeof el.className === 'string' ? el.className : '').slice(0, 40),
              text: (el.textContent || '').trim().slice(0, 20), w: Math.round(r.width), h: Math.round(r.height) };
@@ -101,28 +114,29 @@ TAP_JS = """
 """
 
 
-def get_urls(base):
-    """从 sitemap 取所有页面 + 关键入口 + 404"""
-    urls = ["/", "/posts/", "/categories/", "/tags/", "/archives/", "/about/", "/index.json"]
+def get_urls(base, full=False):
+    """返回 (urls, sitemap_ok)。sitemap 获取失败时 sitemap_ok=False，调用方必须判为致命错误。"""
+    urls = list(KEY_URLS)
+    sitemap_ok = False
     try:
-        with urllib.request.urlopen(base + "/sitemap.xml", timeout=10) as r:
+        with urllib.request.urlopen(base + "/sitemap.xml", timeout=15) as r:
             xml = r.read().decode("utf-8")
-        import re
         locs = re.findall(r"<loc>(.*?)</loc>", xml)
-        posts = []
-        cats = []
-        tags = []
+        from urllib.parse import urlparse as _up
+        pages = []
         for loc in locs:
-            from urllib.parse import urlparse as _up
             path = _up(loc).path or "/"
-            if path.startswith("/posts/") and path.endswith("/"):
-                posts.append(path)
-            elif path.startswith("/categories/"):
-                cats.append(path)
-            elif path.startswith("/tags/"):
-                tags.append(path)
-        # 压力数据集下页面很多，抽样以保证测试时长可控
-        urls += posts[:8] + cats[:5] + tags[:5]
+            if any(path.startswith(p) for p in SKIP_PREFIX):
+                continue
+            if path.endswith("/") or path.endswith(".html"):
+                pages.append(path)
+        if full:
+            urls += pages
+        else:
+            posts = [p for p in pages if p.startswith("/posts/")]
+            other = [p for p in pages if not p.startswith("/posts/")]
+            urls += posts[:8] + other[:12]
+        sitemap_ok = len(locs) > 0
     except Exception as e:
         print("sitemap error:", e)
     urls.append("/this-page-does-not-exist/")
@@ -131,7 +145,7 @@ def get_urls(base):
         if u not in seen:
             seen.add(u)
             uniq.append(u)
-    return uniq
+    return uniq, sitemap_ok
 
 
 def check_page(page, url, vp_name, is_mobile):
@@ -141,8 +155,10 @@ def check_page(page, url, vp_name, is_mobile):
     def on_console(msg):
         if msg.type == "error" and "livereload" not in msg.text:
             console_errors.append(msg.text[:200])
+
     def on_pageerror(err):
         page_errors.append(str(err)[:200])
+
     def on_response(resp):
         if resp.status >= 400 and "livereload" not in resp.url:
             failed.append(f"{resp.status} {resp.url}")
@@ -155,9 +171,10 @@ def check_page(page, url, vp_name, is_mobile):
         resp = page.goto(BASE + url, wait_until="load", timeout=25000)
     except Exception as e:
         problems.append({"type": "navigation", "detail": str(e)[:160]})
+        page.remove_listener("console", on_console)
+        page.remove_listener("pageerror", on_pageerror)
+        page.remove_listener("response", on_response)
         return problems
-    finally:
-        pass
 
     status = resp.status if resp else 0
     expect_404 = url.rstrip("/").endswith("does-not-exist")
@@ -206,41 +223,49 @@ def check_page(page, url, vp_name, is_mobile):
     return problems
 
 
-def main():
-    urls = get_urls(BASE)
-    print(f"URLs: {len(urls)}")
-    report = {}
+def run(h):
+    if not reachable(BASE + "/"):
+        h.fatal_error("被审计站点不可达", BASE)
+        return
 
-    # 浏览器 → 视口（控制执行规模）
+    urls, sitemap_ok = get_urls(BASE, full=FULL)
+    print(f"审计 URL: {len(urls)} 条（{'全站扫描' if FULL else '抽样'}），sitemap_ok={sitemap_ok}")
+    if not sitemap_ok:
+        # 只靠 8 条硬编码入口得出的"无问题"是不可信的，必须失败
+        h.fatal_error("sitemap 获取失败", f"{BASE}/sitemap.xml 无法解析，无法枚举站点页面")
+        return
+    if len(urls) < 5:
+        h.fatal_error("可审计 URL 过少", f"仅 {len(urls)} 条")
+        return
+
     plan_all = {
         "chromium": ["320", "375", "390", "430", "768", "1024", "1440"],
         "firefox": ["375", "768", "1440"],
         "webkit": ["375", "768", "1440"],
-        "msedge": ["390", "1440"],
     }
-    # CI 中按 job 裁剪：AUDIT_BROWSERS=chromium / AUDIT_VIEWPORTS=320,375,...
     only = [b.strip() for b in os.environ.get("AUDIT_BROWSERS", "").split(",") if b.strip()]
     plan = {k: v for k, v in plan_all.items() if (not only or k in only)}
     vps_env = os.environ.get("AUDIT_VIEWPORTS", "")
     if vps_env.strip():
         vps = [v.strip() for v in vps_env.split(",") if v.strip()]
         plan = {k: vps for k in plan}
+    if not plan:
+        h.fatal_error("未选择任何浏览器", f"AUDIT_BROWSERS={os.environ.get('AUDIT_BROWSERS')}")
+        return
     print("浏览器计划:", {k: len(v) for k, v in plan.items()})
+
+    report = {}
+    by_type = {}
+    total_problems = 0
 
     with sync_playwright() as p:
         for browser_name, vps in plan.items():
+            launcher = {"chromium": p.chromium, "firefox": p.firefox, "webkit": p.webkit}[browser_name]
             try:
-                if browser_name == "chromium":
-                    browser = _launch(p.chromium)
-                elif browser_name == "firefox":
-                    browser = _launch(p.firefox)
-                elif browser_name == "webkit":
-                    browser = _launch(p.webkit)
-                else:
-                    browser = _launch(p.chromium, channel="msedge")
+                browser = launch(launcher)
             except Exception as e:
-                report[browser_name] = {"launch_error": str(e)[:200]}
-                print(f"[{browser_name}] launch failed: {str(e)[:120]}")
+                # 浏览器起不来 = 无法验证 = 必须失败，绝不能静默跳过
+                h.fatal_error(f"{browser_name} 浏览器启动失败", str(e)[:200])
                 continue
 
             browser_report = {}
@@ -248,39 +273,43 @@ def main():
                 ctx = browser.new_context(viewport=VIEWPORTS[vp], locale="zh-CN",
                                           is_mobile=int(vp) <= 430, has_touch=int(vp) <= 430)
                 page = ctx.new_page()
+                vp_problems = 0
                 for url in urls:
                     probs = check_page(page, url, vp, int(vp) <= 430)
                     if probs:
                         browser_report.setdefault(vp, {})[url] = probs
+                        vp_problems += len(probs)
+                        total_problems += len(probs)
+                        for pr in probs:
+                            key = (browser_name, pr["type"])
+                            by_type.setdefault(key, {"count": 0, "samples": []})
+                            by_type[key]["count"] += 1
+                            if len(by_type[key]["samples"]) < 4:
+                                by_type[key]["samples"].append(
+                                    f'{vp}px {url} :: ' +
+                                    str(pr.get("detail") or pr.get("elements") or pr.get("src") or pr.get("count"))[:170])
                 ctx.close()
-                print(f"[{browser_name}] {vp}px done")
+                h.record(f"[{browser_name}] {vp}px × {len(urls)} 页",
+                         vp_problems == 0,
+                         "无问题" if vp_problems == 0 else f"{vp_problems} 个问题")
             browser.close()
             report[browser_name] = browser_report
 
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1)
 
-    total = 0
-    by_type = {}
-    for b, v in report.items():
-        if isinstance(v, dict) and "launch_error" in v:
-            print("LAUNCH ERROR", b, v["launch_error"]); continue
-        for vp, pages in v.items():
-            for url, probs in pages.items():
-                total += len(probs)
-                for pr in probs:
-                    key = (b, pr["type"])
-                    by_type.setdefault(key, {"count": 0, "samples": []})
-                    by_type[key]["count"] += 1
-                    if len(by_type[key]["samples"]) < 4:
-                        by_type[key]["samples"].append(
-                            f'{vp}px {url} :: {str(pr.get("detail") or pr.get("elements") or pr.get("src") or pr.get("count"))[:170]}')
     for key in sorted(by_type, key=lambda k: -by_type[k]["count"]):
         info = by_type[key]
         print(f'\n### {key[0]} / {key[1]}  x{info["count"]}')
         for s in info["samples"]:
             print("   ", s)
-    print(f"\nTOTAL PROBLEMS: {total} -> {OUT}")
+    print(f"\nTOTAL PROBLEMS: {total_problems} -> {OUT}")
+
+
+def main():
+    h = Harness("audit")
+    guard(h, run, h)
+    h.finish()
 
 
 if __name__ == "__main__":

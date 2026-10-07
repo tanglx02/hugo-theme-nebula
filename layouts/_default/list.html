@@ -3,14 +3,14 @@
 {{- $sub := "" -}}
 {{- if eq .Kind "taxonomy" -}}
   {{- $title = printf "%s：%s" (.Data.Singular | title) .Title -}}
-  {{- $sub = printf "共 %d 篇相关文章" (len .Pages) -}}
+  {{- $sub = i18n "list.taxonomyCount" (dict "n" (len .Pages)) -}}
 {{- else -}}
-  {{- $sub = printf "共 %d 篇文章" (len .Pages) -}}
+  {{- $sub = i18n "list.count" (dict "n" (len .Pages)) -}}
 {{- end -}}
 
 <div class="card page-head">
   <nav class="breadcrumb">
-    <a href="{{ site.Home.RelPermalink }}">首页</a><span>/</span><span>{{ $title }}</span>
+    <a href="{{ site.Home.RelPermalink }}">{{ i18n "common.home" }}</a><span>/</span><span>{{ $title }}</span>
   </nav>
   <h1>{{ $title }}</h1>
   <p>{{ $sub }}{{ with .Params.description }} · {{ . }}{{ end }}</p>

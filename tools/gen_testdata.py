@@ -345,13 +345,17 @@ tags: ["时区"]
 categories: ["压力测试"]
 """, f"时区测试：{date}"))
 
-    # 18. 多 section（tutorials / notes）
+    # 18. 多 section（tutorials / notes / projects）
     CONTENT = os.path.join(ROOT, "myblog", "content")
     if not os.path.isdir(os.path.dirname(CONTENT)) or "--posts-dir" in sys.argv:
         # CI 场景：posts 目录的上一级即 content
         CONTENT = os.path.dirname(POSTS)
-    for sec, titles in (("tutorials", ["多 Section 教程一", "多 Section 教程二"]),
-                        ("notes", ["多 Section 笔记"]) ):
+    MULTI_SECTIONS = (
+        ("tutorials", ["多 Section 教程一", "多 Section 教程二"], 24),
+        ("notes", ["多 Section 笔记"], 26),
+        ("projects", ["多 Section 项目一", "多 Section 项目二"], 27),
+    )
+    for sec, titles, day in MULTI_SECTIONS:
         d = os.path.join(CONTENT, sec)
         os.makedirs(d, exist_ok=True)
         for i, t in enumerate(titles):
@@ -359,14 +363,20 @@ categories: ["压力测试"]
             with open(fp, "w", encoding="utf-8") as f:
                 f.write(f"""---
 title: "{t}"
-date: 2026-09-{28 + i:02d}
-description: "{sec} section 测试文章"
-tags: ["多section"]
+date: 2026-09-{day + i:02d}
+description: "{sec} section 测试文章（{i + 1}）"
+tags: ["多section", "{sec}"]
 categories: ["压力测试"]
+series: ["跨 Section 系列"]
+series_order: {i + 1}
 ---
 
 这是 {sec} section 下的文章，用于验证 params.content.sections 配置。
 内容包含唯一标记 {sec.upper()}SECTION{i+1}。
+
+## 小节
+
+{filler(400, {})}
 """)
             created.append(fp)
 

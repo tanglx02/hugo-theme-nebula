@@ -16,27 +16,19 @@ import sys
 import time
 import urllib.request
 import shlex
-import shlex
 
-os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
-os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
 
-from playwright.sync_api import sync_playwright
-
-# 代理仅用于本地开发环境；CI 中不设置 PLAYWRIGHT_PROXY 即为直连
-_proxy = os.environ.get("PLAYWRIGHT_PROXY")
-PROXY = {"server": _proxy, "bypass": "127.0.0.1,localhost"} if _proxy else None
-
-
-def _launch(module, **kw):
-    return module.launch(proxy=PROXY, **kw) if PROXY else module.launch(**kw)
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SITE = os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog")
 HUGO_ARGS = shlex.split(os.environ.get("HUGO_ARGS", ""))
 HUGO = os.environ.get("HUGO_BIN", "hugo")   # CI 中 hugo 已在 PATH；本地可用 HUGO_BIN 指定
-DEPLOY = os.path.join(ROOT, "tmp", "deploy")
+import time as _time
+DEPLOY = os.path.join(ROOT, "tmp", "deploy-" + (os.environ.get("BASEURL_RUN_ID") or _time.strftime("%H%M%S")))
 PY = sys.executable
 
 CASES = [
@@ -46,17 +38,16 @@ CASES = [
     ("blog-sub", "https://example.com/blog/sub/", "blog/sub", ".", "http://127.0.0.1:8102/blog/sub/"),
 ]
 
-results = []
+H = Harness("baseurl")
 
 
 def rec(case, name, ok, detail=""):
-    results.append((case, name, ok, detail))
-    print(("  PASS  " if ok else "  FAIL  ") + name + (f" :: {detail}" if detail else ""))
+    return H.record(f"[{case}] {name}", ok, detail)
 
 
 def build(base_url, out_dir):
+    # 每次使用全新目录，避免任何递归删除（批量删除会被安全策略拦截）
     dest = os.path.join(DEPLOY, out_dir)
-    shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
     cmd = [HUGO] + HUGO_ARGS + ["--gc", "--minify", "--baseURL", base_url, "-d", dest]
     p = subprocess.run(cmd, cwd=SITE, capture_output=True, text=True, encoding="utf-8", errors="ignore")
@@ -202,8 +193,7 @@ def check(case, base):
         b.close()
 
 
-def main():
-    shutil.rmtree(DEPLOY, ignore_errors=True)
+def _run_all():
     os.makedirs(DEPLOY, exist_ok=True)
 
     for name, base_url, out_dir, _, _ in CASES:
@@ -211,24 +201,39 @@ def main():
         print(f"构建 {name} -> {dest} : {'OK' if not errs else 'ERROR'}")
         for e in errs[:3]:
             print("   ", e[:150])
+        if errs:
+            H.fatal_error(f"构建失败 [{name}] {base_url}", errs[0][:160])
+        elif not os.path.exists(os.path.join(dest, "index.html")):
+            H.fatal_error(f"构建产物缺失 [{name}]", f"{dest}/index.html 不存在")
+    if H.fatal:
+        return   # 构建失败时后续浏览器检查无意义
 
     # 启动两个静态服务器
     srv1 = subprocess.Popen([PY, os.path.join(ROOT, "tools", "serve.py"), os.path.join(DEPLOY, "root"), "8101"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     srv2 = subprocess.Popen([PY, os.path.join(ROOT, "tools", "serve.py"), DEPLOY, "8102"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(2.5)
     try:
+        ready = False
+        for _ in range(30):
+            if reachable("http://127.0.0.1:8101/") and reachable("http://127.0.0.1:8102/blog/"):
+                ready = True
+                break
+            time.sleep(1)
+        if not ready:
+            H.fatal_error("静态服务器启动失败", "8101 / 8102 未就绪")
+            return
+
         for name, base_url, out_dir, _, url in CASES:
             check(name, url)
     finally:
         srv1.terminate()
         srv2.terminate()
 
-    bad = [r for r in results if not r[2]]
-    print(f"\n==== {len(results) - len(bad)}/{len(results)} PASSED ====")
-    for c, n, _, d in bad:
-        print(f"  - [{c}] {n} :: {d}")
+
+def main():
+    guard(H, _run_all)
+    H.finish()
 
 
 if __name__ == "__main__":

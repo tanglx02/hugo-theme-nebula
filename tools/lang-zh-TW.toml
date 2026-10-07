@@ -1,0 +1,8 @@
+# 测试 / CI 用：切换到繁体中文，验证 i18n 实际生效
+defaultContentLanguage = "zh-TW"
+locale = "zh-TW"
+
+[languages]
+  [languages.zh-TW]
+    label = "繁體中文"
+    weight = 1

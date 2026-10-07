@@ -1,3 +1,5 @@
-# 测试/CI 用：开启分片索引
+# 测试 / CI 用：强制分片索引，并使用较小的 chunkSize 以保证产生多个分块
+# （"部分分块失败"的语义需要 >= 2 个分块才能验证）
 [params.search]
-  shard = true
+  mode = "shard"
+  chunkSize = 40000

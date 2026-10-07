@@ -4,9 +4,9 @@
 {{- $groups := $posts.GroupByDate "2006" -}}
 
 <div class="card page-head">
-  <nav class="breadcrumb"><a href="{{ site.Home.RelPermalink }}">首页</a><span>/</span><span>{{ .Title }}</span></nav>
+  <nav class="breadcrumb"><a href="{{ site.Home.RelPermalink }}">{{ i18n "common.home" }}</a><span>/</span><span>{{ .Title }}</span></nav>
   <h1>{{ .Title }}</h1>
-  <p>共 {{ len $posts }} 篇文章 · {{ len $groups }} 个年份</p>
+  <p>{{ i18n "archive.count" (dict "posts" (len $posts) "years" (len $groups)) }}</p>
 </div>
 
 {{ range $groups }}

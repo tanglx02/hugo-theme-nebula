@@ -34,7 +34,7 @@
              href="https://service.weibo.com/share/share.php?url={{ $url | urlquery }}&title={{ $title | urlquery }}">微博</a>
         {{- else if eq $p "wechat" }}
           <button type="button" class="share-btn" data-share="copy" data-url="{{ $url }}"
-                  aria-label="{{ i18n "share.wechat" }}">微信（复制链接）</button>
+                  aria-label="{{ i18n "share.wechat" }}">{{ i18n "share.wechatNote" }}</button>
         {{- end }}
       {{- end }}
     </div>

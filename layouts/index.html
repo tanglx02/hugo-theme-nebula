@@ -16,7 +16,7 @@
     <div class="hero-mask"></div>
     <div class="hero-body">
       <div class="hero-badges">
-        {{ if $main.Params.sticky }}<span class="chip chip-sticky">置顶</span>{{ end }}
+        {{ if $main.Params.sticky }}<span class="chip chip-sticky">{{ i18n "common.sticky" }}</span>{{ end }}
         {{ range first 1 ($main.Params.categories | default slice) }}<span class="chip" style="background:rgba(255,255,255,.2);color:#fff">{{ . }}</span>{{ end }}
       </div>
       <h2 class="hero-title">{{ $main.Title }}</h2>
@@ -42,8 +42,8 @@
 <div class="layout">
   <div>
     <div class="section-head">
-      <h2>最新文章</h2>
-      <a class="more" href="{{ "posts" | relURL }}">查看全部 →</a>
+      <h2>{{ i18n "home.latest" }}</h2>
+      <a class="more" href="{{ "posts" | relURL }}">{{ i18n "home.viewAll" }}</a>
     </div>
 
     <div class="post-list">
@@ -54,7 +54,7 @@
 
     {{ if gt (len $restPages) (site.Params.homePostCount | default 8) }}
       <div style="text-align:center;margin-top:26px">
-        <a class="btn" href="{{ "posts" | relURL }}">浏览更多文章</a>
+        <a class="btn" href="{{ "posts" | relURL }}">{{ i18n "home.browseMore" }}</a>
       </div>
     {{ end }}
   </div>

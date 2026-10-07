@@ -78,31 +78,44 @@ rssLimit = 20
 
 # ---------- 导航 ----------
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'home'
   name = '首页'
   url = '/'
   weight = 1
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'posts'
   name = '文章'
   url = '/posts/'
   weight = 2
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'categories'
   name = '分类'
   url = '/categories/'
   weight = 3
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'tags'
   name = '标签'
   url = '/tags/'
   weight = 4
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'archives'
   name = '归档'
   url = '/archives/'
   weight = 5
 [[menu.main]]
+  # identifier 用于 i18n 词条 menu.<identifier>；name 作为回退保持向后兼容
+  identifier = 'about'
   name = '关于'
   url = '/about/'
   weight = 6
 
 [[menu.footer]]
+  identifier = 'aboutMe'
   name = '关于我'
   url = '/about/'
   weight = 1

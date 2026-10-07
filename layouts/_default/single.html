@@ -40,7 +40,7 @@
           {{ if $showDate }}
           <span class="stat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
-            {{ .Date.Format "2006年1月2日" }}
+            {{ .Date.Format (i18n "common.dateFormat") }}
           </span>
           {{ end }}
           {{ if $showLastmod }}
@@ -89,7 +89,7 @@
 
       <div class="license">
         <strong>{{ i18n "post.license" }}：</strong>{{ i18n "post.author" }} {{ .Params.author | default site.Params.author }}。
-        {{ with site.Params.license }}{{ . | markdownify }}{{ else }}转载请注明出处。{{ end }}
+        {{ with site.Params.license }}{{ . | markdownify }}{{ else }}{{ i18n "common.licenseDefault" }}{{ end }}
       </div>
 
       {{ if $showNav }}

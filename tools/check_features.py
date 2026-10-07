@@ -115,9 +115,19 @@ for slug, label in (("zz-14-draft", "草稿"), ("zz-15-future", "未来文章"))
     ok(f"{label}未出现在产物中") if not os.path.isdir(os.path.join(PUBLIC, "posts", slug)) else bad(f"{label}泄漏")
 
 print()
+if not checks:
+    print("FAIL 未执行到任何功能断言（按失败处理）")
+    sys.exit(1)
 if errors:
     print(f"FAIL: {len(errors)} 项功能断言未通过")
     for e in errors:
         print("  -", e)
+    print("TEST-RESULT: " + json.dumps(
+        {"suite": "check-features", "status": "FAIL",
+         "passed": len(checks) - len(errors), "failed": len(errors), "total": len(checks)},
+        ensure_ascii=False))
     sys.exit(1)
 print(f"PASS 全部功能断言通过（{len(checks)} 项）")
+print("TEST-RESULT: " + json.dumps(
+    {"suite": "check-features", "status": "PASS",
+     "passed": len(checks), "failed": 0, "total": len(checks)}, ensure_ascii=False))

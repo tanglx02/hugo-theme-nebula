@@ -21,6 +21,16 @@ common:
   toc: Table of contents
   posts: Posts
   footerLinks: Footer links
+  sticky: Featured
+  categories: Categories
+  tags: Tags
+  minutes: '{{ .n }} min'
+  dateFormat: 'Jan 2, 2006'
+  anchor: Anchor link
+  licenseDefault: Please credit the source when reprinting.
+  pagination: Pagination
+  prevPage: Previous page
+  nextPage: Next page
 
 search:
   hint: Type keywords to search titles, tags and full text
@@ -30,6 +40,7 @@ search:
   resultCount: '{n} result(s)'
   failed: Failed to load the search index, please retry
   partialFailed: 'Some search index shards failed to load ({n} article(s)); results may be incomplete'
+  partialNoResult: 'Some search index shards failed to load ({n} article(s)), so nothing was found; results may be incomplete — please retry'
   empty: No results
   keysHint: Select
   openHint: Open
@@ -38,8 +49,8 @@ search:
 post:
   publishedOn: Published
   updatedOn: Updated
-  readingTime: '{n} min read'
-  wordCount: '{n} words'
+  readingTime: '{{ .n }} min read'
+  wordCount: '{{ .n }} words'
   prev: Previous
   next: Next
   related: Related posts
@@ -48,12 +59,23 @@ post:
   author: Author
   toTop: Back to top
 
+home:
+  latest: Latest posts
+  viewAll: View all →
+  browseMore: Browse more posts
+
+sidebar:
+  latest: Latest
+  categories: Categories
+  tagCloud: Tag cloud
+
 series:
   title: Series
-  partOf: 'Part {current} of {total}'
+  partOf: 'Part {{ .current }} of {{ .total }}'
   prevInSeries: Previous in series
   nextInSeries: Next in series
   allInSeries: All posts in this series
+  current: Current
 
 share:
   title: Share
@@ -66,6 +88,7 @@ share:
   reddit: Share on Reddit
   weibo: Share on Weibo
   wechat: WeChat (copy link and paste)
+  wechatNote: WeChat (copy link)
 
 lightbox:
   label: Image preview, press Esc to close
@@ -83,13 +106,22 @@ notFound:
   back: Back to home
 
 archive:
-  count: '{posts} posts · {years} years'
+  count: '{{ .posts }} posts · {{ .years }} years'
 
 list:
-  count: '{n} posts'
-  taxonomyCount: '{n} related posts'
-  termsCount: '{n} term(s)'
+  count: '{{ .n }} posts'
+  taxonomyCount: '{{ .n }} related posts'
+  termsCount: '{{ .n }} term(s)'
 
 footer:
   poweredBy: Powered by {hugo}
   themeBy: Theme {theme}
+
+menu:
+  home: Home
+  posts: Posts
+  categories: Categories
+  tags: Tags
+  archives: Archives
+  about: About
+  aboutMe: About me

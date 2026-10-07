@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -61,6 +63,13 @@ jobs:
             echo "生产产物中不应包含 livereload"; exit 1; fi
           echo "无开发环境注入"
 
+      - name: Upload build artifact (for release audit reuse)
+        if: matrix.hugo-version == '0.167.0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-zh-cn
+          path: public
+
   # ------------------------------------------------------- 子目录 / baseURL
   subdir:
     name: Sub-directory baseURL
@@ -92,7 +101,7 @@ jobs:
 
   # ------------------------------------------------------------- 静态检查
   static-checks:
-    name: Static checks (dead links / index)
+    name: Static checks (links / index / features / i18n / sections)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,24 +125,29 @@ jobs:
       - name: Search index integrity
         run: python3 tools/check_index.py public/index.json
 
-      - name: Feature checks (images / series / RSS / SEO / shard mode)
+      - name: Feature checks (images / series / RSS / SEO / i18n injection)
         run: python3 tools/check_features.py public
 
-      - name: Multi-section build check
+      - name: i18n — build zh-CN / zh-TW / en
         run: |
           set -e
-          printf '\n[params.content]\n  sections = ["posts", "tutorials", "notes"]\n' > exampleSite/multi-section.toml
-          hugo --source exampleSite --themesDir ../.. --config hugo.toml,multi-section.toml \
-               --gc --minify -d ../public-multisec
-          python3 - <<'PY'
-          import json
-          data = json.load(open('public-multisec/index.json', encoding='utf-8'))
-          blob = json.dumps(data, ensure_ascii=False)
-          assert 'TUTORIALSSECTION' in blob, '多 section 未纳入搜索索引'
-          assert 'NOTESSECTION' in blob, 'notes section 未纳入搜索索引'
-          print(f'多 section 检查通过（{len(data)} 条）')
-          PY
-          test -f public-multisec/tutorials/zz-tutorials-1/index.html
+          hugo --source exampleSite --themesDir ../.. --gc --minify \
+               --config hugo.toml,"$GITHUB_WORKSPACE/tools/lang-en.toml" -d ../public-en
+          hugo --source exampleSite --themesDir ../.. --gc --minify \
+               --config hugo.toml,"$GITHUB_WORKSPACE/tools/lang-zh-TW.toml" -d ../public-zh-tw
+
+      - name: i18n — verify UI strings really come from i18n
+        run: |
+          set -e
+          python3 tools/verify_i18n.py public zh-CN
+          python3 tools/verify_i18n.py public-en en
+          python3 tools/verify_i18n.py public-zh-tw zh-TW
+
+      - name: Multi-section regression (posts / tutorials / notes / projects)
+        env:
+          SITE_DIR: exampleSite
+          HUGO_ARGS: '--source . --themesDir ../..'
+        run: python3 tools/verify_multisection.py
 
       - name: Auto shard threshold check
         run: |
@@ -149,7 +163,7 @@ jobs:
   browser-tests:
     name: Browser tests (${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -196,20 +210,20 @@ jobs:
       - name: Build (production)
         run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
 
-      - name: Build (shard search mode)
+      - name: Build (shard search mode, small chunkSize to force >= 2 chunks)
         run: |
-          # --config 中的路径相对 --source，因此放在 exampleSite 内（已 gitignore）
-          printf '\n[params.search]\n  shard = true\n' > exampleSite/shard-override.toml
+          printf '\n[params.search]\n  mode = "shard"\n  chunkSize = 40000\n' > exampleSite/shard-override.toml
           hugo --source exampleSite --themesDir ../.. --config hugo.toml,shard-override.toml \
                --gc --minify -d ../public-shard
           echo "分片数: $(ls public-shard/search | wc -l)"
           test -f public-shard/index.json
+          test $(ls public-shard/search | wc -l) -ge 2 || { echo "需要 >= 2 个分块用于失败语义测试"; exit 1; }
 
       - name: Start static servers
         run: |
           nohup python3 tools/serve.py public 8080 > /tmp/serve-main.log 2>&1 &
           nohup python3 tools/serve.py public-shard 8090 > /tmp/serve-shard.log 2>&1 &
-          for i in $(seq 1 20); do
+          for i in $(seq 1 25); do
             if curl -sf http://127.0.0.1:8080/ > /dev/null && curl -sf http://127.0.0.1:8090/ > /dev/null; then
               echo "servers ready"; break; fi
             sleep 1
@@ -217,7 +231,7 @@ jobs:
           curl -sf -o /dev/null -w "main:%{http_code}\n" http://127.0.0.1:8080/
           curl -sf -o /dev/null -w "shard:%{http_code}\n" http://127.0.0.1:8090/
 
-      - name: Audit — responsive / console / 404 / overflow
+      - name: Audit — responsive / console / 404 / overflow (fails on any problem)
         env:
           AUDIT_BROWSERS: ${{ matrix.browser }}
           AUDIT_VIEWPORTS: ${{ matrix.viewports }}
@@ -235,7 +249,7 @@ jobs:
         if: matrix.browser == 'chromium'
         run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
 
-      - name: Search shard failure handling
+      - name: Search shard failure handling + deep-keyword semantics
         if: matrix.browser == 'chromium'
         run: python3 tools/verify_search_shard.py http://127.0.0.1:8090 ${{ matrix.browser }}
 
@@ -253,3 +267,49 @@ jobs:
           name: audit-report-${{ matrix.browser }}
           path: tools/audit_report.json
           if-no-files-found: ignore
+
+  # ------------------------------------------- Release 门禁：全站页面完整扫描
+  release-full-audit:
+    name: Release full-site audit (all pages)
+    # 仅 tag 推送（v*）或手动触发时执行，避免拖慢每次 PR
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.167.0'
+          extended: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r tools/requirements.txt
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-release-${{ runner.os }}-chromium-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: pw-release-${{ runner.os }}-chromium-
+      - run: python3 -m playwright install --with-deps chromium
+      - name: Generate stress data + build
+        run: |
+          python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
+          hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+      - name: Link check (整站)
+        run: python3 tools/link_check.py public
+      - name: Start server
+        run: |
+          nohup python3 tools/serve.py public 8080 > /tmp/serve.log 2>&1 &
+          for i in $(seq 1 25); do curl -sf http://127.0.0.1:8080/ > /dev/null && break; sleep 1; done
+          curl -sf -o /dev/null -w "main:%{http_code}\n" http://127.0.0.1:8080/
+      - name: Full-site audit (AUDIT_FULL=1, sitemap 全量页面)
+        env:
+          AUDIT_FULL: '1'
+          AUDIT_BROWSERS: chromium
+          AUDIT_VIEWPORTS: '375,1440'
+        run: python3 tools/audit.py http://127.0.0.1:8080

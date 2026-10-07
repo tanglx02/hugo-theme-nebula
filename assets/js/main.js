@@ -70,7 +70,8 @@
       if (settled) return;
       settled = true;
       var old = btn.innerHTML;
-      btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>已复制';
+      var label = T_.copied || 'Copied';   // 英文仅为异常兜底；正常路径一律用注入的 i18n 文案
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>' + label;
       btn.classList.add('copied');
       setTimeout(function () {
         btn.innerHTML = old;
@@ -117,7 +118,7 @@
       var url = shareBtn.getAttribute('data-url') || location.href;
       var old = shareBtn.textContent;
       var finish = function (ok) {
-        shareBtn.textContent = ok ? (T_.linkCopied || '已复制') : (T_.copyFailed || '复制失败');
+        shareBtn.textContent = ok ? (T_.linkCopied || 'Link copied') : (T_.copyFailed || 'Copy failed');
         setTimeout(function () { shareBtn.textContent = old; }, 1600);
       };
       try {
@@ -332,7 +333,7 @@
               var affected = list.filter(function (it) { return !it.content && it.key; }).length;
               if (affected) {
                 SHARD_FAILED.affected = affected;   // 受影响的文章数（用于提示）
-                console.warn('[Nebula] 部分搜索正文未能加载：', SHARD_FAILED);
+                console.warn('[Nebula] some search content chunks failed to load:', SHARD_FAILED);
               }
               return list;
             });
@@ -358,7 +359,7 @@
               });
           })).then(function () {
             if (SHARD_FAILED.length) {
-              console.warn('[Nebula] 部分搜索分片加载失败：', SHARD_FAILED);
+              console.warn('[Nebula] some search shards failed to load:', SHARD_FAILED);
             }
             return list;
           });
@@ -426,24 +427,26 @@
       var terms = q.trim().split(/\s+/).filter(Boolean);
 
       if (INDEX_ERROR) {
-        showStatus(tf(T_.searchFailed || '搜索索引加载失败，请重试') +
-          '（' + esc(String(INDEX_ERROR.message || INDEX_ERROR)) + '）');
-        results.innerHTML = '<div class="search-empty">' +
-          esc(tf(T_.searchFailed || '搜索索引加载失败，请重试')) + '</div>';
+        var errMsg = tf(T_.searchFailed || 'Search index failed to load');
+        showStatus(errMsg + '（' + esc(String(INDEX_ERROR.message || INDEX_ERROR)) + '）');
+        results.innerHTML = '<div class="search-empty">' + esc(errMsg) + '</div>';
         setStatus('');
         items = [];
         return;
       }
-      /* 分片部分失败：明确提示，绝不显示成"没有找到"，其余文章仍可搜索 */
-      if (SHARD_FAILED.length) {
-        showStatus(tf(T_.searchPartialFailed || '部分搜索索引加载失败（{n} 篇未能加载），结果可能不完整',
-          { n: SHARD_FAILED.affected || SHARD_FAILED.length }));
+      /* 分片部分失败：明确提示；此时绝不能把"索引不全"显示成"没有找到" */
+      var partial = SHARD_FAILED.length > 0;
+      var affected = SHARD_FAILED.affected || SHARD_FAILED.length;
+      if (partial) {
+        showStatus(tf(T_.searchPartialFailed ||
+          'Some search index parts failed to load ({n} posts); results may be incomplete',
+          { n: affected }));
       } else {
         hideStatus();
       }
       if (!terms.length) {
         results.innerHTML = '<div class="search-empty">' +
-          esc(T_.searchHint || '输入关键词开始搜索') + '</div>';
+          esc(T_.searchHint || 'Type keywords to search') + '</div>';
         setStatus('');
         items = [];
         return;
@@ -457,11 +460,16 @@
 
       items = hits.map(function (x) { return x.it; });
       selected = 0;
-      setStatus(tf(T_.resultCount || '共 {n} 条结果', { n: hits.length }));
+      setStatus(tf(T_.resultCount || '{n} results', { n: hits.length }));
 
       if (!hits.length) {
-        results.innerHTML = '<div class="search-empty">' +
-          esc(T_.noResultPrefix || '没有找到与「') + esc(q) + esc(T_.noResultSuffix || '」相关的文章') + '</div>';
+        /* 索引不完整时给出"可能不完整/请重试"而不是"没有找到"，避免把失败误报成不存在 */
+        var emptyMsg = partial
+          ? tf(T_.searchPartialNoResult ||
+               'Some search index parts failed to load ({n} posts); results may be incomplete',
+               { n: affected })
+          : (T_.noResultPrefix || 'No results for "') + q + (T_.noResultSuffix || '"');
+        results.innerHTML = '<div class="search-empty">' + esc(emptyMsg) + '</div>';
         return;
       }
       results.innerHTML = hits.map(function (x, i) {
@@ -479,7 +487,7 @@
     function render(q) {
       var my = ++renderToken;
       if (!INDEX) {
-        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || '正在加载搜索索引…') + '</div>';
+        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || 'Loading search index…') + '</div>';
         setStatus('');
       }
       return loadIndex().then(function () {
@@ -522,7 +530,7 @@
       retryBtn.addEventListener('click', function () {
         resetIndex();
         hideStatus();
-        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || '正在加载搜索索引…') + '</div>';
+        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || 'Loading search index…') + '</div>';
         loadIndex().then(function () { renderNow(input.value); });
       });
     }

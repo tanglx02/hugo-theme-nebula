@@ -14,7 +14,7 @@
 
   <div class="post-body">
     <div class="post-meta-top">
-      {{ if $p.Params.sticky }}<span class="chip chip-sticky">置顶</span>{{ end }}
+      {{ if $p.Params.sticky }}<span class="chip chip-sticky">{{ i18n "common.sticky" }}</span>{{ end }}
       {{ with $p.Params.categories }}
         {{ range first 1 . }}
           <a class="chip chip-cat" href="{{ (site.GetPage (printf "/categories/%s" (urlize .))).RelPermalink | default (printf "categories/%s" (urlize .) | relURL) }}">{{ . }}</a>
@@ -41,11 +41,11 @@
         <span>{{ $author }}</span>
       </span>
       <span class="dot">·</span>
-      <time datetime="{{ $p.Date.Format "2006-01-02" }}">{{ $p.Date.Format "2006年1月2日" }}</time>
+      <time datetime="{{ $p.Date.Format "2006-01-02" }}">{{ $p.Date.Format (i18n "common.dateFormat") }}</time>
       <span class="dot">·</span>
       <span class="stat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        {{ $p.ReadingTime }} 分钟
+        {{ i18n "common.minutes" (dict "n" $p.ReadingTime) }}
       </span>
       {{ if site.Params.views.enable | default false }}
       <span class="stat">

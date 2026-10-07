@@ -2,7 +2,7 @@
 {{- $c := site.Params.comments -}}
 {{- if and $c (eq $c.enable true) -}}
 <div class="card" id="comments" style="padding:26px 30px;margin-top:22px">
-  <h3 class="widget-title">评论</h3>
+  <h3 class="widget-title">{{ i18n "comment.title" }}</h3>
 
   {{ if eq $c.provider "giscus" }}
     <script src="https://giscus.app/client.js"
@@ -52,7 +52,7 @@
     </script>
   {{ else }}
     <p style="color:var(--text-muted);font-size:14px">
-      评论系统未配置。可在 <code>hugo.toml</code> 中设置 <code>[params.comments]</code> 启用 giscus / waline / twikoo / disqus。
+      {{ i18n "comment.notConfigured" }}
     </p>
   {{ end }}
 </div>

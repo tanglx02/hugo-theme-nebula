@@ -1,31 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""搜索边界测试（P5）：关键词类型 / 竞态 / 索引失败 / 延迟 / 大量结果。"""
+"""搜索边界测试（P5）：关键词类型 / 竞态 / 索引失败 / 延迟 / 大量结果。
+
+退出码约定（见 tools/_testlib.py）：断言失败 / 浏览器启动失败 / 脚本异常 -> exit 1。
+"""
 import os
 import sys
 
-os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
-os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
 
-from playwright.sync_api import sync_playwright
-
-# 代理仅用于本地开发环境；CI 中不设置 PLAYWRIGHT_PROXY 即为直连
-_proxy = os.environ.get("PLAYWRIGHT_PROXY")
-PROXY = {"server": _proxy, "bypass": "127.0.0.1,localhost"} if _proxy else None
-
-
-def _launch(module, **kw):
-    return module.launch(proxy=PROXY, **kw) if PROXY else module.launch(**kw)
-
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
 
-results = []
+H = Harness("search-edge")
 
 
 def rec(name, ok, detail=""):
-    results.append((name, ok, detail))
-    print(("PASS  " if ok else "FAIL  ") + name + (f" :: {detail}" if detail else ""))
+    return H.record(name, ok, detail)
 
 
 def search(page, kw, wait=700):
@@ -35,9 +28,13 @@ def search(page, kw, wait=700):
     return page.locator(".search-item").count()
 
 
-def main():
+def _run_all():
     with sync_playwright() as p:
-        b = _launch(p.chromium)
+        try:
+            b = _launch(p.chromium)
+        except Exception as e:
+            H.fatal_error("chromium 浏览器启动失败", str(e)[:200])
+            return
         ctx = b.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = ctx.new_page()
 
@@ -127,10 +124,13 @@ def main():
         ctx3.close()
         b.close()
 
-    bad = [r for r in results if not r[1]]
-    print(f"\n==== {len(results) - len(bad)}/{len(results)} PASSED ====")
-    for n, _, d in bad:
-        print("  -", n, "::", d)
+
+def main():
+    if not reachable(BASE + "/"):
+        H.fatal_error("被测站点不可达", BASE)
+        H.finish()
+    guard(H, _run_all)
+    H.finish()
 
 
 if __name__ == "__main__":

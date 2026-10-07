@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""静态死链与资源检查：扫描 public/ 下所有 HTML，校验站内链接与静态资源是否存在。"""
+"""静态死链与资源检查：扫描 public/ 下所有 HTML，校验站内链接与静态资源是否存在。
+
+退出码约定（见 tools/_testlib.py）：
+  * 发现死链                    -> exit 1
+  * 目录不存在 / 扫描到 0 个文件 -> exit 1（结果不可信）
+"""
+import json
 import os
 import re
 import sys
@@ -9,6 +15,26 @@ from urllib.parse import unquote, urlparse
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "myblog", "public")
 ROOT = os.path.normpath(ROOT)
+
+# 已知的"故意断链"白名单（压力测试数据）：用于验证图片缺失时的降级渲染，
+# 属于内容作者故意为之，不是主题缺陷。白名单必须显式列出并会被计数打印，
+# 不允许静默忽略，避免掩盖真实问题。
+INTENTIONAL_BROKEN = {
+    ("posts/zz-images-bundle/index.html", "/not-exist.png"),
+}
+
+
+def finish(status, passed, failed, detail=""):
+    print("TEST-RESULT: " + json.dumps({
+        "suite": "link-check", "status": status,
+        "passed": passed, "failed": failed, "detail": detail,
+    }, ensure_ascii=False))
+    sys.exit(0 if status == "PASS" else 1)
+
+
+if not os.path.isdir(ROOT):
+    print(f"FAIL 目录不存在: {ROOT}")
+    finish("FAIL", 0, 1, "public 目录不存在")
 
 # 兼容 hugo --minify 输出（属性可能不带引号）
 HREF_RE = re.compile(r'(?:href|src)=(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))')
@@ -20,6 +46,9 @@ for dirpath, _, files in os.walk(ROOT):
             HTML_FILES.append(os.path.join(dirpath, f))
 
 print(f"扫描 {len(HTML_FILES)} 个文件")
+if not HTML_FILES:
+    print("FAIL 未扫描到任何 HTML 文件，死链检查结果不可信")
+    finish("FAIL", 0, 1, "0 个 HTML 文件")
 
 
 def exists_for(url_path: str) -> bool:
@@ -68,6 +97,15 @@ for html in HTML_FILES:
             problems.append((os.path.relpath(html, ROOT), u))
 
 print(f"校验链接 {checked} 条，问题 {len(problems)} 条")
+
+# 过滤显式白名单（故意断链），并单独打印，保证不被静默掩盖
+ignored = [p for p in problems if (p[0].replace(os.sep, "/"), p[1]) in INTENTIONAL_BROKEN]
+problems = [p for p in problems if (p[0].replace(os.sep, "/"), p[1]) not in INTENTIONAL_BROKEN]
+if ignored:
+    print(f"  已知故意断链（压力测试数据，验证降级渲染）: {len(ignored)} 条")
+    for src, url in ignored:
+        print(f"    - {src} -> {url}")
+
 seen = set()
 for src, url in problems:
     key = (src.split(os.sep)[0], url)
@@ -81,3 +119,6 @@ for src, url in problems:
 
 if not problems:
     print("  ✅ 无死链")
+    finish("PASS", checked, 0)
+else:
+    finish("FAIL", checked, len(problems), f"{len(problems)} 条死链")

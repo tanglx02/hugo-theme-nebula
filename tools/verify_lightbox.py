@@ -6,33 +6,42 @@
           点击遮罩、点击关闭按钮、焦点恢复、链接图片跳转、背景 inert。
 
 用法：python tools/verify_lightbox.py [base_url] [browser]
+
+退出码约定（见 tools/_testlib.py）：任一断言失败 / 浏览器启动失败 /
+0 个用例 -> exit 1。
 """
+import json
 import os
 import sys
+import traceback
 
-os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
-os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _testlib import Harness, launch as _launch, reachable  # noqa: E402
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
 BROWSER = sys.argv[2] if len(sys.argv) > 2 else "chromium"
-_proxy = os.environ.get("PLAYWRIGHT_PROXY")
-PROXY = {"server": _proxy, "bypass": "127.0.0.1,localhost"} if _proxy else None
 IMG_PAGE = "/posts/zz-11-images/"
 
-results = []
+H = Harness(f"lightbox-{BROWSER}")
 
 
 def rec(name, ok, detail=""):
-    results.append((name, ok, detail))
-    print(("PASS  " if ok else "FAIL  ") + name + (f" :: {detail}" if detail else ""))
+    return H.record(name, ok, detail)
 
 
-def main():
+def _run_all():
+    if not reachable(BASE + "/"):
+        H.fatal_error("被测站点不可达", BASE)
+        return
     with sync_playwright() as p:
         launcher = {"chromium": p.chromium, "firefox": p.firefox, "webkit": p.webkit}[BROWSER]
-        b = launcher.launch(proxy=PROXY) if PROXY else launcher.launch()
+        try:
+            b = _launch(launcher)
+        except Exception as e:
+            H.fatal_error(f"{BROWSER} 浏览器启动失败", str(e)[:200])
+            return
         ctx = b.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = ctx.new_page()
         page.goto(BASE + IMG_PAGE, wait_until="load")
@@ -166,12 +175,15 @@ def main():
         ctx.close()
         b.close()
 
-    bad = [r for r in results if not r[1]]
-    print(f"\n[{BROWSER}] ==== {len(results) - len(bad)}/{len(results)} PASSED ====")
-    for n, _, d in bad:
-        print("  -", n, "::", d)
-    return 1 if bad else 0
+
+def main():
+    try:
+        _run_all()
+    except Exception:
+        tb = traceback.format_exc().strip().splitlines()
+        H.fatal_error("脚本异常", tb[-1][:200] if tb else "unknown")
+    H.finish()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

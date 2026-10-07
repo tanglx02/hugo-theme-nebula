@@ -1,0 +1,14 @@
+{{- /*
+  菜单项标签：优先使用 i18n 词条 menu.<identifier>，缺失时回退到菜单自身的 name。
+  这样站点可以用 identifier（home/posts/categories/tags/archives/about…）定义菜单，
+  切换语言时导航自动翻译；同时完全向后兼容只写 name 的旧配置。
+
+  用法：{{ partial "util/menu-label.html" . }}
+*/ -}}
+{{- $label := .Name -}}
+{{- with .Identifier -}}
+  {{- $key := printf "menu.%s" . -}}
+  {{- $t := i18n $key -}}
+  {{- if and $t (ne $t $key) -}}{{- $label = $t -}}{{- end -}}
+{{- end -}}
+{{- $label -}}

@@ -13,7 +13,7 @@
         <a href="{{ partial "util/rel-url.html" .URL }}" {{ with .Params.external }}target="_blank" rel="noopener"{{ end }}>{{ .Name }}</a>
       {{ end }}
       <a href="{{ "index.xml" | relURL }}">RSS</a>
-      <a href="{{ "sitemap.xml" | relURL }}">站点地图</a>
+      <a href="{{ "sitemap.xml" | relURL }}">{{ i18n "common.sitemap" }}</a>
     </div>
   </div>
 </footer>

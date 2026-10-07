@@ -1,18 +1,32 @@
 .DS_Store
 Thumbs.db
+
+# Hugo 构建缓存与产物
 resources/
+public/
+public-*/
+public-shard/
+tmp/
 exampleSite/public/
 exampleSite/resources/
+
+# 压力测试数据（由 tools/gen_testdata.py 按需生成）
 exampleSite/content/posts/zz-*.md
-public/
-public-blog/
-exampleSite/shard-override.toml
-exampleSite/shard-override.toml
+exampleSite/content/posts/zz-images-bundle/
 exampleSite/content/tutorials/zz-*.md
 exampleSite/content/notes/zz-*.md
-exampleSite/content/posts/zz-images-bundle/
-public-shard/
+exampleSite/content/projects/zz-*.md
+
+# 测试时写入站点目录的临时配置
+exampleSite/shard-override.toml
+exampleSite/shard-auto.toml
+exampleSite/ms-verify.toml
+myblog-test.toml
+
+# 测试输出
 tools/audit_report.json
-exampleSite/content/posts/zz-images-bundle/
-public-shard/
-tools/audit_report.json
+tools/bench-*.json
+
+# Python 缓存
+__pycache__/
+*.pyc

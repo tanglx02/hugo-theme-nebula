@@ -21,6 +21,16 @@ common:
   toc: 文章目錄
   posts: 文章
   footerLinks: 頁尾連結
+  sticky: 置頂
+  categories: 分類
+  tags: 標籤
+  minutes: '{{ .n }} 分鐘'
+  dateFormat: '2006年1月2日'
+  anchor: 錨點連結
+  licenseDefault: 轉載請註明出處。
+  pagination: 分頁導覽
+  prevPage: 上一頁
+  nextPage: 下一頁
 
 search:
   hint: 輸入關鍵字開始搜尋，支援標題 / 標籤 / 內文全文比對
@@ -30,6 +40,7 @@ search:
   resultCount: 共 {n} 筆結果
   failed: 搜尋索引載入失敗，請重試
   partialFailed: 部分搜尋索引載入失敗（{n} 篇未載入），結果可能不完整
+  partialNoResult: 部分搜尋索引載入失敗（{n} 篇未載入），因此暫未找到結果，結果可能不完整，請重試
   empty: 尚無結果
   keysHint: 選擇
   openHint: 開啟
@@ -38,8 +49,8 @@ search:
 post:
   publishedOn: 發佈於
   updatedOn: 更新於
-  readingTime: 約 {n} 分鐘
-  wordCount: '{n} 字'
+  readingTime: 約 {{ .n }} 分鐘
+  wordCount: '{{ .n }} 字'
   prev: 上一篇
   next: 下一篇
   related: 相關文章
@@ -48,12 +59,23 @@ post:
   author: 作者
   toTop: 回到頂部
 
+home:
+  latest: 最新文章
+  viewAll: 檢視全部 →
+  browseMore: 瀏覽更多文章
+
+sidebar:
+  latest: 最新文章
+  categories: 文章分類
+  tagCloud: 標籤雲
+
 series:
   title: 系列文章
-  partOf: 第 {current} 篇 / 共 {total} 篇
+  partOf: 第 {{ .current }} 篇 / 共 {{ .total }} 篇
   prevInSeries: 系列上一篇
   nextInSeries: 系列下一篇
   allInSeries: 本系列全部文章
+  current: 目前
 
 share:
   title: 分享
@@ -66,6 +88,7 @@ share:
   reddit: 分享到 Reddit
   weibo: 分享到微博
   wechat: 微信（複製連結後貼上）
+  wechatNote: 微信（複製連結）
 
 lightbox:
   label: 圖片預覽，按 Esc 關閉
@@ -83,13 +106,22 @@ notFound:
   back: 回到首頁
 
 archive:
-  count: 共 {posts} 篇文章 · {years} 個年份
+  count: 共 {{ .posts }} 篇文章 · {{ .years }} 個年份
 
 list:
-  count: 共 {n} 篇文章
-  taxonomyCount: 共 {n} 篇相關文章
-  termsCount: 共 {n} 項
+  count: 共 {{ .n }} 篇文章
+  taxonomyCount: 共 {{ .n }} 篇相關文章
+  termsCount: 共 {{ .n }} 項
 
 footer:
   poweredBy: 由 {hugo} 驅動
   themeBy: 主題 {theme}
+
+menu:
+  home: 首頁
+  posts: 文章
+  categories: 分類
+  tags: 標籤
+  archives: 歸檔
+  about: 關於
+  aboutMe: 關於我
