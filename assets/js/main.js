@@ -304,6 +304,41 @@
         })
         .then(function (d) {
           var list = Array.isArray(d) ? d : (d && d.items) ? d.items : [];
+          var chunkURLs = (d && d.chunks) ? d.chunks : null;
+
+          /* 结构 A（推荐）：体积分块 { chunks: [...], items: [...] }
+             把正文按体积合并成少量 chunk 文件，请求数与体积成正比而非与文章数成正比 */
+          if (chunkURLs && chunkURLs.length) {
+            return Promise.all(chunkURLs.map(function (u) {
+              return fetch(u, { cache: 'force-cache' })
+                .then(function (r) {
+                  if (!r.ok) throw new Error('HTTP ' + r.status);
+                  return r.json();
+                })
+                .catch(function (err) {
+                  SHARD_FAILED.push({ url: u, error: String((err && err.message) || err) });
+                  return null;
+                });
+            })).then(function (maps) {
+              var merged = {};
+              maps.forEach(function (m) {
+                if (m) { Object.keys(m).forEach(function (k) { merged[k] = m[k]; }); }
+              });
+              list.forEach(function (it) {
+                if (!it.content && it.key && typeof merged[it.key] === 'string') {
+                  it.content = merged[it.key];
+                }
+              });
+              var affected = list.filter(function (it) { return !it.content && it.key; }).length;
+              if (affected) {
+                SHARD_FAILED.affected = affected;   // 受影响的文章数（用于提示）
+                console.warn('[Nebula] 部分搜索正文未能加载：', SHARD_FAILED);
+              }
+              return list;
+            });
+          }
+
+          /* 结构 B（兼容旧版）：按文章分片，条目带 shard 字段 */
           var missing = list.filter(function (it) { return !it.content && it.shard; });
           if (!missing.length) return list;
           return Promise.all(missing.map(function (it) {
@@ -402,7 +437,7 @@
       /* 分片部分失败：明确提示，绝不显示成"没有找到"，其余文章仍可搜索 */
       if (SHARD_FAILED.length) {
         showStatus(tf(T_.searchPartialFailed || '部分搜索索引加载失败（{n} 篇未能加载），结果可能不完整',
-          { n: SHARD_FAILED.length }));
+          { n: SHARD_FAILED.affected || SHARD_FAILED.length }));
       } else {
         hideStatus();
       }

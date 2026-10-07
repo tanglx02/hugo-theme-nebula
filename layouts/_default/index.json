@@ -61,27 +61,58 @@
   {{- $useShard = gt $totalBytes $threshold -}}
 {{- end -}}
 
-{{- /* 第三步：输出。分片模式下正文单独发布，主索引只留元数据与分片地址 */ -}}
+{{- /* 第三步：输出
+   分片模式：按"体积分块"（chunk）而非按文章分片 ——
+   把若干篇正文合并进 search/chunk-N.json。这样 HTTP 请求数与总体积成正比而非与文章数成正比，
+   500 篇文章也只需约 20 个并发请求（按文章分片会产生 500 个请求，实测搜索延迟明显更差）。 */ -}}
+{{- $chunkSize := int (site.Params.search.chunkSize | default 204800) -}}
+{{- $chunks := slice -}}
+{{- $bucket := dict -}}
+{{- $bucketSize := 0 -}}
+{{- if $useShard -}}
+  {{- range $items -}}
+    {{- $bucket = merge $bucket (dict .file .content) -}}
+    {{- $bucketSize = add $bucketSize (len .content) -}}
+    {{- if ge $bucketSize $chunkSize -}}
+      {{- $chunks = $chunks | append $bucket -}}
+      {{- $bucket = dict -}}
+      {{- $bucketSize = 0 -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if gt (len $bucket) 0 -}}
+    {{- $chunks = $chunks | append $bucket -}}
+  {{- end -}}
+{{- end -}}
+
+{{- $chunkURLs := slice -}}
+{{- if $useShard -}}
+  {{- range $i, $c := $chunks -}}
+    {{- $res := resources.FromString (printf "search/chunk-%d.json" $i) ($c | jsonify) -}}
+    {{- $pub := $res | resources.Publish -}}
+    {{- $chunkURLs = $chunkURLs | append $pub.RelPermalink -}}
+  {{- end -}}
+{{- end -}}
+
 {{- $index := slice -}}
 {{- range $items -}}
   {{- $content := .content -}}
-  {{- $shardURL := "" -}}
-  {{- if $useShard -}}
-    {{- $res := resources.FromString (printf "search/%s.json" .file) ($content | jsonify) -}}
-    {{- $pub := $res | resources.Publish -}}
-    {{- $shardURL = $pub.RelPermalink -}}
-    {{- $content = "" -}}
-  {{- end -}}
+  {{- if $useShard -}}{{- $content = "" -}}{{- end -}}
   {{- $index = $index | append (dict
       "title" .title
       "url" .url
       "date" .date
       "summary" .summary
       "content" $content
-      "shard" $shardURL
+      "key" .file
       "tags" .tags
       "categories" .categories
       "series" .series
   ) -}}
 {{- end -}}
-{{ $index | jsonify }}
+
+{{- if $useShard -}}
+  {{- /* 分片模式：输出 { chunks: [...], items: [...] } 结构 */ -}}
+  {{- dict "chunks" $chunkURLs "items" $index | jsonify -}}
+{{- else -}}
+  {{- $index | jsonify -}}
+{{- end -}}

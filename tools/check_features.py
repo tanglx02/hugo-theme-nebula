@@ -38,7 +38,7 @@ def read(path):
 # ---------- 1. 图片 Pipeline ----------
 html = read("posts/zz-images-bundle/index.html")
 if html is None:
-    bad("图片 bundle 页面存在", "未找到 posts/zz-images-bundle/index.html（可能未安装 Pillow 导致测试数据未生成）")
+    bad("图片 bundle 页面存在", "未找到 posts/zz-images-bundle/index.html")
 else:
     imgs = re.findall(r"<img[^>]*>", html)
     srcset_imgs = [i for i in imgs if "srcset" in i]
