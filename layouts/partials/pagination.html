@@ -1,0 +1,33 @@
+{{- if gt .Paginator.TotalPages 1 -}}
+{{- $paginator := .Paginator -}}
+{{- $cur := $paginator.PageNumber -}}
+{{- $total := $paginator.TotalPages -}}
+<nav class="pagination" aria-label="分页">
+  {{ if $paginator.HasPrev }}
+    <a href="{{ $paginator.Prev.URL }}" aria-label="上一页">«</a>
+  {{ else }}
+    <span class="disabled">«</span>
+  {{ end }}
+
+  {{ $prevShown := 0 }}
+  {{ range $paginator.Pagers }}
+    {{ $n := .PageNumber }}
+    {{ $show := or (eq $n 1) (eq $n $total) (and (ge $n (sub $cur 2)) (le $n (add $cur 2))) }}
+    {{ if $show }}
+      {{ if and (gt $n (add $prevShown 1)) (gt $prevShown 0) }}<span class="disabled">…</span>{{ end }}
+      {{ if eq $n $cur }}
+        <span class="current">{{ $n }}</span>
+      {{ else }}
+        <a href="{{ .URL }}">{{ $n }}</a>
+      {{ end }}
+      {{ $prevShown = $n }}
+    {{ end }}
+  {{ end }}
+
+  {{ if $paginator.HasNext }}
+    <a href="{{ $paginator.Next.URL }}" aria-label="下一页">»</a>
+  {{ else }}
+    <span class="disabled">»</span>
+  {{ end }}
+</nav>
+{{- end -}}

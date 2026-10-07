@@ -1,0 +1,18 @@
+name = "Nebula"
+license = "MIT"
+licenselink = "https://github.com/tanglx02/hugo-theme-nebula/blob/main/LICENSE"
+description = "一款清爽、现代的 Hugo 博客主题：卡片流首页、全站搜索、暗色模式、代码高亮、TOC 目录。"
+homepage = "https://github.com/tanglx02/hugo-theme-nebula"
+demosite = "https://blog.kejilion.pro"
+tags = ["blog", "chinese", "responsive", "dark-mode", "search", "minimal"]
+features = ["全站搜索", "暗色模式", "响应式布局", "代码高亮", "文章目录", "侧边栏组件", "SEO 优化", "RSS"]
+min_version = "0.128.0"
+
+[author]
+  name = "tanglx02"
+  homepage = "https://github.com/tanglx02"
+
+[original]
+  name = "Nebula"
+  homepage = "https://github.com/tanglx02/hugo-theme-nebula"
+  repo = "https://github.com/tanglx02/hugo-theme-nebula"

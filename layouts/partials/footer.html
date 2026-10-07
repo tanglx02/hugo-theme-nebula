@@ -1,0 +1,19 @@
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <div>© {{ now.Year }} {{ site.Title }}{{ with site.Params.footerText }} · {{ . }}{{ end }}</div>
+      <div style="margin-top:4px">
+        Powered by <a href="https://gohugo.io/" target="_blank" rel="noopener">Hugo</a>
+        · Theme <a href="https://github.com/tanglx02/hugo-theme-nebula" target="_blank" rel="noopener">Nebula</a>
+        {{ with site.Params.icp }} · <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{{ . }}</a>{{ end }}
+      </div>
+    </div>
+    <div class="footer-links">
+      {{ range site.Menus.footer }}
+        <a href="{{ .URL | relURL }}" {{ with .Params.external }}target="_blank" rel="noopener"{{ end }}>{{ .Name }}</a>
+      {{ end }}
+      <a href="{{ "index.xml" | relURL }}">RSS</a>
+      <a href="{{ "sitemap.xml" | relURL }}">站点地图</a>
+    </div>
+  </div>
+</footer>

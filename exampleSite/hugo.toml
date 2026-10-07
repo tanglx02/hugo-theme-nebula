@@ -1,0 +1,111 @@
+baseURL = 'https://blog.example.com/'
+locale = 'zh-CN'
+title = '星云技术笔记'
+theme = 'hugo-theme-nebula'
+hasCJKLanguage = true
+defaultContentLanguage = 'zh'
+enableRobotsTXT = true
+paginate = 8
+rssLimit = 20
+
+# ---------- 站点参数 ----------
+[params]
+  author = 'Tanglx'
+  subtitle = '记录安全与运维的每一次实践'
+  description = '一个网络安全工程师的技术博客，聚焦渗透测试、应急响应、主机加固与自动化运维。'
+  avatar = 'img/avatar.png'
+  logoText = 'N'
+  homePostCount = 8
+  footerText = 'Keep Learning.'
+  license = '本文采用 CC BY-NC-SA 4.0 许可，转载请注明来源。'
+
+  [params.profile]
+    bio = '网络安全工程师 / 独立开发者，长期折腾渗透测试、主机加固与自动化运维。'
+
+  [params.socials]
+    github = 'https://github.com/tanglx02'
+    email = 'mailto:tanglx@aliyun.com'
+    bilibili = 'https://space.bilibili.com/'
+
+  [params.sidebar]
+    hotCount = 6
+
+  [params.search]
+    enable = true
+
+  [params.views]
+    enable = false
+
+  [params.busuanzi]
+    enable = false
+
+  # 评论：provider 可选 giscus / waline / twikoo / disqus
+  [params.comments]
+    enable = false
+    provider = 'giscus'
+    [params.comments.giscus]
+      repo = ''
+      repoID = ''
+      category = 'Announcements'
+      categoryID = ''
+
+# ---------- 内容渲染 ----------
+[markup]
+  [markup.highlight]
+    style = 'github'
+    noClasses = false
+    lineNos = false
+    lineNumbersInTable = false
+    tabWidth = 2
+    guessSyntax = true
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+  [markup.tableOfContents]
+    startLevel = 2
+    endLevel = 3
+    ordered = false
+
+[taxonomies]
+  category = 'categories'
+  tag = 'tags'
+
+[outputs]
+  home = ['HTML', 'RSS', 'JSON']
+
+# ---------- 导航 ----------
+[[menu.main]]
+  name = '首页'
+  url = '/'
+  weight = 1
+[[menu.main]]
+  name = '文章'
+  url = '/posts/'
+  weight = 2
+[[menu.main]]
+  name = '分类'
+  url = '/categories/'
+  weight = 3
+[[menu.main]]
+  name = '标签'
+  url = '/tags/'
+  weight = 4
+[[menu.main]]
+  name = '归档'
+  url = '/archives/'
+  weight = 5
+[[menu.main]]
+  name = '关于'
+  url = '/about/'
+  weight = 6
+
+[[menu.footer]]
+  name = '关于我'
+  url = '/about/'
+  weight = 1
+[[menu.footer]]
+  name = 'GitHub'
+  url = 'https://github.com/tanglx02'
+  weight = 2
+  [menu.footer.params]
+    external = true

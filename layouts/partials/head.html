@@ -1,0 +1,71 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<meta name="referrer" content="origin">
+
+<title>{{ if .IsHome }}{{ .Site.Title }}{{ if .Site.Params.subtitle }} - {{ .Site.Params.subtitle }}{{ end }}{{ else }}{{ .Title }} - {{ .Site.Title }}{{ end }}</title>
+
+{{ $desc := "" }}
+{{ with .Description }}
+  {{ $desc = . }}
+{{ else }}
+  {{ with .Site.Params.description }}{{ $desc = . }}{{ end }}
+{{ end }}
+{{ with $desc }}<meta name="description" content="{{ . }}">{{ end }}
+{{ with .Keywords }}<meta name="keywords" content="{{ delimit . "," }}">{{ end }}
+<meta name="author" content="{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}">
+<link rel="canonical" href="{{ .Permalink }}">
+
+{{- /* Theme init: prevent flash of wrong theme */ -}}
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem('nebula-theme');
+    if (!saved) saved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+  } catch (e) {}
+})();
+</script>
+
+{{- /* Open Graph / Twitter */ -}}
+<meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}">
+<meta property="og:site_name" content="{{ .Site.Title }}">
+<meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
+<meta property="og:description" content="{{ $desc }}">
+<meta property="og:url" content="{{ .Permalink }}">
+<meta property="og:locale" content="{{ site.Language.Locale | default "zh-CN" }}">
+{{ with .Params.cover }}<meta property="og:image" content="{{ . | absURL }}">{{ end }}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
+<meta name="twitter:description" content="{{ $desc }}">
+{{ with .Params.cover }}<meta name="twitter:image" content="{{ . | absURL }}">{{ end }}
+
+{{ with .OutputFormats.Get "rss" -}}
+  <link rel="alternate" type="{{ .MediaType.Type }}" href="{{ .Permalink }}" title="{{ site.Title }}">
+{{ end -}}
+
+<link rel="icon" href="{{ with site.Params.favicon }}{{ . | relURL }}{{ else }}{{ "img/favicon.svg" | relURL }}{{ end }}">
+
+{{- /* JSON-LD */ -}}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "{{ if .IsPage }}BlogPosting{{ else }}WebSite{{ end }}",
+  "headline": "{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}",
+  {{ with $desc }}"description": {{ . | jsonify }},{{ end }}
+  {{ if .IsPage }}
+  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05+08:00" }}",
+  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05+08:00" }}",
+  {{ end }}
+  "author": { "@type": "Person", "name": "{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}" },
+  "url": "{{ .Permalink }}"
+}
+</script>
+
+{{- /* Styles */ -}}
+{{ $css := resources.Get "css/main.css" | minify | fingerprint }}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+
+{{- /* Head hooks */ -}}
+{{ partial "extra-head.html" . }}
+{{ template "_internal/google_analytics.html" . }}

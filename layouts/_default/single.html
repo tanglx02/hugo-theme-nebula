@@ -1,0 +1,118 @@
+{{ define "main" }}
+{{- $hasTOC := false -}}
+{{- if .Params.toc | default true -}}
+  {{- with .TableOfContents -}}{{- if gt (len .) 60 -}}{{- $hasTOC = true -}}{{- end -}}{{- end -}}
+{{- end -}}
+<article class="layout {{ if not $hasTOC }}layout-full{{ end }}">
+  <div>
+    <div class="card article">
+      <div class="article-head">
+        <nav class="breadcrumb">
+          <a href="{{ site.BaseURL }}">首页</a>
+          <span>/</span>
+          {{ with .Params.categories }}
+            {{ range first 1 . }}
+              <a href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>
+              <span>/</span>
+            {{ end }}
+          {{ end }}
+          <span>正文</span>
+        </nav>
+
+        <h1 class="article-title">{{ .Title }}</h1>
+
+        <div class="article-meta">
+          <span class="stat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
+            {{ .Date.Format "2006年1月2日" }}
+          </span>
+          <span class="stat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            约 {{ .ReadingTime }} 分钟
+          </span>
+          <span class="stat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            {{ .WordCount }} 字
+          </span>
+          {{ with .Params.categories }}
+            {{ range first 1 . }}
+              <a class="chip chip-cat" href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>
+            {{ end }}
+          {{ end }}
+        </div>
+      </div>
+
+      {{ with .Params.cover }}
+        <div class="article-cover"><img src="{{ . | relURL }}" alt="{{ $.Title }}"></div>
+      {{ end }}
+
+      <div class="post-content">
+        {{ .Content }}
+      </div>
+
+      {{ with .Params.tags }}
+        <div class="article-tags">
+          {{ range . }}<a href="{{ "tags" | relURL }}/{{ . | urlize }}/"># {{ . }}</a>{{ end }}
+        </div>
+      {{ end }}
+
+      <div class="license">
+        <strong>版权声明：</strong>本文为原创文章，作者 {{ .Params.author | default site.Params.author }}。
+        {{ with site.Params.license }}{{ . | markdownify }}{{ else }}转载请注明出处。{{ end }}
+      </div>
+
+      <nav class="post-nav">
+        {{ with .PrevInSection }}
+          <a class="prev" href="{{ .RelPermalink }}">
+            <span class="label">← 上一篇</span>
+            <span class="title">{{ .Title }}</span>
+          </a>
+        {{ end }}
+        {{ with .NextInSection }}
+          <a class="next" href="{{ .RelPermalink }}">
+            <span class="label">下一篇 →</span>
+            <span class="title">{{ .Title }}</span>
+          </a>
+        {{ end }}
+      </nav>
+    </div>
+
+    {{- /* 相关文章 */ -}}
+    {{ $related := first 3 (where (where site.RegularPages "Section" "posts") "RelPermalink" "ne" .RelPermalink) }}
+    {{ with $related }}
+    <div class="card related" style="padding:22px 26px;margin-top:22px">
+      <h3 class="widget-title">相关文章</h3>
+      <div class="related-grid">
+        {{ range . }}
+          <a class="related-card" href="{{ .RelPermalink }}">
+            <div class="t">{{ .Title }}</div>
+            <div class="d">{{ .Date.Format "2006-01-02" }} · {{ .ReadingTime }} 分钟</div>
+          </a>
+        {{ end }}
+      </div>
+    </div>
+    {{ end }}
+
+    {{ if .Params.comments | default true }}
+      {{ partial "comments.html" . }}
+    {{ end }}
+  </div>
+
+  {{ if $hasTOC }}
+  <aside class="sidebar">
+    {{ with .TableOfContents }}
+      {{ if gt (len .) 60 }}
+        <div class="widget toc-card toc">
+          <h3 class="widget-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+            文章目录
+          </h3>
+          {{ . }}
+        </div>
+      {{ end }}
+    {{ end }}
+    {{ partial "sidebar.html" . }}
+  </aside>
+  {{ end }}
+</article>
+{{ end }}

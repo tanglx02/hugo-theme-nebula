@@ -1,0 +1,25 @@
+{{ define "main" }}
+{{- $posts := where site.RegularPages "Section" "posts" -}}
+{{- $groups := $posts.GroupByDate "2006" -}}
+
+<div class="card page-head">
+  <nav class="breadcrumb"><a href="{{ site.BaseURL }}">首页</a><span>/</span><span>{{ .Title }}</span></nav>
+  <h1>{{ .Title }}</h1>
+  <p>共 {{ len $posts }} 篇文章 · {{ len $groups }} 个年份</p>
+</div>
+
+{{ range $groups }}
+  <h2 class="archive-year">{{ .Key }}</h2>
+  <ul class="archive-list">
+    {{ range .Pages.GroupByDate "2006-01" }}
+      {{ range .Pages }}
+        <li>
+          <span class="archive-date">{{ .Date.Format "01-02" }}</span>
+          <a href="{{ .RelPermalink }}">{{ .Title }}</a>
+          {{ with .Params.categories }}{{ range first 1 . }}<a class="chip chip-cat" href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>{{ end }}{{ end }}
+        </li>
+      {{ end }}
+    {{ end }}
+  </ul>
+{{ end }}
+{{ end }}

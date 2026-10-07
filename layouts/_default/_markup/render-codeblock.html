@@ -1,0 +1,18 @@
+{{- /* 代码块：macOS 窗口风格头部 + 语言标签 + 一键复制
+       高亮使用 CSS class 模式（markup.highlight.noClasses = false），
+       配色由 assets/css/main.css 中的 .chroma 规则提供，可随暗色模式切换。 */ -}}
+{{- $lang := .Type | default "text" -}}
+{{- $opts := dict -}}
+{{- if not (transform.CanHighlight $lang) }}{{ $opts = dict "type" "text" }}{{ end -}}
+{{- $code := transform.HighlightCodeBlock . $opts -}}
+<div class="code-block" data-lang="{{ $lang }}">
+  <div class="code-head">
+    <div class="code-dots"><span></span><span></span><span></span></div>
+    <span class="code-lang">{{ if eq $lang "text" }}CODE{{ else }}{{ $lang }}{{ end }}</span>
+    <button class="code-copy" type="button" aria-label="复制代码">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
+      复制
+    </button>
+  </div>
+  {{ $code.Wrapped }}
+</div>

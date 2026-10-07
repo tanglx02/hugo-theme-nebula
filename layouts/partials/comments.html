@@ -1,0 +1,59 @@
+{{- /* 评论系统：giscus / waline / disqus / twikoo，通过 site.Params.comments 配置，默认关闭 */ -}}
+{{- $c := site.Params.comments -}}
+{{- if and $c (eq $c.enable true) -}}
+<div class="card" id="comments" style="padding:26px 30px;margin-top:22px">
+  <h3 class="widget-title">评论</h3>
+
+  {{ if eq $c.provider "giscus" }}
+    <script src="https://giscus.app/client.js"
+      data-repo="{{ $c.giscus.repo }}"
+      data-repo-id="{{ $c.giscus.repoID }}"
+      data-category="{{ $c.giscus.category }}"
+      data-category-id="{{ $c.giscus.categoryID }}"
+      data-mapping="{{ $c.giscus.mapping | default "pathname" }}"
+      data-strict="0"
+      data-reactions-enabled="1"
+      data-emit-metadata="0"
+      data-input-position="bottom"
+      data-theme="{{ $c.giscus.theme | default "preferred_color_scheme" }}"
+      data-lang="zh-CN"
+      crossorigin="anonymous"
+      async>
+    </script>
+  {{ else if eq $c.provider "waline" }}
+    <link rel="stylesheet" href="https://unpkg.com/@waline/client@v3/dist/waline.css">
+    <div id="waline"></div>
+    <script type="module">
+      import { init } from 'https://unpkg.com/@waline/client@v3/dist/waline.js';
+      init({
+        el: '#waline',
+        serverURL: '{{ $c.waline.serverURL }}',
+        lang: 'zh-CN',
+        emoji: ['https://unpkg.com/@waline/emojis@1.2.0/weibo'],
+        requiredMeta: ['nick'],
+        dark: 'auto'
+      });
+    </script>
+  {{ else if eq $c.provider "twikoo" }}
+    <div id="tcomment"></div>
+    <script src="https://cdn.jsdelivr.net/npm/twikoo@1.6.39/dist/twikoo.all.min.js"></script>
+    <script>
+      twikoo.init({ envId: '{{ $c.twikoo.envId }}', el: '#tcomment', lang: 'zh-CN' });
+    </script>
+  {{ else if eq $c.provider "disqus" }}
+    <div id="disqus_thread"></div>
+    <script>
+      (function () {
+        var d = document, s = d.createElement('script');
+        s.src = 'https://{{ $c.disqus.shortname }}.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  {{ else }}
+    <p style="color:var(--text-muted);font-size:14px">
+      评论系统未配置。可在 <code>hugo.toml</code> 中设置 <code>[params.comments]</code> 启用 giscus / waline / twikoo / disqus。
+    </p>
+  {{ end }}
+</div>
+{{- end -}}

@@ -1,0 +1,31 @@
+{{ define "main" }}
+{{- $title := .Title -}}
+{{- $sub := "" -}}
+{{- if eq .Kind "taxonomy" -}}
+  {{- $title = printf "%s：%s" (.Data.Singular | title) .Title -}}
+  {{- $sub = printf "共 %d 篇相关文章" (len .Pages) -}}
+{{- else -}}
+  {{- $sub = printf "共 %d 篇文章" (len .Pages) -}}
+{{- end -}}
+
+<div class="card page-head">
+  <nav class="breadcrumb">
+    <a href="{{ site.BaseURL }}">首页</a><span>/</span><span>{{ $title }}</span>
+  </nav>
+  <h1>{{ $title }}</h1>
+  <p>{{ $sub }}{{ with .Params.description }} · {{ . }}{{ end }}</p>
+</div>
+
+<div class="layout">
+  <div>
+    <div class="post-list">
+      {{ range .Paginator.Pages }}
+        {{ partial "post-card.html" . }}
+      {{ end }}
+    </div>
+    {{ partial "pagination.html" . }}
+  </div>
+
+  <aside class="sidebar">{{ partial "sidebar.html" . }}</aside>
+</div>
+{{ end }}

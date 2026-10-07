@@ -1,0 +1,2 @@
+{{- $id := .Anchor | default (anchorize .PlainText) -}}
+<h{{ .Level }} id="{{ $id }}">{{ .Text | safeHTML }}<a class="anchor" href="#{{ $id }}" aria-label="锚点">#</a></h{{ .Level }}>

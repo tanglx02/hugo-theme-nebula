@@ -1,0 +1,11 @@
+{{- /* 扩展点：用户可在站点内 layouts/partials/extra-footer.html 覆盖 */ -}}
+{{ partial "extra-footer.html" . }}
+
+{{- /* 浏览量统计（不蒜子，可选） */ -}}
+{{ if site.Params.busuanzi.enable }}
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+{{ end }}
+
+{{- /* 主题脚本 */ -}}
+{{ $js := resources.Get "js/main.js" | resources.ExecuteAsTemplate "js/main.js" . | minify | fingerprint }}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
