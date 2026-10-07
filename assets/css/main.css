@@ -462,7 +462,14 @@ input:focus-visible,
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.post-title a { color: var(--text-strong); }
+/* 标题链接自身必须满足 24px 触屏点击区（WCAG 2.5.8）：
+   短标题在窄视口下只有 ~21px 高，因此显式补足并对齐整行可点。 */
+.post-title a {
+  color: var(--text-strong);
+  display: block;
+  min-height: 24px;
+  padding: 2px 0;
+}
 .post-card:hover .post-title a { color: var(--brand); }
 
 .post-summary {
