@@ -22,7 +22,7 @@ def _launch(module, **kw):
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SITE = os.path.join(ROOT, "myblog")
-HUGO = r"C:\Users\Administrator\.workbuddy\binaries\hugo\bin\hugo.exe"
+HUGO = os.environ.get("HUGO_BIN", "hugo")   # CI 中 hugo 在 PATH；本地可用 HUGO_BIN 指定
 BUILD = os.path.join(ROOT, "tmp", "public-blog")
 SERVE_ROOT = os.path.join(ROOT, "tmp", "serve")
 MOUNT = os.path.join(SERVE_ROOT, "blog")

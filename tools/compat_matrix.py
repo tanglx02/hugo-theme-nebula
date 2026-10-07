@@ -17,7 +17,7 @@ OUT = os.path.join(ROOT, "tmp", "compat")
 VERSIONS = {
     "0.128.0": os.path.join(os.environ.get("TEMP", "C:/tmp"), "hugovers", "0.128.0", "hugo.exe"),
     "0.162.0": os.path.join(os.environ.get("TEMP", "C:/tmp"), "hugovers", "0.162.0", "hugo.exe"),
-    "0.167.0": r"C:\Users\Administrator\.workbuddy\binaries\hugo\bin\hugo.exe",
+    "0.167.0": os.environ.get("HUGO_BIN", "hugo"),
 }
 
 
