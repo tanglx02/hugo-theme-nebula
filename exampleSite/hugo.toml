@@ -5,7 +5,8 @@ theme = 'hugo-theme-nebula'
 hasCJKLanguage = true
 defaultContentLanguage = 'zh'
 enableRobotsTXT = true
-paginate = 8
+[pagination]
+  pagerSize = 8            # 每页文章数（Hugo >= 0.128 使用 pagination.pagerSize）
 rssLimit = 20
 
 # ---------- 站点参数 ----------
@@ -13,7 +14,7 @@ rssLimit = 20
   author = 'Tanglx'
   subtitle = '记录安全与运维的每一次实践'
   description = '一个网络安全工程师的技术博客，聚焦渗透测试、应急响应、主机加固与自动化运维。'
-  avatar = 'img/avatar.png'
+  avatar = 'img/avatar.svg'
   logoText = 'N'
   homePostCount = 8
   footerText = 'Keep Learning.'

@@ -34,30 +34,33 @@
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
 <meta property="og:locale" content="{{ site.Language.Locale | default "zh-CN" }}">
-{{ with .Params.cover }}<meta property="og:image" content="{{ . | absURL }}">{{ end }}
+{{ with .Params.cover }}<meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta name="twitter:description" content="{{ $desc }}">
-{{ with .Params.cover }}<meta name="twitter:image" content="{{ . | absURL }}">{{ end }}
+{{ with .Params.cover }}<meta name="twitter:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 
 {{ with .OutputFormats.Get "rss" -}}
   <link rel="alternate" type="{{ .MediaType.Type }}" href="{{ .Permalink }}" title="{{ site.Title }}">
 {{ end -}}
 
-<link rel="icon" href="{{ with site.Params.favicon }}{{ . | relURL }}{{ else }}{{ "img/favicon.svg" | relURL }}{{ end }}">
+{{- /* 图标：优先 SVG，回退 ICO（兼容旧浏览器与部分抓取场景） */ -}}
+<link rel="icon" type="image/svg+xml" href="{{ with site.Params.favicon }}{{ partial "util/rel-url.html" . | safeURL }}{{ else }}{{ "img/favicon.svg" | relURL }}{{ end }}">
+<link rel="alternate icon" type="image/x-icon" href="{{ "favicon.ico" | relURL }}">
+<link rel="apple-touch-icon" href="{{ "img/favicon.svg" | relURL }}">
 
 {{- /* JSON-LD */ -}}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "{{ if .IsPage }}BlogPosting{{ else }}WebSite{{ end }}",
-  "headline": "{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}",
+  "headline": {{ if .IsHome }}{{ .Site.Title | jsonify }}{{ else }}{{ .Title | jsonify }}{{ end }},
   {{ with $desc }}"description": {{ . | jsonify }},{{ end }}
   {{ if .IsPage }}
   "datePublished": "{{ .Date.Format "2006-01-02T15:04:05+08:00" }}",
   "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05+08:00" }}",
   {{ end }}
-  "author": { "@type": "Person", "name": "{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}" },
+  "author": { "@type": "Person", "name": {{ with .Params.author }}{{ . | jsonify }}{{ else }}{{ .Site.Params.author | jsonify }}{{ end }} },
   "url": "{{ .Permalink }}"
 }
 </script>

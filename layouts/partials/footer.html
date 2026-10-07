@@ -10,7 +10,7 @@
     </div>
     <div class="footer-links">
       {{ range site.Menus.footer }}
-        <a href="{{ .URL | relURL }}" {{ with .Params.external }}target="_blank" rel="noopener"{{ end }}>{{ .Name }}</a>
+        <a href="{{ partial "util/rel-url.html" .URL }}" {{ with .Params.external }}target="_blank" rel="noopener"{{ end }}>{{ .Name }}</a>
       {{ end }}
       <a href="{{ "index.xml" | relURL }}">RSS</a>
       <a href="{{ "sitemap.xml" | relURL }}">站点地图</a>

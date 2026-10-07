@@ -6,7 +6,7 @@
 <article class="post-card">
   <a class="post-thumb" href="{{ $p.RelPermalink }}" aria-label="{{ $p.Title }}">
     {{ if $cover }}
-      <img src="{{ $cover | relURL }}" alt="{{ $p.Title }}" loading="lazy" decoding="async">
+      <img src="{{ partial "util/rel-url.html" $cover | safeURL }}" alt="{{ $p.Title }}" loading="lazy" decoding="async">
     {{ else }}
       <div class="thumb-fallback">{{ slicestr $p.Title 0 2 }}</div>
     {{ end }}
@@ -20,7 +20,7 @@
           <a class="chip chip-cat" href="{{ (site.GetPage (printf "/categories/%s" (urlize .))).RelPermalink | default (printf "categories/%s" (urlize .) | relURL) }}">{{ . }}</a>
         {{ end }}
       {{ end }}
-      {{ range first 2 $p.Params.tags }}
+      {{ range first 2 ($p.Params.tags | default slice) }}
         <span class="chip chip-tag">#{{ . }}</span>
       {{ end }}
     </div>
@@ -34,7 +34,7 @@
     <div class="post-foot">
       <span class="post-author">
         {{ with site.Params.avatar }}
-          <img class="avatar" src="{{ . | relURL }}" alt="{{ $author }}">
+          <img class="avatar" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ $author }}">
         {{ else }}
           <span class="avatar-fallback">{{ slicestr $author 0 1 }}</span>
         {{ end }}

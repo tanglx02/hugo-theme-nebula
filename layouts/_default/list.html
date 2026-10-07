@@ -10,7 +10,7 @@
 
 <div class="card page-head">
   <nav class="breadcrumb">
-    <a href="{{ site.BaseURL }}">首页</a><span>/</span><span>{{ $title }}</span>
+    <a href="{{ site.Home.RelPermalink }}">首页</a><span>/</span><span>{{ $title }}</span>
   </nav>
   <h1>{{ $title }}</h1>
   <p>{{ $sub }}{{ with .Params.description }} · {{ . }}{{ end }}</p>

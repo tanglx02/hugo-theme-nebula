@@ -1,0 +1,15 @@
+{{- /* 路径规范化：把任意写法的链接转换为"站点根相对 URL"，保证子目录部署同样正确。
+
+       支持输入：
+         - 外链        https://cdn.example.com/a.png   -> 原样返回
+         - 协议相对    //cdn.example.com/a.png         -> 原样返回
+         - 绝对根路径  /img/cover/a.png                -> /<basePath>/img/cover/a.png
+         - 相对路径    img/cover/a.png                 -> /<basePath>/img/cover/a.png
+
+       Hugo 的 relURL 对以 / 开头的路径会原样返回（不会补上 baseURL 的子目录），
+       这正是子目录部署时资源 404 的根因，因此这里统一先去掉前导斜杠。 */ -}}
+{{- $u := . | default "" -}}
+{{- if or (hasPrefix $u "http://") (hasPrefix $u "https://") (hasPrefix $u "//") -}}
+  {{- return $u -}}
+{{- end -}}
+{{- return (strings.TrimPrefix "/" $u | relURL) -}}

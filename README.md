@@ -84,7 +84,9 @@ locale = 'zh-CN'
 title = '我的博客'
 theme = 'hugo-theme-nebula'
 hasCJKLanguage = true
-paginate = 8
+
+[pagination]
+  pagerSize = 8                   # 每页文章数（Hugo >= 0.128 用此项，旧的 paginate 已失效）
 
 [outputs]
   home = ['HTML', 'RSS', 'JSON']   # JSON 用于生成搜索索引，必须保留
@@ -343,6 +345,24 @@ hugo --minify --gc
 rsync -avz --delete public/ user@server:/var/www/blog/
 ```
 
+## 质量验收
+
+v1.0.1 经过一轮完整的发布前验收，覆盖：
+
+- **构建**：根目录与子目录（`/blog/`）两种 baseURL 的生产构建，草稿 / 未来日期文章正确排除
+- **浏览器**：Chromium、Firefox、WebKit(Safari 引擎)、Edge 四套内核
+- **视口**：320 / 375 / 390 / 430 / 768 / 1024 / 1440 px，无横向滚动与元素溢出
+- **内容**：长文、短文、无图、多图、超长标题与摘要、多分类多标签、无分类无标签、中英混排、特殊字符、emoji、代码块、表格、引用、列表等边界场景
+- **交互**：搜索（含键盘 `Ctrl+K` / `↑↓` / `Enter` / `Esc`）、主题切换与持久化、移动端菜单、代码复制、目录跳转与高亮、图片灯箱、分页、返回顶部
+- **链接与资源**：全站 1700+ 条站内链接零死链，无 404 资源、无控制台报错
+- **降级**：JavaScript 禁用时文章与导航仍可正常阅读
+- **无障碍**：键盘可聚焦、焦点可见轮廓、尊重 `prefers-reduced-motion`、触屏点击区域 ≥ 24px（正文内联链接按 WCAG 内联豁免）
+
+已知限制：
+
+- 未内置 KaTeX / MathJax，数学公式不会渲染为公式排版（可自行在 `extra-head.html` 中引入）
+- 站内搜索基于构建期生成的 `index.json`，文章非常多时索引体积会随之增长
+
 ## 常见问题
 
 **Q：搜索不工作？**
@@ -356,6 +376,30 @@ rsync -avz --delete public/ user@server:/var/www/blog/
 
 **Q：如何升级主题？**
 submodule 方式：`git submodule update --remote themes/hugo-theme-nebula`。
+
+**Q：部署到 GitHub Pages 子目录（`https://xxx.github.io/repo/`）后图片/CSS 404？**
+主题的封面图、菜单、图标路径都经过统一规范化，front matter 里的 `cover` 写 `/img/a.png` 或 `img/a.png` 都可以正确解析。若仍有 404，请确认 `baseURL` 末尾带斜杠且与实际部署路径一致。
+
+## 更新日志
+
+### v1.0.1（发布前验收修复）
+
+- 修复：无标签 / 无分类文章会导致构建失败
+- 修复：Markdown 图片渲染钩子在 Hugo 0.167 下字段不兼容导致构建失败
+- 修复：子目录部署时封面图、菜单、图标路径缺少 basePath 造成 404
+- 修复：面包屑与品牌链接使用绝对域名，子目录部署时跳出站点
+- 修复：超长不可断文本（长 URL / 长单词）撑破 grid 容器引发整页横向滚动
+- 修复：Firefox 下复制代码时按钮无反馈
+- 修复：缺少 `favicon.ico`；补充 SVG + ICO 双图标
+- 优化：相关文章改为同分类优先
+- 优化：robots.txt 不再屏蔽分类 / 标签页
+- 优化：超长标题、目录项、摘要的行数限制与断词
+- 无障碍：焦点可见轮廓、`prefers-reduced-motion`、触屏点击区域 ≥ 24px
+- 移除：灯箱占位图空 `src`（避免多余请求）
+
+### v1.0.0
+
+首个正式版本。
 
 ## 开发
 

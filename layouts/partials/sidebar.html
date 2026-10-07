@@ -1,7 +1,7 @@
 {{- /* 站长名片 */ -}}
 <div class="widget profile">
   {{ with site.Params.avatar }}
-    <img class="profile-avatar" src="{{ . | relURL }}" alt="{{ site.Params.author }}">
+    <img class="profile-avatar" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ site.Params.author }}">
   {{ else }}
     <img class="profile-avatar" src="{{ "img/avatar.svg" | relURL }}" alt="{{ site.Params.author }}">
   {{ end }}

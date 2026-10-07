@@ -1,8 +1,8 @@
 <header class="site-header" id="siteHeader">
   <div class="header-inner">
-    <a class="brand" href="{{ site.BaseURL }}" title="{{ site.Title }}">
+    <a class="brand" href="{{ site.Home.RelPermalink }}" title="{{ site.Title }}">
       {{ with site.Params.logo }}
-        <img class="brand-logo" src="{{ . | relURL }}" alt="{{ site.Title }}">
+        <img class="brand-logo" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ site.Title }}">
       {{ else }}
         <span class="brand-mark">{{ with site.Params.logoText }}{{ . }}{{ else }}{{ slicestr site.Title 0 1 }}{{ end }}</span>
       {{ end }}
@@ -11,13 +11,13 @@
 
     <nav class="nav" id="mainNav">
       {{ range site.Menus.main }}
-        <a href="{{ .URL | relURL }}" {{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }}class="active"{{ end }}
+        <a href="{{ partial "util/rel-url.html" .URL }}" {{ if or ($.IsMenuCurrent "main" .) ($.HasMenuCurrent "main" .) }}class="active"{{ end }}
            {{ with .Params.external }}target="_blank" rel="noopener"{{ end }}>
           {{ with .Pre }}<span class="nav-icon">{{ . }}</span>{{ end }}{{ .Name }}
         </a>
       {{ end }}
       {{ range site.Menus.nav }}
-        <a href="{{ .URL | relURL }}">{{ .Name }}</a>
+        <a href="{{ partial "util/rel-url.html" .URL }}">{{ .Name }}</a>
       {{ end }}
     </nav>
 

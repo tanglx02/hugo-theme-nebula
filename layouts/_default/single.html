@@ -8,7 +8,7 @@
     <div class="card article">
       <div class="article-head">
         <nav class="breadcrumb">
-          <a href="{{ site.BaseURL }}">首页</a>
+          <a href="{{ site.Home.RelPermalink }}">首页</a>
           <span>/</span>
           {{ with .Params.categories }}
             {{ range first 1 . }}
@@ -43,7 +43,7 @@
       </div>
 
       {{ with .Params.cover }}
-        <div class="article-cover"><img src="{{ . | relURL }}" alt="{{ $.Title }}"></div>
+        <div class="article-cover"><img src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ $.Title }}"></div>
       {{ end }}
 
       <div class="post-content">
@@ -77,8 +77,13 @@
       </nav>
     </div>
 
-    {{- /* 相关文章 */ -}}
-    {{ $related := first 3 (where (where site.RegularPages "Section" "posts") "RelPermalink" "ne" .RelPermalink) }}
+    {{- /* 相关文章：同分类优先，不足时用最新文章补齐 */ -}}
+    {{- $others := where (where site.RegularPages "Section" "posts") "RelPermalink" "ne" .RelPermalink -}}
+    {{- $sameCat := slice -}}
+    {{- with .Params.categories -}}
+      {{- $sameCat = where $others "Params.categories" "intersect" . -}}
+    {{- end -}}
+    {{- $related := first 3 (union $sameCat $others) -}}
     {{ with $related }}
     <div class="card related" style="padding:22px 26px;margin-top:22px">
       <h3 class="widget-title">相关文章</h3>

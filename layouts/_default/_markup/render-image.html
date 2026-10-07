@@ -1,5 +1,5 @@
-{{- $src := .Destination | safeURL -}}
-{{- $alt := .Plain | default (.Title | default "") -}}
+{{- $src := partial "util/rel-url.html" .Destination | safeURL -}}
+{{- $alt := .Text | default (.Title | default "") -}}
 <figure style="margin:1.4em 0">
   <img src="{{ $src }}" alt="{{ $alt }}" loading="lazy" decoding="async"
     {{ with .Title }}title="{{ . }}"{{ end }}>

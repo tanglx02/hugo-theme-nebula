@@ -54,7 +54,10 @@
       var code = block ? block.querySelector('pre') : null;
       if (!code) return;
       var text = code.innerText;
+      var settled = false;
       var done = function () {
+        if (settled) return;          // 防止重复反馈
+        settled = true;
         var old = btn.innerHTML;
         btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>已复制';
         btn.classList.add('copied');
@@ -63,9 +66,6 @@
           btn.classList.remove('copied');
         }, 1600);
       };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, fallback);
-      } else { fallback(); }
       function fallback() {
         var ta = document.createElement('textarea');
         ta.value = text;
@@ -73,8 +73,26 @@
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        try { document.execCommand('copy'); done(); } catch (e) {}
+        try { document.execCommand('copy'); } catch (e) {}
         document.body.removeChild(ta);
+        done();
+      }
+      // navigator.clipboard 在部分浏览器（Firefox 无权限时）可能既不 resolve 也不 reject，
+      // 因此增加超时兜底，保证用户始终能看到复制反馈。
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          var p = navigator.clipboard.writeText(text);
+          if (p && typeof p.then === 'function') {
+            p.then(done, fallback);
+            setTimeout(function () { if (!settled) fallback(); }, 600);
+          } else {
+            fallback();
+          }
+        } else {
+          fallback();
+        }
+      } catch (e) {
+        fallback();
       }
     });
   });
