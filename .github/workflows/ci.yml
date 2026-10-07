@@ -103,6 +103,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - name: Install python deps
+        run: python3 -m pip install -r tools/requirements.txt
       - name: Generate stress test data
         run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
       - name: Build (production)
@@ -169,11 +173,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: tools/requirements.txt
 
-      - name: Install Playwright
+      - name: Install Python deps (playwright + pillow)
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install playwright
+          python3 -m pip install -r tools/requirements.txt
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
