@@ -3,3 +3,6 @@ Thumbs.db
 resources/
 exampleSite/public/
 exampleSite/resources/
+exampleSite/content/posts/zz-*.md
+public/
+public-blog/

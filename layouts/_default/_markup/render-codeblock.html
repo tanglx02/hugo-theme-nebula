@@ -1,18 +1,31 @@
-{{- /* 代码块：macOS 窗口风格头部 + 语言标签 + 一键复制
-       高亮使用 CSS class 模式（markup.highlight.noClasses = false），
-       配色由 assets/css/main.css 中的 .chroma 规则提供，可随暗色模式切换。 */ -}}
+{{- /*
+  代码块：macOS 窗口风格头部 + 语言标签 + 一键复制
+
+  高亮使用 CSS class 模式（markup.highlight.noClasses = false），
+  配色由 assets/css/main.css 中的 .chroma 规则提供，可随暗色模式切换。
+
+  兼容性说明：
+  - 已知语言使用 transform.HighlightCodeBlock（各版本行为一致）
+  - 未知语言不依赖 HighlightCodeBlock 的 `type` 选项（该选项自 v0.162.0 起才支持，
+    在旧版本会被忽略导致行为不一致），改为直接输出转义后的纯文本代码块，
+    因此本主题在 Hugo 0.128 ~ 最新版上的渲染结果一致。
+*/ -}}
 {{- $lang := .Type | default "text" -}}
-{{- $opts := dict -}}
-{{- if not (transform.CanHighlight $lang) }}{{ $opts = dict "type" "text" }}{{ end -}}
-{{- $code := transform.HighlightCodeBlock . $opts -}}
+{{- $display := cond (eq $lang "text") "CODE" $lang -}}
+
 <div class="code-block" data-lang="{{ $lang }}">
   <div class="code-head">
     <div class="code-dots"><span></span><span></span><span></span></div>
-    <span class="code-lang">{{ if eq $lang "text" }}CODE{{ else }}{{ $lang }}{{ end }}</span>
+    <span class="code-lang">{{ $display }}</span>
     <button class="code-copy" type="button" aria-label="复制代码">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
       复制
     </button>
   </div>
-  {{ $code.Wrapped }}
+  {{ if transform.CanHighlight $lang }}
+    {{- $code := transform.HighlightCodeBlock . -}}
+    {{ $code.Wrapped }}
+  {{ else }}
+    <div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text">{{ .Inner | htmlEscape }}</code></pre></div>
+  {{ end }}
 </div>

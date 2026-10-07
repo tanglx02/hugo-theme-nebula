@@ -33,7 +33,7 @@
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
-<meta property="og:locale" content="{{ site.Language.Locale | default "zh-CN" }}">
+<meta property="og:locale" content="{{ site.Language.Lang | default "zh-CN" }}">
 {{ with .Params.cover }}<meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
@@ -57,8 +57,9 @@
   "headline": {{ if .IsHome }}{{ .Site.Title | jsonify }}{{ else }}{{ .Title | jsonify }}{{ end }},
   {{ with $desc }}"description": {{ . | jsonify }},{{ end }}
   {{ if .IsPage }}
-  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05+08:00" }}",
-  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05+08:00" }}",
+  {{/* 使用日期对象自身的时区偏移（RFC3339），不硬编码 +08:00 */}}
+  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}",
+  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}",
   {{ end }}
   "author": { "@type": "Person", "name": {{ with .Params.author }}{{ . | jsonify }}{{ else }}{{ .Site.Params.author | jsonify }}{{ end }} },
   "url": "{{ .Permalink }}"

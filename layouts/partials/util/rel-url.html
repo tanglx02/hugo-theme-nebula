@@ -3,13 +3,27 @@
        支持输入：
          - 外链        https://cdn.example.com/a.png   -> 原样返回
          - 协议相对    //cdn.example.com/a.png         -> 原样返回
+         - 已含 basePath /blog/img/a.png（baseURL=/blog/）-> 原样返回（避免重复拼接）
          - 绝对根路径  /img/cover/a.png                -> /<basePath>/img/cover/a.png
          - 相对路径    img/cover/a.png                 -> /<basePath>/img/cover/a.png
 
        Hugo 的 relURL 对以 / 开头的路径会原样返回（不会补上 baseURL 的子目录），
-       这正是子目录部署时资源 404 的根因，因此这里统一先去掉前导斜杠。 */ -}}
+       这正是子目录部署时资源 404 的根因，因此这里统一先去掉前导斜杠再 relURL。
+
+       注意：Hugo 会把菜单项 URL（[[menu.main]] url）预先解析为带 basePath 的
+       绝对路径，若再走一次转换会出现 "/blog/blog/posts/" 这类重复路径，
+       因此需要先判断是否已包含 basePath。
+
+       兼容性说明：本 partial 通过"输出内容"而非 `return` 返回值来传递结果，
+       因为 partial 的 `return` 语句在部分 Hugo 版本（如 0.162）存在兼容差异。
+       调用方式：{{ partial "util/rel-url.html" $path | safeURL }}
+  */ -}}
 {{- $u := . | default "" -}}
+{{- $home := site.Home.RelPermalink | default "/" -}}
 {{- if or (hasPrefix $u "http://") (hasPrefix $u "https://") (hasPrefix $u "//") -}}
-  {{- return $u -}}
+  {{- $u -}}
+{{- else if and (ne $home "/") (hasPrefix $u $home) -}}
+  {{- $u -}}
+{{- else -}}
+  {{- strings.TrimPrefix "/" $u | relURL -}}
 {{- end -}}
-{{- return (strings.TrimPrefix "/" $u | relURL) -}}

@@ -1,3 +1,24 @@
+{{- /*
+  全站搜索索引。
+
+  设计要点：
+  1) 正文必须完整收录 —— 早期版本使用 `.Plain | truncate 3000`，
+     导致正文 3000 字之后的内容完全无法被搜索到（P1 缺陷）。
+  2) 体积控制：对正文做空白压缩（合并连续空白/换行），在不丢失可检索
+     内容的前提下显著减小体积；可通过 params.search.contentLimit 设置
+     单篇上限（默认 0 = 不限制）。
+  3) 分片（可选）：params.search.shard = true 时，正文按文章拆分为
+     /search/<slug>.json，索引仅携带元数据，前端并发按需加载，
+     适用于文章数量多、单文件索引过大的场景。
+
+  配置项（hugo.toml）：
+    [params.search]
+      enable = true
+      contentLimit = 0     # 0 = 不限制（保证完整全文搜索）
+      shard = false        # true = 启用分片索引
+*/ -}}
+{{- $limit := int (site.Params.search.contentLimit | default 0) -}}
+{{- $shard := site.Params.search.shard | default false -}}
 {{- $index := slice -}}
 {{- range where site.RegularPages "Section" "posts" -}}
   {{- $summary := "" -}}
@@ -6,12 +27,29 @@
   {{- else -}}
     {{- $summary = .Summary | plainify | truncate 120 -}}
   {{- end -}}
+
+  {{- /* 正文：完整收录 + 空白压缩（不截断，保证全文可检索） */ -}}
+  {{- $content := .Plain | replaceRE `\s+` " " -}}
+  {{- if and $limit (gt (len $content) $limit) -}}
+    {{- $content = slicestr $content 0 $limit -}}
+  {{- end -}}
+
+  {{- $shardURL := "" -}}
+  {{- if $shard -}}
+    {{- $slug := .File.BaseFileName | default (anchorize .Title) -}}
+    {{- $res := resources.FromString (printf "search/%s.json" $slug) ($content | jsonify) -}}
+    {{- $pub := $res | resources.Publish -}}
+    {{- $shardURL = $pub.RelPermalink -}}
+    {{- $content = "" -}}
+  {{- end -}}
+
   {{- $index = $index | append (dict
       "title" .Title
       "url" .RelPermalink
       "date" (.Date.Format "2006-01-02")
       "summary" $summary
-      "content" (.Plain | truncate 3000)
+      "content" $content
+      "shard" $shardURL
       "tags" (.Params.tags | default slice)
       "categories" (.Params.categories | default slice)
   ) -}}

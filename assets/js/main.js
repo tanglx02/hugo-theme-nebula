@@ -47,54 +47,63 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  /* ---------- Code copy ---------- */
-  $$('.code-copy').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var block = btn.closest('.code-block');
-      var code = block ? block.querySelector('pre') : null;
-      if (!code) return;
-      var text = code.innerText;
-      var settled = false;
-      var done = function () {
-        if (settled) return;          // 防止重复反馈
-        settled = true;
-        var old = btn.innerHTML;
-        btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>已复制';
-        btn.classList.add('copied');
-        setTimeout(function () {
-          btn.innerHTML = old;
-          btn.classList.remove('copied');
-        }, 1600);
-      };
-      function fallback() {
+  /* ---------- Code copy ----------
+     使用 document 级事件委托 + 全路径保护：
+     - 避免元素级监听器绑定时机问题（Firefox 下曾复现"首次点击无反馈"）
+     - clipboard 写入的 Promise 在部分浏览器可能挂起，加超时兜底
+     - 任何异常路径都会走到 done()，保证用户始终能看到反馈 */
+  function copyFromButton(btn) {
+    var block = btn.closest('.code-block');
+    var code = block ? block.querySelector('pre') : null;
+    if (!code) return;
+    var text = code.innerText || code.textContent || '';
+    var settled = false;
+
+    function done() {
+      if (settled) return;
+      settled = true;
+      var old = btn.innerHTML;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>已复制';
+      btn.classList.add('copied');
+      setTimeout(function () {
+        btn.innerHTML = old;
+        btn.classList.remove('copied');
+      }, 1600);
+    }
+
+    function fallback() {
+      try {
         var ta = document.createElement('textarea');
         ta.value = text;
+        ta.setAttribute('readonly', '');
         ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
         try { document.execCommand('copy'); } catch (e) {}
         document.body.removeChild(ta);
-        done();
-      }
-      // navigator.clipboard 在部分浏览器（Firefox 无权限时）可能既不 resolve 也不 reject，
-      // 因此增加超时兜底，保证用户始终能看到复制反馈。
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          var p = navigator.clipboard.writeText(text);
-          if (p && typeof p.then === 'function') {
-            p.then(done, fallback);
-            setTimeout(function () { if (!settled) fallback(); }, 600);
-          } else {
-            fallback();
-          }
-        } else {
-          fallback();
+      } catch (e) {}
+      done();                       // 无论回退是否成功都给出反馈
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText && text) {
+        var p = navigator.clipboard.writeText(text);
+        if (p && typeof p.then === 'function') {
+          p.then(done, fallback);
+          setTimeout(function () { if (!settled) fallback(); }, 400);
+          return;
         }
-      } catch (e) {
-        fallback();
       }
-    });
+    } catch (e) {}
+    fallback();
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var btn = (t && t.closest) ? t.closest('.code-copy') : null;
+    if (btn) copyFromButton(btn);
   });
 
   /* ---------- TOC active highlight ---------- */
@@ -124,20 +133,64 @@
     updateTOC();
   }
 
-  /* ---------- Image lightbox ---------- */
+  /* ---------- Image lightbox（无障碍版） ----------
+     - 仅对"未被链接包裹"的图片启用，Markdown 的 [![img](x)](url) 会保持原有链接行为
+     - 图片可获得键盘焦点（tabindex），Enter / 空格打开
+     - 打开后焦点移入灯箱，Esc 关闭，关闭后焦点回到触发图片
+     - 容器具备 dialog 语义与可访问名称（见 baseof.html）
+  ------------------------------------------------ */
   var lightbox = $('#lightbox');
   if (lightbox) {
+    var lbImg = lightbox.querySelector('img');
+    var lastTrigger = null;
+
+    function openLightbox(img) {
+      lastTrigger = img;
+      lbImg.src = img.currentSrc || img.src;
+      lbImg.alt = img.alt || '';
+      lightbox.classList.add('open');
+      lightbox.setAttribute('aria-hidden', 'false');
+      lightbox.focus();                       // 焦点移入 dialog
+    }
+
+    function closeLightbox() {
+      if (!lightbox.classList.contains('open')) return;
+      lightbox.classList.remove('open');
+      lightbox.setAttribute('aria-hidden', 'true');
+      if (lastTrigger && document.contains(lastTrigger)) {
+        lastTrigger.focus();                  // 焦点归还触发元素
+      }
+      lastTrigger = null;
+    }
+
     $$('.post-content img').forEach(function (img) {
-      img.addEventListener('click', function () {
-        var lbImg = lightbox.querySelector('img');
-        lbImg.src = img.src;
-        lbImg.alt = img.alt || '';
-        lightbox.classList.add('open');
+      if (img.closest('a')) return;           // 被链接包裹：放行链接，不接管点击
+      img.setAttribute('tabindex', '0');
+      img.setAttribute('role', 'button');
+      var label = img.alt ? ('放大图片：' + img.alt) : '放大图片';
+      img.setAttribute('aria-label', label);
+      img.classList.add('zoomable');
+
+      img.addEventListener('click', function () { openLightbox(img); });
+      img.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          openLightbox(img);
+        }
       });
     });
-    lightbox.addEventListener('click', function () { lightbox.classList.remove('open'); });
+
+    var lbClose = lightbox.querySelector('.lightbox-close');
+    lightbox.addEventListener('click', function (e) { closeLightbox(); });
+    if (lbClose) {
+      lbClose.addEventListener('click', function (e) { e.stopPropagation(); closeLightbox(); });
+    }
+    lbImg.addEventListener('click', function (e) {
+      // 点击图片本身不关闭（避免误触），点击遮罩或关闭按钮关闭
+      e.stopPropagation();
+    });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') lightbox.classList.remove('open');
+      if (e.key === 'Escape') closeLightbox();
     });
   }
 
@@ -149,14 +202,47 @@
       countEl = $('#searchCount');
 
   if (overlay && input && results) {
-    var INDEX = null, selected = 0, items = [];
+    var INDEX_URL = '{{ "index.json" | relURL }}';
+    var INDEX = null, INDEX_PROMISE = null, INDEX_ERROR = null, selected = 0, items = [];
+    var renderToken = 0, debounceTimer = null;
 
+    function setStatus(text) { if (countEl) countEl.textContent = text; }
+
+    /* 索引加载
+       - 幂等：并发调用只会真正请求一次
+       - 支持分片模式：正文为空且带 shard 字段时，并发拉取 /search/*.json
+       - 失败可感知：供 UI 给出明确提示，而不是静默返回空结果
+       - 关键点：render() 必须先 await 本函数，否则"用户打开搜索框立刻输入"
+         会出现 INDEX 尚未就绪的竞态（P5） */
     function loadIndex() {
       if (INDEX) return Promise.resolve(INDEX);
-      return fetch('{{ "index.json" | relURL }}')
-        .then(function (r) { return r.json(); })
-        .then(function (d) { INDEX = d || []; return INDEX; })
-        .catch(function () { INDEX = []; return INDEX; });
+      if (INDEX_PROMISE) return INDEX_PROMISE;
+
+      INDEX_PROMISE = fetch(INDEX_URL)
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          var list = Array.isArray(d) ? d : (d && d.items) ? d.items : [];
+          var missing = list.filter(function (it) { return !it.content && it.shard; });
+          if (!missing.length) return list;
+          return Promise.all(missing.map(function (it) {
+            return fetch(it.shard)
+              .then(function (r) {
+                if (!r.ok) throw new Error('shard HTTP ' + r.status);
+                return r.json();
+              })
+              .then(function (c) {
+                it.content = (typeof c === 'string') ? c : ((c && c.content) || '');
+              })
+              .catch(function () { it.content = ''; });
+          })).then(function () { return list; });
+        })
+        .then(function (list) { INDEX = list || []; INDEX_ERROR = null; return INDEX; })
+        .catch(function (err) { INDEX = []; INDEX_ERROR = err; return INDEX; });
+
+      return INDEX_PROMISE;
     }
 
     function esc(s) {
@@ -195,14 +281,40 @@
       return total;
     }
 
-    function render(q) {
+    /* 摘要片段：优先用 description；若关键词只出现在正文深处，
+       则从正文匹配位置附近截取，避免用户"搜到了却看不到为什么命中" */
+    function snippetFor(it, terms) {
+      var s = (it.summary || '').slice(0, 100);
+      for (var i = 0; i < terms.length; i++) {
+        if (s.toLowerCase().indexOf(terms[i].toLowerCase()) > -1) return s;
+      }
+      var c = it.content || '', pos = -1;
+      for (var j = 0; j < terms.length; j++) {
+        pos = c.toLowerCase().indexOf(terms[j].toLowerCase());
+        if (pos > -1) break;
+      }
+      if (pos < 0) return s;
+      var start = Math.max(0, pos - 40);
+      return (start > 0 ? '…' : '') + c.slice(start, start + 100);
+    }
+
+    function renderNow(q) {
       var terms = q.trim().split(/\s+/).filter(Boolean);
-      if (!terms.length) {
-        results.innerHTML = '<div class="search-empty">输入关键词开始搜索，支持标题 / 标签 / 正文匹配</div>';
-        countEl.textContent = '';
+
+      if (INDEX_ERROR) {
+        results.innerHTML = '<div class="search-empty">搜索索引加载失败，请刷新页面重试（' +
+          esc(String(INDEX_ERROR.message || INDEX_ERROR)) + '）</div>';
+        setStatus('');
         items = [];
         return;
       }
+      if (!terms.length) {
+        results.innerHTML = '<div class="search-empty">输入关键词开始搜索，支持标题 / 标签 / 正文全文匹配</div>';
+        setStatus('');
+        items = [];
+        return;
+      }
+
       var hits = INDEX.map(function (it) {
         return { it: it, s: score(it, terms) };
       }).filter(function (x) { return x.s > 0; })
@@ -211,7 +323,7 @@
 
       items = hits.map(function (x) { return x.it; });
       selected = 0;
-      countEl.textContent = '共 ' + hits.length + ' 条结果';
+      setStatus('共 ' + hits.length + ' 条结果');
 
       if (!hits.length) {
         results.innerHTML = '<div class="search-empty">没有找到与「' + esc(q) + '」相关的文章</div>';
@@ -219,13 +331,26 @@
       }
       results.innerHTML = hits.map(function (x, i) {
         var it = x.it;
-        var snippet = (it.summary || '').slice(0, 90);
+        var snippet = snippetFor(it, terms);
         return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + it.url + '">' +
           '<div class="t">' + highlight(it.title, terms) + '</div>' +
           '<div class="p">' + esc(it.date) + (snippet ? ' · ' + highlight(snippet, terms) : '') + '</div>' +
           '</a>';
       }).join('');
       bindHover();
+    }
+
+    /* 竞态修复：先 await 索引，再渲染；用 token 丢弃过期渲染 */
+    function render(q) {
+      var my = ++renderToken;
+      if (!INDEX) {
+        results.innerHTML = '<div class="search-empty">正在加载搜索索引…</div>';
+        setStatus('');
+      }
+      return loadIndex().then(function () {
+        if (my !== renderToken) return;   // 已有更新的输入，本次渲染作废
+        renderNow(q);
+      });
     }
 
     function bindHover() {
@@ -246,8 +371,8 @@
       overlay.classList.add('open');
       document.body.style.overflow = 'hidden';
       setTimeout(function () { input.focus(); }, 30);
-      loadIndex();
-      render(input.value);
+      loadIndex();            // 打开即预取索引
+      render(input.value);    // render 内部会 await 索引，避免竞态
     }
     function close() {
       overlay.classList.remove('open');
@@ -258,7 +383,12 @@
     if (trigger) trigger.addEventListener('click', open);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
 
-    input.addEventListener('input', function () { render(input.value); });
+    // 输入防抖：大索引下避免每次按键都全量扫描
+    input.addEventListener('input', function () {
+      var q = input.value;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () { render(q); }, 120);
+    });
     input.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowDown') { e.preventDefault(); select(selected + 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); select(selected - 1); }

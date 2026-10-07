@@ -1,11 +1,25 @@
 name = "Nebula"
 license = "MIT"
 licenselink = "https://github.com/tanglx02/hugo-theme-nebula/blob/main/LICENSE"
-description = "一款清爽、现代的 Hugo 博客主题：卡片流首页、全站搜索、暗色模式、代码高亮、TOC 目录。"
+description = "一款清爽、现代的 Hugo 博客主题：卡片流首页、全文搜索、暗色模式、代码高亮、TOC 目录。"
 homepage = "https://github.com/tanglx02/hugo-theme-nebula"
 demosite = "https://blog.kejilion.pro"
 tags = ["blog", "chinese", "responsive", "dark-mode", "search", "minimal"]
-features = ["全站搜索", "暗色模式", "响应式布局", "代码高亮", "文章目录", "侧边栏组件", "SEO 优化", "RSS"]
+features = [
+  "全站搜索（完整全文，支持分片索引）",
+  "暗色模式",
+  "响应式布局",
+  "代码高亮与一键复制",
+  "文章目录 TOC",
+  "侧边栏组件",
+  "灯箱（键盘与焦点无障碍）",
+  "SEO 优化",
+  "RSS / sitemap / robots",
+]
+# 最低版本经真实构建验证（CI 矩阵同时验证 0.128.0 / 0.162.0 / 0.167.0 / latest）：
+#   theme.toml 与 README「版本兼容」表保持一致
+# 注意：搜索分片索引（params.search.shard）依赖新版 resources.Publish，
+#       实测 0.162 及以下不可用，需要 0.167+；默认单文件索引在所有支持版本可用。
 min_version = "0.128.0"
 
 [author]

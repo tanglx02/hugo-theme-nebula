@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # 1) 多版本 Hugo 生产构建 + 产物校验
+  build:
+    name: Build (Hugo ${{ matrix.hugo-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: ${{ matrix.hugo-version }}
+          extended: true
+
+      - name: Generate stress test data
+        run: |
+          # 可重复生成的压力数据集（1 万字 / 5 万字 / 无分类标签 / 超长标题 /
+          # 大量代码块与图片 / 特殊字符 / 草稿 / 未来 / 多时区 等）
+          python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
+          ls exampleSite/content/posts | head -5
+
+      - name: Build exampleSite (production)
+        run: |
+          hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+        # 构建失败（模板/API 不兼容）时 hugo 返回非零，CI 直接失败
+
+      - name: Check required artifacts
+        run: |
+          set -e
+          for f in public/index.html public/index.json public/sitemap.xml public/robots.txt public/404.html public/index.xml public/favicon.ico; do
+            test -f "$f" || { echo "缺少产物: $f"; exit 1; }
+          done
+          echo "产物齐全"
+
+      - name: Check search index integrity (full-text, no truncation)
+        run: python3 tools/check_index.py public/index.json
+
+      - name: Check draft/future pages are excluded
+        run: |
+          set -e
+          test ! -d public/posts/zz-14-draft && echo "草稿已正确排除"
+          test ! -d public/posts/zz-15-future && echo "未来文章已正确排除"
+
+      - name: Check no dev-only injection
+        run: |
+          set -e
+          if grep -rq "livereload" public/; then
+            echo "生产产物中不应包含 livereload"; exit 1; fi
+          echo "无开发环境注入"
+
+  # 2) 子目录部署路径校验
+  subdir:
+    name: Sub-directory baseURL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.167.0'
+          extended: true
+      - name: Build with /blog/ baseURL
+        run: hugo --source exampleSite --themesDir ../.. --gc --minify --baseURL "https://example.com/blog/" -d ../public-blog
+      - name: Verify paths carry /blog/ prefix
+        run: |
+          set -e
+          grep -o 'href="/[^"]*"' public-blog/index.html | head -20
+          python3 - <<'PY'
+          import re, sys
+          html = open('public-blog/index.html', encoding='utf-8').read()
+          links = re.findall(r'(?:href|src)="(/[^"]*)"', html)
+          bad = [l for l in links if not l.startswith('/blog/')]
+          dup = [l for l in links if l.startswith('/blog/blog/')]
+          print(f'检查 {len(links)} 个站内路径引用')
+          assert not bad, f'跳出 baseURL 的路径: {bad[:5]}'
+          assert not dup, f'basePath 重复: {dup[:5]}'
+          print('子目录路径检查通过')
+          PY
