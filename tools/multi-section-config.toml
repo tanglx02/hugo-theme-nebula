@@ -1,0 +1,3 @@
+# 测试/CI 用：多 section 内容
+[params.content]
+  sections = ["posts", "tutorials", "notes"]

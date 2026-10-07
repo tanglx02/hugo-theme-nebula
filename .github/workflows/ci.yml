@@ -5,8 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+
 jobs:
-  # 1) 多版本 Hugo 生产构建 + 产物校验
+  # ---------------------------------------------------------------- 构建矩阵
   build:
     name: Build (Hugo ${{ matrix.hugo-version }})
     runs-on: ubuntu-latest
@@ -15,8 +22,7 @@ jobs:
       matrix:
         hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
@@ -25,21 +31,16 @@ jobs:
           extended: true
 
       - name: Generate stress test data
-        run: |
-          # 可重复生成的压力数据集（1 万字 / 5 万字 / 无分类标签 / 超长标题 /
-          # 大量代码块与图片 / 特殊字符 / 草稿 / 未来 / 多时区 等）
-          python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
-          ls exampleSite/content/posts | head -5
+        run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
 
       - name: Build exampleSite (production)
-        run: |
-          hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
-        # 构建失败（模板/API 不兼容）时 hugo 返回非零，CI 直接失败
+        run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
 
       - name: Check required artifacts
         run: |
           set -e
-          for f in public/index.html public/index.json public/sitemap.xml public/robots.txt public/404.html public/index.xml public/favicon.ico; do
+          for f in public/index.html public/index.json public/sitemap.xml public/robots.txt \
+                   public/404.html public/index.xml public/favicon.ico; do
             test -f "$f" || { echo "缺少产物: $f"; exit 1; }
           done
           echo "产物齐全"
@@ -60,7 +61,7 @@ jobs:
             echo "生产产物中不应包含 livereload"; exit 1; fi
           echo "无开发环境注入"
 
-  # 2) 子目录部署路径校验
+  # ------------------------------------------------------- 子目录 / baseURL
   subdir:
     name: Sub-directory baseURL
     runs-on: ubuntu-latest
@@ -70,16 +71,17 @@ jobs:
         with:
           hugo-version: '0.167.0'
           extended: true
+      - name: Generate stress test data
+        run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
       - name: Build with /blog/ baseURL
         run: hugo --source exampleSite --themesDir ../.. --gc --minify --baseURL "https://example.com/blog/" -d ../public-blog
       - name: Verify paths carry /blog/ prefix
         run: |
           set -e
-          grep -o 'href="/[^"]*"' public-blog/index.html | head -20
           python3 - <<'PY'
-          import re, sys
+          import re
           html = open('public-blog/index.html', encoding='utf-8').read()
-          links = re.findall(r'(?:href|src)="(/[^"]*)"', html)
+          links = re.findall(r'(?:href|src)=["\']?(/[^"\'> ]+)', html)
           bad = [l for l in links if not l.startswith('/blog/')]
           dup = [l for l in links if l.startswith('/blog/blog/')]
           print(f'检查 {len(links)} 个站内路径引用')
@@ -87,3 +89,162 @@ jobs:
           assert not dup, f'basePath 重复: {dup[:5]}'
           print('子目录路径检查通过')
           PY
+
+  # ------------------------------------------------------------- 静态检查
+  static-checks:
+    name: Static checks (dead links / index)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.167.0'
+          extended: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Generate stress test data
+        run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
+      - name: Build (production)
+        run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+      - name: Internal link check (dead links)
+        run: python3 tools/link_check.py public
+      - name: Search index integrity
+        run: python3 tools/check_index.py public/index.json
+
+      - name: Feature checks (images / series / RSS / SEO / shard mode)
+        run: python3 tools/check_features.py public
+
+      - name: Multi-section build check
+        run: |
+          set -e
+          printf '\n[params.content]\n  sections = ["posts", "tutorials", "notes"]\n' > exampleSite/multi-section.toml
+          hugo --source exampleSite --themesDir ../.. --config hugo.toml,multi-section.toml \
+               --gc --minify -d ../public-multisec
+          python3 - <<'PY'
+          import json
+          data = json.load(open('public-multisec/index.json', encoding='utf-8'))
+          blob = json.dumps(data, ensure_ascii=False)
+          assert 'TUTORIALSSECTION' in blob, '多 section 未纳入搜索索引'
+          assert 'NOTESSECTION' in blob, 'notes section 未纳入搜索索引'
+          print(f'多 section 检查通过（{len(data)} 条）')
+          PY
+          test -f public-multisec/tutorials/zz-tutorials-1/index.html
+
+      - name: Auto shard threshold check
+        run: |
+          set -e
+          printf '\n[params.search]\n  mode = "auto"\n  autoThreshold = 1000\n' > exampleSite/shard-auto.toml
+          hugo --source exampleSite --themesDir ../.. --config hugo.toml,shard-auto.toml \
+               --gc --minify -d ../public-auto
+          test -d public-auto/search || { echo "auto 模式未按阈值分片"; exit 1; }
+          echo "auto 分片数: $(ls public-auto/search | wc -l)"
+          test $(ls public-auto/search | wc -l) -gt 0
+
+  # --------------------------------------------------------- 浏览器端测试
+  browser-tests:
+    name: Browser tests (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+        include:
+          - browser: chromium
+            viewports: '320,375,390,430,768,1024,1440'
+          - browser: firefox
+            viewports: '375,768,1440'
+          - browser: webkit
+            viewports: '375,768,1440'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.167.0'
+          extended: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Playwright
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install playwright
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: pw-${{ runner.os }}-${{ matrix.browser }}-
+
+      - name: Install browser (${{ matrix.browser }})
+        run: python3 -m playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Generate stress test data
+        run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
+
+      - name: Build (production)
+        run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+
+      - name: Build (shard search mode)
+        run: |
+          # --config 中的路径相对 --source，因此放在 exampleSite 内（已 gitignore）
+          printf '\n[params.search]\n  shard = true\n' > exampleSite/shard-override.toml
+          hugo --source exampleSite --themesDir ../.. --config hugo.toml,shard-override.toml \
+               --gc --minify -d ../public-shard
+          echo "分片数: $(ls public-shard/search | wc -l)"
+          test -f public-shard/index.json
+
+      - name: Start static servers
+        run: |
+          nohup python3 tools/serve.py public 8080 > /tmp/serve-main.log 2>&1 &
+          nohup python3 tools/serve.py public-shard 8090 > /tmp/serve-shard.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8080/ > /dev/null && curl -sf http://127.0.0.1:8090/ > /dev/null; then
+              echo "servers ready"; break; fi
+            sleep 1
+          done
+          curl -sf -o /dev/null -w "main:%{http_code}\n" http://127.0.0.1:8080/
+          curl -sf -o /dev/null -w "shard:%{http_code}\n" http://127.0.0.1:8090/
+
+      - name: Audit — responsive / console / 404 / overflow
+        env:
+          AUDIT_BROWSERS: ${{ matrix.browser }}
+          AUDIT_VIEWPORTS: ${{ matrix.viewports }}
+        run: python3 tools/audit.py http://127.0.0.1:8080
+
+      - name: Interactions — search / theme / menu / copy / toc / pager / keyboard / no-JS
+        env:
+          PW_BROWSERS: ${{ matrix.browser }}
+        run: python3 tools/interactions.py http://127.0.0.1:8080
+
+      - name: Lightbox — dialog / focus trap / keyboard / linked images
+        run: python3 tools/verify_lightbox.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Search edge cases & race conditions
+        if: matrix.browser == 'chromium'
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
+
+      - name: Search shard failure handling
+        if: matrix.browser == 'chromium'
+        run: python3 tools/verify_search_shard.py http://127.0.0.1:8090 ${{ matrix.browser }}
+
+      - name: Three baseURL deployments (/, /blog/, /blog/sub/)
+        if: matrix.browser == 'chromium'
+        env:
+          SITE_DIR: exampleSite
+          HUGO_ARGS: '--source . --themesDir ../..'
+        run: python3 tools/verify_baseurl.py
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report-${{ matrix.browser }}
+          path: tools/audit_report.json
+          if-no-files-found: ignore

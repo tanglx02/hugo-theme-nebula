@@ -9,7 +9,8 @@
   <p class="profile-desc">{{ site.Params.profile.bio | default site.Params.description }}</p>
 
   <div class="profile-stats">
-    <div><span class="num">{{ len (where site.RegularPages "Section" "posts") }}</span><span class="lbl">文章</span></div>
+    {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+    <div><span class="num">{{ len (where site.RegularPages "Section" "in" $contentSections) }}</span><span class="lbl">{{ i18n "common.posts" }}</span></div>
     <div><span class="num">{{ len site.Taxonomies.categories }}</span><span class="lbl">分类</span></div>
     <div><span class="num">{{ len site.Taxonomies.tags }}</span><span class="lbl">标签</span></div>
   </div>
@@ -34,7 +35,8 @@
 </div>
 
 {{- /* 热门文章 */ -}}
-{{ $hot := first (site.Params.sidebar.hotCount | default 6) (sort (where site.RegularPages "Section" "posts") "Date" "desc") }}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{ $hot := first (site.Params.sidebar.hotCount | default 6) (sort (where site.RegularPages "Section" "in" $contentSections) "Date" "desc") }}
 {{ if $hot }}
 <div class="widget">
   <h3 class="widget-title">

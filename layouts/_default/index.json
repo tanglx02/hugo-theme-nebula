@@ -1,57 +1,87 @@
 {{- /*
   全站搜索索引。
 
-  设计要点：
-  1) 正文必须完整收录 —— 早期版本使用 `.Plain | truncate 3000`，
-     导致正文 3000 字之后的内容完全无法被搜索到（P1 缺陷）。
-  2) 体积控制：对正文做空白压缩（合并连续空白/换行），在不丢失可检索
-     内容的前提下显著减小体积；可通过 params.search.contentLimit 设置
-     单篇上限（默认 0 = 不限制）。
-  3) 分片（可选）：params.search.shard = true 时，正文按文章拆分为
-     /search/<slug>.json，索引仅携带元数据，前端并发按需加载，
-     适用于文章数量多、单文件索引过大的场景。
+  三种模式（params.search.mode）：
+    - auto   （默认）按索引总体积自动选择 single / shard
+    - single 强制单文件索引（简单，适合中小站点）
+    - shard  强制分片索引（主索引只含元数据，正文按文章拆分到 search/<slug>.json）
 
-  配置项（hugo.toml）：
-    [params.search]
-      enable = true
-      contentLimit = 0     # 0 = 不限制（保证完整全文搜索）
-      shard = false        # true = 启用分片索引
+  阈值（params.search.autoThreshold，默认 512000 字节 ≈ 500 KB）：
+    正文总体积超过阈值时，auto 模式自动切换到分片。
+
+  向后兼容：params.search.shard = true 等价于 mode = "shard"。
+
+  体积控制：正文完整收录（不做 3000 字截断），仅压缩连续空白；
+  可选 params.search.contentLimit 限制单篇上限（默认 0 = 不限制）。
 */ -}}
 {{- $limit := int (site.Params.search.contentLimit | default 0) -}}
-{{- $shard := site.Params.search.shard | default false -}}
-{{- $index := slice -}}
-{{- range where site.RegularPages "Section" "posts" -}}
+{{- $mode := site.Params.search.mode | default "" -}}
+{{- if not $mode -}}
+  {{- $mode = cond (site.Params.search.shard | default false) "shard" "auto" -}}
+{{- end -}}
+{{- $threshold := int (site.Params.search.autoThreshold | default 512000) -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+
+{{- /* 第一步：收集条目并统计正文总体积 */ -}}
+{{- $items := slice -}}
+{{- /* 注意：range 内对"数值型"外部变量赋值不会传播到循环外（实测），
+       因此这里用 slice 累积正文，循环结束后再统一计算总字节数。 */ -}}
+{{- $allContent := slice -}}
+{{- range where site.RegularPages "Section" "in" $contentSections -}}
   {{- $summary := "" -}}
   {{- with .Description -}}
     {{- $summary = . -}}
   {{- else -}}
     {{- $summary = .Summary | plainify | truncate 120 -}}
   {{- end -}}
-
-  {{- /* 正文：完整收录 + 空白压缩（不截断，保证全文可检索） */ -}}
   {{- $content := .Plain | replaceRE `\s+` " " -}}
   {{- if and $limit (gt (len $content) $limit) -}}
     {{- $content = slicestr $content 0 $limit -}}
   {{- end -}}
-
-  {{- $shardURL := "" -}}
-  {{- if $shard -}}
-    {{- $slug := .File.BaseFileName | default (anchorize .Title) -}}
-    {{- $res := resources.FromString (printf "search/%s.json" $slug) ($content | jsonify) -}}
-    {{- $pub := $res | resources.Publish -}}
-    {{- $shardURL = $pub.RelPermalink -}}
-    {{- $content = "" -}}
-  {{- end -}}
-
-  {{- $index = $index | append (dict
+  {{- $allContent = $allContent | append $content -}}
+  {{- $items = $items | append (dict
       "title" .Title
       "url" .RelPermalink
       "date" (.Date.Format "2006-01-02")
       "summary" $summary
       "content" $content
-      "shard" $shardURL
+      "file" (.File.BaseFileName | default (anchorize .Title))
       "tags" (.Params.tags | default slice)
       "categories" (.Params.categories | default slice)
+      "series" (.Params.series | default slice)
+  ) -}}
+{{- end -}}
+
+{{- /* 第二步：计算总体积并决定模式 */ -}}
+{{- $totalBytes := len (delimit $allContent "") -}}
+{{- $useShard := false -}}
+{{- if eq $mode "shard" -}}
+  {{- $useShard = true -}}
+{{- else if eq $mode "auto" -}}
+  {{- $useShard = gt $totalBytes $threshold -}}
+{{- end -}}
+
+{{- /* 第三步：输出。分片模式下正文单独发布，主索引只留元数据与分片地址 */ -}}
+{{- $index := slice -}}
+{{- range $items -}}
+  {{- $content := .content -}}
+  {{- $shardURL := "" -}}
+  {{- if $useShard -}}
+    {{- $res := resources.FromString (printf "search/%s.json" .file) ($content | jsonify) -}}
+    {{- $pub := $res | resources.Publish -}}
+    {{- $shardURL = $pub.RelPermalink -}}
+    {{- $content = "" -}}
+  {{- end -}}
+  {{- $index = $index | append (dict
+      "title" .title
+      "url" .url
+      "date" .date
+      "summary" .summary
+      "content" $content
+      "shard" $shardURL
+      "tags" .tags
+      "categories" .categories
+      "series" .series
   ) -}}
 {{- end -}}
 {{ $index | jsonify }}

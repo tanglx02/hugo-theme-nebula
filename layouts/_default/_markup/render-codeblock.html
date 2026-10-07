@@ -11,19 +11,23 @@
     因此本主题在 Hugo 0.128 ~ 最新版上的渲染结果一致。
 */ -}}
 {{- $lang := .Type | default "text" -}}
+{{- $attrs := .Attributes | default dict -}}
 {{- $display := cond (eq $lang "text") "CODE" $lang -}}
+{{- with $attrs.filename }}{{ $display = . }}{{ end -}}
 
 <div class="code-block" data-lang="{{ $lang }}">
   <div class="code-head">
     <div class="code-dots"><span></span><span></span><span></span></div>
-    <span class="code-lang">{{ $display }}</span>
+    <span class="code-lang{{ if $attrs.filename }} has-filename{{ end }}">{{ $display }}</span>
     <button class="code-copy" type="button" aria-label="复制代码">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
       复制
     </button>
   </div>
   {{ if transform.CanHighlight $lang }}
-    {{- $code := transform.HighlightCodeBlock . -}}
+    {{- /* fence 参数（linenos / hl_lines / lineNoStart 等）合并进高亮选项 */ -}}
+    {{- $opts := merge .Options $attrs -}}
+    {{- $code := transform.HighlightCodeBlock . $opts -}}
     {{ $code.Wrapped }}
   {{ else }}
     <div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text">{{ .Inner | htmlEscape }}</code></pre></div>

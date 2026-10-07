@@ -1082,6 +1082,33 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
 .search-item .p { font-size: 13px; color: var(--text-muted); }
 .search-item mark { background: rgba(255, 214, 0, .45); color: inherit; border-radius: 2px; }
 .search-empty { padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 14px; }
+.search-esc { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+/* 索引加载状态条：主索引失败 / 部分分片失败时显示，并提供重试 */
+.search-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px;
+  background: rgba(245, 108, 108, .10);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.search-status[hidden] { display: none; }
+.search-status-text { line-height: 1.5; }
+.search-retry {
+  flex: none;
+  padding: 4px 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  min-height: 24px;
+  transition: all .2s ease;
+}
+.search-retry:hover { background: var(--accent); color: #fff; }
 .search-hint {
   display: flex;
   gap: 16px;
@@ -1257,4 +1284,41 @@ img.zoomable { cursor: zoom-in; }
 @media (max-width: 480px) {
   .brand span.brand-text { display: none; }
   .profile-stats { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- 19. Series（系列文章） ---------- */
+.series-card { margin-top: 22px; padding: 20px 22px; }
+.series-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.series-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-strong); }
+.series-title svg { width: 16px; height: 16px; color: var(--brand); }
+.series-progress { font-size: 12.5px; color: var(--text-muted); background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+.series-list { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.series-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.series-idx { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; background: var(--bg-soft); color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.series-list li.current .series-idx { background: var(--brand); color: #fff; }
+.series-list li.current a { color: var(--brand); font-weight: 600; }
+.series-now { font-size: 11.5px; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 1px 8px; font-style: normal; }
+.series-list a { color: var(--text); }
+.series-list a:hover { color: var(--brand); }
+.series-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.series-nav a { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); }
+.series-nav a:hover { border-color: var(--brand); }
+.series-nav .label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.series-nav .title { font-size: 14px; color: var(--text-strong); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.series-nav .series-next { text-align: right; }
+
+/* ---------- 20. Share（分享，默认关闭） ---------- */
+.share-card { margin-top: 20px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.share-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--text-muted); }
+.share-label svg { width: 16px; height: 16px; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.share-btn { padding: 5px 12px; min-height: 28px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-soft); color: var(--text); font-size: 13px; display: inline-flex; align-items: center; }
+.share-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+/* 代码块文件名（fence 参数 filename） */
+.code-lang.has-filename { text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 600; }
+
+@media (max-width: 768px) {
+  .series-nav { grid-template-columns: 1fr; }
+  .series-nav .series-next { text-align: left; }
 }

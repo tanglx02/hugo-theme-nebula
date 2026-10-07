@@ -1,0 +1,95 @@
+# Nebula theme strings (English)
+
+nav:
+  home: Home
+  search: Search
+  searchPlaceholder: Search titles, content and tags…
+  menu: Menu
+  theme: Toggle theme
+
+common:
+  close: Close
+  copy: Copy
+  copied: Copied
+  retry: Retry
+  loading: Loading…
+  backToTop: Back to top
+  home: Home
+  body: Article
+  rss: RSS
+  sitemap: Sitemap
+  toc: Table of contents
+  posts: Posts
+  footerLinks: Footer links
+
+search:
+  hint: Type keywords to search titles, tags and full text
+  loading: Loading search index…
+  noResultPrefix: 'No articles found for "'
+  noResultSuffix: '"'
+  resultCount: '{n} result(s)'
+  failed: Failed to load the search index, please retry
+  partialFailed: 'Some search index shards failed to load ({n} article(s)); results may be incomplete'
+  empty: No results
+  keysHint: Select
+  openHint: Open
+  closeHint: ESC to close
+
+post:
+  publishedOn: Published
+  updatedOn: Updated
+  readingTime: '{n} min read'
+  wordCount: '{n} words'
+  prev: Previous
+  next: Next
+  related: Related posts
+  tags: Tags
+  license: License
+  author: Author
+  toTop: Back to top
+
+series:
+  title: Series
+  partOf: 'Part {current} of {total}'
+  prevInSeries: Previous in series
+  nextInSeries: Next in series
+  allInSeries: All posts in this series
+
+share:
+  title: Share
+  copyLink: Copy link
+  linkCopied: Link copied
+  copyFailed: Copy failed, please copy manually
+  x: Share on X
+  telegram: Share on Telegram
+  facebook: Share on Facebook
+  reddit: Share on Reddit
+  weibo: Share on Weibo
+  wechat: WeChat (copy link and paste)
+
+lightbox:
+  label: Image preview, press Esc to close
+  close: Close image preview
+  zoom: Zoom image
+  zoomPrefix: 'Zoom image: '
+
+comment:
+  title: Comments
+  notConfigured: Comments are not configured. Set [params.comments] in hugo.toml to enable giscus / waline / twikoo / disqus.
+
+notFound:
+  title: Page not found
+  desc: The link may be broken or the article has been removed.
+  back: Back to home
+
+archive:
+  count: '{posts} posts · {years} years'
+
+list:
+  count: '{n} posts'
+  taxonomyCount: '{n} related posts'
+  termsCount: '{n} term(s)'
+
+footer:
+  poweredBy: Powered by {hugo}
+  themeBy: Theme {theme}

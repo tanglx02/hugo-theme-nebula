@@ -1,0 +1,95 @@
+# Nebula 主題文案（繁體中文）
+
+nav:
+  home: 首頁
+  search: 搜尋
+  searchPlaceholder: 搜尋文章標題、內文、標籤…
+  menu: 選單
+  theme: 切換主題
+
+common:
+  close: 關閉
+  copy: 複製
+  copied: 已複製
+  retry: 重試
+  loading: 載入中…
+  backToTop: 回到頂部
+  home: 首頁
+  body: 內文
+  rss: RSS
+  sitemap: 網站地圖
+  toc: 文章目錄
+  posts: 文章
+  footerLinks: 頁尾連結
+
+search:
+  hint: 輸入關鍵字開始搜尋，支援標題 / 標籤 / 內文全文比對
+  loading: 正在載入搜尋索引…
+  noResultPrefix: 找不到與「
+  noResultSuffix: 」相關的文章
+  resultCount: 共 {n} 筆結果
+  failed: 搜尋索引載入失敗，請重試
+  partialFailed: 部分搜尋索引載入失敗（{n} 篇未載入），結果可能不完整
+  empty: 尚無結果
+  keysHint: 選擇
+  openHint: 開啟
+  closeHint: ESC 關閉
+
+post:
+  publishedOn: 發佈於
+  updatedOn: 更新於
+  readingTime: 約 {n} 分鐘
+  wordCount: '{n} 字'
+  prev: 上一篇
+  next: 下一篇
+  related: 相關文章
+  tags: 標籤
+  license: 版權聲明
+  author: 作者
+  toTop: 回到頂部
+
+series:
+  title: 系列文章
+  partOf: 第 {current} 篇 / 共 {total} 篇
+  prevInSeries: 系列上一篇
+  nextInSeries: 系列下一篇
+  allInSeries: 本系列全部文章
+
+share:
+  title: 分享
+  copyLink: 複製連結
+  linkCopied: 連結已複製
+  copyFailed: 複製失敗，請手動複製
+  x: 分享到 X
+  telegram: 分享到 Telegram
+  facebook: 分享到 Facebook
+  reddit: 分享到 Reddit
+  weibo: 分享到微博
+  wechat: 微信（複製連結後貼上）
+
+lightbox:
+  label: 圖片預覽，按 Esc 關閉
+  close: 關閉圖片預覽
+  zoom: 放大圖片
+  zoomPrefix: '放大圖片：'
+
+comment:
+  title: 留言
+  notConfigured: 留言系統尚未設定。可在 hugo.toml 中設定 [params.comments] 啟用 giscus / waline / twikoo / disqus。
+
+notFound:
+  title: 頁面不存在
+  desc: 可能是連結失效或文章已被移除。
+  back: 回到首頁
+
+archive:
+  count: 共 {posts} 篇文章 · {years} 個年份
+
+list:
+  count: 共 {n} 篇文章
+  taxonomyCount: 共 {n} 篇相關文章
+  termsCount: 共 {n} 項
+
+footer:
+  poweredBy: 由 {hugo} 驅動
+  themeBy: 主題 {theme}

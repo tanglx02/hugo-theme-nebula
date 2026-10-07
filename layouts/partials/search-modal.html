@@ -1,15 +1,24 @@
 {{ if site.Params.search.enable | default true }}
-<div class="search-overlay" id="searchOverlay" role="dialog" aria-modal="true" aria-label="站内搜索">
+<div class="search-overlay" id="searchOverlay" role="dialog" aria-modal="true"
+     aria-label="{{ i18n "nav.search" }}">
   <div class="search-modal">
     <div class="search-input-row">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="search-input" type="text" placeholder="搜索文章标题、正文、标签…" autocomplete="off" spellcheck="false">
-      <span style="font-size:12px;color:var(--text-muted)">ESC 关闭</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="search-input" type="text" autocomplete="off" spellcheck="false"
+             placeholder="{{ i18n "nav.searchPlaceholder" }}" aria-label="{{ i18n "nav.search" }}">
+      <span class="search-esc">{{ i18n "search.closeHint" }}</span>
     </div>
-    <div class="search-results" id="searchResults"></div>
+
+    {{- /* 索引加载状态：主索引失败 / 部分分片失败 都会在此显示并可重试 */ -}}
+    <div class="search-status" id="searchStatus" hidden role="status" aria-live="polite">
+      <span class="search-status-text" id="searchStatusText"></span>
+      <button type="button" class="search-retry" id="searchRetry">{{ i18n "common.retry" }}</button>
+    </div>
+
+    <div class="search-results" id="searchResults" aria-live="polite"></div>
     <div class="search-hint">
-      <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
-      <span><kbd>Enter</kbd> 打开</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> {{ i18n "search.keysHint" }}</span>
+      <span><kbd>Enter</kbd> {{ i18n "search.openHint" }}</span>
       <span id="searchCount"></span>
     </div>
   </div>

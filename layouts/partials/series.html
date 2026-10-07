@@ -1,0 +1,68 @@
+{{- /* 系列文章（Series）
+       Front Matter：
+         series: ["Hugo 系列"]      系列名（取第一个）
+         series_order: 3            系列内顺序（可选，缺省按日期）
+       未配置 series 时完全不输出。 */ -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{- $page := . -}}
+{{- with .Params.series -}}
+  {{- $seriesName := index . 0 -}}
+  {{- $pages := where (where site.RegularPages "Section" "in" $contentSections) "Params.series" "intersect" (slice $seriesName) -}}
+  {{- if gt (len $pages) 1 -}}
+    {{- /* 组装并排序：有 series_order 用 order，否则用日期 */ -}}
+    {{- $entries := slice -}}
+    {{- $hasOrder := false -}}
+    {{- range $pages -}}
+      {{- if .Params.series_order -}}{{- $hasOrder = true -}}{{- end -}}
+      {{- $entries = $entries | append (dict "page" . "order" (int (.Params.series_order | default 99999))) -}}
+    {{- end -}}
+    {{- if $hasOrder -}}
+      {{- $entries = sort $entries "order" "asc" -}}
+    {{- else -}}
+      {{- $entries = sort $entries "page.Date" "asc" -}}
+    {{- end -}}
+
+    {{- $current := $page -}}
+    {{- $idx := -1 -}}
+    {{- range $i, $e := $entries -}}
+      {{- if eq $e.page.RelPermalink $current.RelPermalink -}}{{- $idx = $i -}}{{- end -}}
+    {{- end -}}
+    {{- $prev := cond (gt $idx 0) (index $entries (sub $idx 1)).page false -}}
+    {{- $next := cond (and (ge $idx 0) (lt $idx (sub (len $entries) 1))) (index $entries (add $idx 1)).page false -}}
+
+    <section class="series-card card">
+      <div class="series-head">
+        <span class="series-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+          {{ i18n "series.title" }}：{{ $seriesName }}
+        </span>
+        <span class="series-progress">{{ i18n "series.partOf" (dict "current" (add $idx 1) "total" (len $entries)) }}</span>
+      </div>
+
+      <ol class="series-list">
+        {{- range $i, $e := $entries }}
+          <li class="{{ if eq $e.page.RelPermalink $current.RelPermalink }}current{{ end }}">
+            <span class="series-idx">{{ add $i 1 }}</span>
+            <a href="{{ $e.page.RelPermalink }}">{{ $e.page.Title }}</a>
+            {{- if eq $e.page.RelPermalink $current.RelPermalink }}<em class="series-now">当前</em>{{ end }}
+          </li>
+        {{- end }}
+      </ol>
+
+      <nav class="series-nav">
+        {{- if $prev }}
+          <a class="series-prev" href="{{ $prev.RelPermalink }}">
+            <span class="label">← {{ i18n "series.prevInSeries" }}</span>
+            <span class="title">{{ $prev.Title }}</span>
+          </a>
+        {{- else }}<span class="series-empty"></span>{{ end }}
+        {{- if $next }}
+          <a class="series-next" href="{{ $next.RelPermalink }}">
+            <span class="label">{{ i18n "series.nextInSeries" }} →</span>
+            <span class="title">{{ $next.Title }}</span>
+          </a>
+        {{- end }}
+      </nav>
+    </section>
+  {{- end -}}
+{{- end -}}

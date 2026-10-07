@@ -6,6 +6,28 @@
   <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 {{ end }}
 
+{{- /* 把 i18n 文案注入给前端脚本，避免 JS 中硬编码文案 */ -}}
+<script>
+  window.NEBULA_I18N = {{ dict
+    "searchLoading" (i18n "search.loading")
+    "searchHint" (i18n "search.hint")
+    "searchEmpty" (i18n "search.empty")
+    "noResultPrefix" (i18n "search.noResultPrefix")
+    "noResultSuffix" (i18n "search.noResultSuffix")
+    "resultCount" (i18n "search.resultCount")
+    "searchFailed" (i18n "search.failed")
+    "searchPartialFailed" (i18n "search.partialFailed")
+    "retry" (i18n "common.retry")
+    "copy" (i18n "common.copy")
+    "copied" (i18n "common.copied")
+    "linkCopied" (i18n "share.linkCopied")
+    "copyFailed" (i18n "share.copyFailed")
+    "zoom" (i18n "lightbox.zoom")
+    "zoomPrefix" (i18n "lightbox.zoomPrefix")
+    "loading" (i18n "common.loading")
+    | jsonify | safeJS }};
+</script>
+
 {{- /* 主题脚本 */ -}}
 {{ $js := resources.Get "js/main.js" | resources.ExecuteAsTemplate "js/main.js" . | minify | fingerprint }}
 <script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>

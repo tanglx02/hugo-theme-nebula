@@ -61,7 +61,9 @@ rssLimit = 20
     guessSyntax = true
   [markup.goldmark]
     [markup.goldmark.renderer]
-      unsafe = true
+      # 主题核心功能不依赖 raw HTML，因此默认保持安全配置（unsafe = false）。
+      # 仅当你的文章内容确实包含原始 HTML 且需要渲染时，才改为 true。
+      unsafe = false
   [markup.tableOfContents]
     startLevel = 2
     endLevel = 3

@@ -1,0 +1,3 @@
+# 测试/CI 用：开启分片索引
+[params.search]
+  shard = true

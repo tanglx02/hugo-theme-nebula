@@ -6,3 +6,13 @@ exampleSite/resources/
 exampleSite/content/posts/zz-*.md
 public/
 public-blog/
+exampleSite/shard-override.toml
+exampleSite/shard-override.toml
+exampleSite/content/tutorials/zz-*.md
+exampleSite/content/notes/zz-*.md
+exampleSite/content/posts/zz-images-bundle/
+public-shard/
+tools/audit_report.json
+exampleSite/content/posts/zz-images-bundle/
+public-shard/
+tools/audit_report.json

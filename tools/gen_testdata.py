@@ -207,6 +207,8 @@ categories:
     code_parts.append("```unknownlang123\nthis language does not exist\n```\n")
     code_parts.append("```\nplain block without language\n```\n")
     code_parts.append('```go {linenos=true hl_lines="2"}\npackage main\nfunc main() {}\n```\n')
+    code_parts.append('```js {filename="app.js"}\nconsole.log(1)\n```\n')
+    code_parts.append('```python {filename="utils.py" linenos=true hl_lines="2-3"}\nimport os\nprint(1)\nprint(2)\n```\n')
     code_parts.append("```\n" + "X" * 300 + "\n```\n")
     for i in range(12):
         code_parts.append(f"```bash\necho 'block {i}'\nls -la /tmp/{i}\n```\n")
@@ -342,6 +344,112 @@ description: "时区测试 {date}"
 tags: ["时区"]
 categories: ["压力测试"]
 """, f"时区测试：{date}"))
+
+    # 18. 多 section（tutorials / notes）
+    CONTENT = os.path.join(ROOT, "myblog", "content")
+    if not os.path.isdir(os.path.dirname(CONTENT)) or "--posts-dir" in sys.argv:
+        # CI 场景：posts 目录的上一级即 content
+        CONTENT = os.path.dirname(POSTS)
+    for sec, titles in (("tutorials", ["多 Section 教程一", "多 Section 教程二"]),
+                        ("notes", ["多 Section 笔记"]) ):
+        d = os.path.join(CONTENT, sec)
+        os.makedirs(d, exist_ok=True)
+        for i, t in enumerate(titles):
+            fp = os.path.join(d, f"{PREFIX}{sec}-{i+1}.md")
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(f"""---
+title: "{t}"
+date: 2026-09-{28 + i:02d}
+description: "{sec} section 测试文章"
+tags: ["多section"]
+categories: ["压力测试"]
+---
+
+这是 {sec} section 下的文章，用于验证 params.content.sections 配置。
+内容包含唯一标记 {sec.upper()}SECTION{i+1}。
+""")
+            created.append(fp)
+
+    # 19. Series（系列文章 3 篇，含系列顺序）
+    SERIES = ["Hugo 建站系列：从零到上线", "Hugo 建站系列：主题与样式", "Hugo 建站系列：部署与优化"]
+    for i, t in enumerate(SERIES, 1):
+        fp = os.path.join(POSTS, f"{PREFIX}series-{i}.md")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(f"""---
+title: "{t}"
+date: 2026-04-{20 + i:02d}
+description: "系列文章第 {i} 篇"
+tags: ["series测试"]
+categories: ["压力测试"]
+series: ["Hugo 建站系列"]
+series_order: {i}
+---
+
+## 系列第 {i} 篇
+
+这是系列文章的第 {i} 篇，用于验证系列导航（第 N 篇 / 共 M 篇、系列上一篇/下一篇）。
+
+正文内容示例。
+""")
+        created.append(fp)
+
+    # 20. 图片 bundle（page bundle + 真实图片资源，验证 Images Pipeline）
+    try:
+        from PIL import Image, ImageDraw
+        bundle = os.path.join(POSTS, f"{PREFIX}images-bundle")
+        os.makedirs(bundle, exist_ok=True)
+        for name, fmt, size in (("photo.png", "PNG", (1600, 900)),
+                                ("photo.jpg", "JPEG", (1400, 800)),
+                                ("anim.webp", "WEBP", (1000, 600))):
+            im = Image.new("RGB", size, (30, 60, 120))
+            d = ImageDraw.Draw(im)
+            for i in range(0, size[0], 80):
+                d.line([(i, 0), (i, size[1])], fill=(64, 158, 255), width=3)
+            for j in range(0, size[1], 80):
+                d.line([(0, j), (size[0], j)], fill=(124, 92, 255), width=3)
+            d.text((40, 40), f"Nebula {name}", fill=(255, 255, 255))
+            im.save(os.path.join(bundle, name), format=fmt, quality=88)
+        # 小 SVG（非 raster，保持原样输出）
+        with open(os.path.join(bundle, "vector.svg"), "w", encoding="utf-8") as f:
+            f.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120">'
+                    '<rect width="200" height="120" fill="#409eff"/><circle cx="100" cy="60" r="40" fill="#fff"/></svg>')
+
+        with open(os.path.join(bundle, "index.md"), "w", encoding="utf-8") as f:
+            f.write("""---
+title: "图片 Bundle（Images Pipeline）"
+date: 2026-05-30
+description: "page bundle 图片：WebP + srcset + 尺寸防 CLS"
+tags: ["图片", "bundle"]
+categories: ["压力测试"]
+---
+
+## 大 PNG（走 Pipeline 生成 WebP 多尺寸）
+
+![大图 PNG](photo.png "PNG 图片标题")
+
+## 大 JPEG
+
+![大图 JPEG](photo.jpg)
+
+## WebP 源图
+
+![WebP](anim.webp)
+
+## SVG（非 raster，保持原图输出）
+
+![SVG 图](vector.svg)
+
+## 链接包裹的 bundle 图片（应保留原生跳转）
+
+[![链接图片](photo.png)](/posts/01-home-lab-proxmox/)
+
+## 缺失图片（应优雅降级）
+
+![缺失的图片](not-exist.png)
+""")
+        created.append(os.path.join(bundle, "index.md"))
+    except ImportError:
+        print("  (未安装 Pillow，跳过图片 bundle 生成)")
 
     print(f"已生成 {len(created)} 篇测试文章")
     for p in created:

@@ -1,7 +1,65 @@
-{{- $src := partial "util/rel-url.html" .Destination | safeURL -}}
+{{- /*
+  图片渲染钩子。
+
+  行为：
+  1) 若目标图片是"页面资源"（page bundle，如 ![图](photo.png)），
+     走 Hugo Images Pipeline：生成多尺寸 WebP，输出 srcset/sizes/width/height
+     （width/height 用于防止 CLS），同时保留原图作为灯箱放大源（data-zoom-src）。
+  2) 否则（static 目录或外链，如 /img/a.png、https://…）保持原有输出，
+     路径写法与旧版完全一致，不影响已有站点资源。
+
+  配置（可选）：
+    [params.images]
+      widths = [480, 768, 1200]
+      sizes  = "(max-width: 768px) 100vw, 900px"
+      quality = 85
+      format = "webp"
+*/ -}}
+{{- $dest := .Destination -}}
 {{- $alt := .Text | default (.Title | default "") -}}
-<figure style="margin:1.4em 0">
-  <img src="{{ $src }}" alt="{{ $alt }}" loading="lazy" decoding="async"
-    {{ with .Title }}title="{{ . }}"{{ end }}>
-  {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
-</figure>
+{{- $img := .Page.Resources.GetMatch $dest -}}
+{{- $page := .Page -}}
+{{- if and $img (reflect.IsImageResourceProcessable $img) -}}
+  {{- with $img -}}
+  {{- $cfg := site.Params.images | default dict -}}
+  {{- $widths := $cfg.widths | default (slice 480 768 1200) -}}
+  {{- $quality := $cfg.quality | default 85 -}}
+  {{- $format := $cfg.format | default "webp" -}}
+  {{- $sizes := $cfg.sizes | default "(max-width: 768px) 100vw, 900px" -}}
+  {{- $srcset := slice -}}
+  {{- $fallback := .RelPermalink -}}
+  {{- range $widths -}}
+    {{- if ge $img.Width . -}}
+      {{- $r := $img.Resize (printf "%dx %s q%d" . $format $quality) -}}
+      {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $srcset -}}
+    {{- $r := $img.Resize (printf "%dx %s q%d" $img.Width $format $quality) -}}
+    {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
+  {{- end -}}
+  <figure style="margin:1.4em 0">
+    <img src="{{ $fallback }}" srcset="{{ delimit $srcset ", " }}" sizes="{{ $sizes }}"
+         width="{{ .Width }}" height="{{ .Height }}" alt="{{ $alt }}"
+         loading="lazy" decoding="async" data-zoom-src="{{ .RelPermalink }}"
+         {{ with $.Title }}title="{{ . }}"{{ end }}>
+    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+  {{- end -}}
+{{- else if $img -}}
+  {{- /* SVG 等不可处理的图片资源：输出原图（保持原行为） */ -}}
+  <figure style="margin:1.4em 0">
+    {{- /* SVG 等不可处理的资源不提供 width/height（其 API 不支持） */ -}}
+    <img src="{{ $img.RelPermalink }}" alt="{{ $alt }}" loading="lazy" decoding="async"
+         data-zoom-src="{{ $img.RelPermalink }}"
+      {{ with $.Title }}title="{{ . }}"{{ end }}>
+    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+{{- else -}}
+  {{- $src := partial "util/rel-url.html" $dest | safeURL -}}
+  <figure style="margin:1.4em 0">
+    <img src="{{ $src }}" alt="{{ $alt }}" loading="lazy" decoding="async"
+      {{ with .Title }}title="{{ . }}"{{ end }}>
+    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+{{- end -}}

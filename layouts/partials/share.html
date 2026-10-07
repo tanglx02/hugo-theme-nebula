@@ -1,0 +1,42 @@
+{{- /* 分享（默认关闭，通过 params.share.enable = true 开启）
+       params.share.providers 可选：copy / x / telegram / facebook / reddit / weibo / wechat
+       全部为纯链接，不引入任何第三方脚本。 */ -}}
+{{- $share := site.Params.share | default dict -}}
+{{- if $share.enable -}}
+  {{- $providers := $share.providers | default (slice "copy" "x" "telegram" "facebook") -}}
+  {{- $url := .Permalink -}}
+  {{- $title := .Title -}}
+  <div class="share-card card">
+    <span class="share-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+      {{ i18n "share.title" }}
+    </span>
+    <div class="share-actions">
+      {{- range $providers }}
+        {{- $p := . -}}
+        {{- if eq $p "copy" }}
+          <button type="button" class="share-btn" data-share="copy" data-url="{{ $url }}"
+                  aria-label="{{ i18n "share.copyLink" }}">{{ i18n "share.copyLink" }}</button>
+        {{- else if eq $p "x" }}
+          <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.x" }}"
+             href="https://twitter.com/intent/tweet?url={{ $url | urlquery }}&text={{ $title | urlquery }}">X</a>
+        {{- else if eq $p "telegram" }}
+          <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.telegram" }}"
+             href="https://t.me/share/url?url={{ $url | urlquery }}&text={{ $title | urlquery }}">Telegram</a>
+        {{- else if eq $p "facebook" }}
+          <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.facebook" }}"
+             href="https://www.facebook.com/sharer/sharer.php?u={{ $url | urlquery }}">Facebook</a>
+        {{- else if eq $p "reddit" }}
+          <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.reddit" }}"
+             href="https://www.reddit.com/submit?url={{ $url | urlquery }}&title={{ $title | urlquery }}">Reddit</a>
+        {{- else if eq $p "weibo" }}
+          <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.weibo" }}"
+             href="https://service.weibo.com/share/share.php?url={{ $url | urlquery }}&title={{ $title | urlquery }}">微博</a>
+        {{- else if eq $p "wechat" }}
+          <button type="button" class="share-btn" data-share="copy" data-url="{{ $url }}"
+                  aria-label="{{ i18n "share.wechat" }}">微信（复制链接）</button>
+        {{- end }}
+      {{- end }}
+    </div>
+  </div>
+{{- end -}}

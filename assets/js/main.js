@@ -4,6 +4,13 @@
 
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var T_ = window.NEBULA_I18N || {};      // 由 templates/partials/scripts.html 注入
+  function tf(str, vars) {                 // 简易 {n} 占位符替换
+    if (!str) return '';
+    return String(str).replace(/\{(\w+)\}/g, function (m, k) {
+      return (vars && vars[k] != null) ? vars[k] : m;
+    });
+  }
 
   /* ---------- Theme toggle ---------- */
   var toggle = $('#themeToggle');
@@ -102,8 +109,26 @@
 
   document.addEventListener('click', function (e) {
     var t = e.target;
-    var btn = (t && t.closest) ? t.closest('.code-copy') : null;
-    if (btn) copyFromButton(btn);
+    if (!t || !t.closest) return;
+    var copyBtn = t.closest('.code-copy');
+    if (copyBtn) { copyFromButton(copyBtn); return; }
+    var shareBtn = t.closest('[data-share="copy"]');
+    if (shareBtn) {
+      var url = shareBtn.getAttribute('data-url') || location.href;
+      var old = shareBtn.textContent;
+      var finish = function (ok) {
+        shareBtn.textContent = ok ? (T_.linkCopied || '已复制') : (T_.copyFailed || '复制失败');
+        setTimeout(function () { shareBtn.textContent = old; }, 1600);
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () { finish(true); }, function () { finish(false); });
+          setTimeout(function () { if (shareBtn.textContent === old) finish(true); }, 400);
+          return;
+        }
+      } catch (err) {}
+      finish(false);
+    }
   });
 
   /* ---------- TOC active highlight ---------- */
@@ -133,42 +158,70 @@
     updateTOC();
   }
 
-  /* ---------- Image lightbox（无障碍版） ----------
-     - 仅对"未被链接包裹"的图片启用，Markdown 的 [![img](x)](url) 会保持原有链接行为
-     - 图片可获得键盘焦点（tabindex），Enter / 空格打开
-     - 打开后焦点移入灯箱，Esc 关闭，关闭后焦点回到触发图片
-     - 容器具备 dialog 语义与可访问名称（见 baseof.html）
-  ------------------------------------------------ */
+  /* ---------- Image lightbox（完整 modal：dialog 语义 + Focus Trap） ----------
+     - 仅对"未被链接包裹"的图片启用；[![img](x)](url) 保持浏览器原生跳转
+     - 图片可键盘聚焦：Enter / Space 打开
+     - 打开后：焦点移入 dialog、背景 inert（不可键盘交互）、Tab/Shift+Tab 在 dialog 内循环
+     - 关闭：Esc / 关闭按钮 / 点击遮罩；关闭后焦点归还触发图片
+  ------------------------------------------------------------------ */
   var lightbox = $('#lightbox');
-  if (lightbox) {
+  var lightboxEnabled = document.body.getAttribute('data-lightbox') !== 'false';
+  if (lightbox && lightboxEnabled) {
     var lbImg = lightbox.querySelector('img');
     var lastTrigger = null;
+    var inertNodes = [];
+
+    /* 背景不可通过键盘交互：优先使用原生 inert，旧的浏览器退化为 no-op（focus trap 仍生效） */
+    function setBackgroundInert(on) {
+      if (on) {
+        inertNodes = $$('.progress-bar, .site-header, main, .site-footer, .search-overlay, .to-top');
+        inertNodes.forEach(function (n) {
+          if (!n || n === lightbox || lightbox.contains(n)) return;
+          n.setAttribute('inert', '');
+          n.setAttribute('aria-hidden', 'true');
+        });
+      } else {
+        inertNodes.forEach(function (n) {
+          n.removeAttribute('inert');
+          n.removeAttribute('aria-hidden');
+        });
+        inertNodes = [];
+      }
+    }
+
+    function dialogFocusables() {
+      return $$('button, [href], input, select, textarea, [tabindex]', lightbox).filter(function (el) {
+        return el.getAttribute('tabindex') !== '-1' && el.offsetWidth > 0 && el.offsetHeight > 0;
+      });
+    }
 
     function openLightbox(img) {
       lastTrigger = img;
-      lbImg.src = img.currentSrc || img.src;
+      lbImg.src = img.getAttribute('data-zoom-src') || img.currentSrc || img.src;
       lbImg.alt = img.alt || '';
       lightbox.classList.add('open');
       lightbox.setAttribute('aria-hidden', 'false');
-      lightbox.focus();                       // 焦点移入 dialog
+      setBackgroundInert(true);
+      var f = dialogFocusables();
+      (f.length ? f[0] : lightbox).focus();   // 焦点移入 dialog 内
     }
 
     function closeLightbox() {
       if (!lightbox.classList.contains('open')) return;
       lightbox.classList.remove('open');
       lightbox.setAttribute('aria-hidden', 'true');
+      setBackgroundInert(false);
       if (lastTrigger && document.contains(lastTrigger)) {
-        lastTrigger.focus();                  // 焦点归还触发元素
+        lastTrigger.focus();                  // 焦点归还
       }
       lastTrigger = null;
     }
 
     $$('.post-content img').forEach(function (img) {
-      if (img.closest('a')) return;           // 被链接包裹：放行链接，不接管点击
+      if (img.closest('a')) return;           // 链接包裹：放行浏览器原生行为
       img.setAttribute('tabindex', '0');
       img.setAttribute('role', 'button');
-      var label = img.alt ? ('放大图片：' + img.alt) : '放大图片';
-      img.setAttribute('aria-label', label);
+      img.setAttribute('aria-label', (img.alt ? (T_.zoomPrefix || '') + img.alt : (T_.zoom || 'Zoom')));
       img.classList.add('zoomable');
 
       img.addEventListener('click', function () { openLightbox(img); });
@@ -181,16 +234,29 @@
     });
 
     var lbClose = lightbox.querySelector('.lightbox-close');
-    lightbox.addEventListener('click', function (e) { closeLightbox(); });
+    lightbox.addEventListener('click', function () { closeLightbox(); });
     if (lbClose) {
       lbClose.addEventListener('click', function (e) { e.stopPropagation(); closeLightbox(); });
     }
-    lbImg.addEventListener('click', function (e) {
-      // 点击图片本身不关闭（避免误触），点击遮罩或关闭按钮关闭
-      e.stopPropagation();
-    });
+    lbImg.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    /* Focus Trap + Esc：仅在灯箱打开时接管键盘 */
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeLightbox();
+      if (!lightbox.classList.contains('open')) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeLightbox();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      var f = dialogFocusables();
+      if (!f.length) { e.preventDefault(); lightbox.focus(); return; }
+      var first = f[0], last = f[f.length - 1], active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !lightbox.contains(active)) { e.preventDefault(); last.focus(); }
+      } else {
+        if (active === last || !lightbox.contains(active)) { e.preventDefault(); first.focus(); }
+      }
     });
   }
 
@@ -204,19 +270,32 @@
   if (overlay && input && results) {
     var INDEX_URL = '{{ "index.json" | relURL }}';
     var INDEX = null, INDEX_PROMISE = null, INDEX_ERROR = null, selected = 0, items = [];
+    var SHARD_FAILED = [];
     var renderToken = 0, debounceTimer = null;
 
+    var statusEl = $('#searchStatus'), statusTextEl = $('#searchStatusText'), retryBtn = $('#searchRetry');
+
     function setStatus(text) { if (countEl) countEl.textContent = text; }
+    function showStatus(text) {
+      if (!statusEl || !statusTextEl) return;
+      statusTextEl.textContent = text;
+      statusEl.hidden = false;
+    }
+    function hideStatus() { if (statusEl) statusEl.hidden = true; }
+
+    function resetIndex() {
+      INDEX = null; INDEX_PROMISE = null; INDEX_ERROR = null; SHARD_FAILED = [];
+    }
 
     /* 索引加载
-       - 幂等：并发调用只会真正请求一次
-       - 支持分片模式：正文为空且带 shard 字段时，并发拉取 /search/*.json
-       - 失败可感知：供 UI 给出明确提示，而不是静默返回空结果
-       - 关键点：render() 必须先 await 本函数，否则"用户打开搜索框立刻输入"
-         会出现 INDEX 尚未就绪的竞态（P5） */
+       - 幂等：并发调用只请求一次
+       - 主索引失败 -> INDEX_ERROR（UI 明确报错 + 重试）
+       - 分片失败 -> 记入 SHARD_FAILED（UI 提示"部分索引加载失败"，其余文章仍可搜索）
+       - render() 必须先 await 本函数，避免"打开后立即输入"的竞态 */
     function loadIndex() {
       if (INDEX) return Promise.resolve(INDEX);
       if (INDEX_PROMISE) return INDEX_PROMISE;
+      SHARD_FAILED = [];
 
       INDEX_PROMISE = fetch(INDEX_URL)
         .then(function (r) {
@@ -228,16 +307,26 @@
           var missing = list.filter(function (it) { return !it.content && it.shard; });
           if (!missing.length) return list;
           return Promise.all(missing.map(function (it) {
-            return fetch(it.shard)
+            return fetch(it.shard, { cache: 'force-cache' })
               .then(function (r) {
-                if (!r.ok) throw new Error('shard HTTP ' + r.status);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
               })
               .then(function (c) {
-                it.content = (typeof c === 'string') ? c : ((c && c.content) || '');
+                if (typeof c === 'string') { it.content = c; }
+                else if (c && typeof c.content === 'string') { it.content = c.content; }
+                else { throw new Error('invalid shard payload'); }
               })
-              .catch(function () { it.content = ''; });
-          })).then(function () { return list; });
+              .catch(function (err) {
+                it.content = '';
+                SHARD_FAILED.push({ url: it.shard, title: it.title, error: String((err && err.message) || err) });
+              });
+          })).then(function () {
+            if (SHARD_FAILED.length) {
+              console.warn('[Nebula] 部分搜索分片加载失败：', SHARD_FAILED);
+            }
+            return list;
+          });
         })
         .then(function (list) { INDEX = list || []; INDEX_ERROR = null; return INDEX; })
         .catch(function (err) { INDEX = []; INDEX_ERROR = err; return INDEX; });
@@ -302,14 +391,24 @@
       var terms = q.trim().split(/\s+/).filter(Boolean);
 
       if (INDEX_ERROR) {
-        results.innerHTML = '<div class="search-empty">搜索索引加载失败，请刷新页面重试（' +
-          esc(String(INDEX_ERROR.message || INDEX_ERROR)) + '）</div>';
+        showStatus(tf(T_.searchFailed || '搜索索引加载失败，请重试') +
+          '（' + esc(String(INDEX_ERROR.message || INDEX_ERROR)) + '）');
+        results.innerHTML = '<div class="search-empty">' +
+          esc(tf(T_.searchFailed || '搜索索引加载失败，请重试')) + '</div>';
         setStatus('');
         items = [];
         return;
       }
+      /* 分片部分失败：明确提示，绝不显示成"没有找到"，其余文章仍可搜索 */
+      if (SHARD_FAILED.length) {
+        showStatus(tf(T_.searchPartialFailed || '部分搜索索引加载失败（{n} 篇未能加载），结果可能不完整',
+          { n: SHARD_FAILED.length }));
+      } else {
+        hideStatus();
+      }
       if (!terms.length) {
-        results.innerHTML = '<div class="search-empty">输入关键词开始搜索，支持标题 / 标签 / 正文全文匹配</div>';
+        results.innerHTML = '<div class="search-empty">' +
+          esc(T_.searchHint || '输入关键词开始搜索') + '</div>';
         setStatus('');
         items = [];
         return;
@@ -323,10 +422,11 @@
 
       items = hits.map(function (x) { return x.it; });
       selected = 0;
-      setStatus('共 ' + hits.length + ' 条结果');
+      setStatus(tf(T_.resultCount || '共 {n} 条结果', { n: hits.length }));
 
       if (!hits.length) {
-        results.innerHTML = '<div class="search-empty">没有找到与「' + esc(q) + '」相关的文章</div>';
+        results.innerHTML = '<div class="search-empty">' +
+          esc(T_.noResultPrefix || '没有找到与「') + esc(q) + esc(T_.noResultSuffix || '」相关的文章') + '</div>';
         return;
       }
       results.innerHTML = hits.map(function (x, i) {
@@ -344,7 +444,7 @@
     function render(q) {
       var my = ++renderToken;
       if (!INDEX) {
-        results.innerHTML = '<div class="search-empty">正在加载搜索索引…</div>';
+        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || '正在加载搜索索引…') + '</div>';
         setStatus('');
       }
       return loadIndex().then(function () {
@@ -367,10 +467,13 @@
       els[selected].scrollIntoView({ block: 'nearest' });
     }
 
-    function open() {
+    function open(initialQuery) {
       overlay.classList.add('open');
       document.body.style.overflow = 'hidden';
       setTimeout(function () { input.focus(); }, 30);
+      if (typeof initialQuery === 'string' && initialQuery) {
+        input.value = initialQuery;     // 支持 ?q= 深链
+      }
       loadIndex();            // 打开即预取索引
       render(input.value);    // render 内部会 await 索引，避免竞态
     }
@@ -380,8 +483,23 @@
       input.blur();
     }
 
-    if (trigger) trigger.addEventListener('click', open);
+    if (retryBtn) {
+      retryBtn.addEventListener('click', function () {
+        resetIndex();
+        hideStatus();
+        results.innerHTML = '<div class="search-empty">' + esc(T_.searchLoading || '正在加载搜索索引…') + '</div>';
+        loadIndex().then(function () { renderNow(input.value); });
+      });
+    }
+
+    if (trigger) trigger.addEventListener('click', function () { open(); });
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+
+    // 支持 ?q= 深链（与 JSON-LD SearchAction 对应）
+    try {
+      var initialQ = new URLSearchParams(window.location.search).get('q');
+      if (initialQ) { open(initialQ); }
+    } catch (e) {}
 
     // 输入防抖：大索引下避免每次按键都全量扫描
     input.addEventListener('input', function () {

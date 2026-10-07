@@ -3,7 +3,7 @@
 <head>
   {{ partial "head.html" . }}
 </head>
-<body>
+<body data-lightbox="{{ .Params.lightbox | default true }}">
   <div class="progress-bar" id="progressBar"></div>
 
   {{ partial "header.html" . }}

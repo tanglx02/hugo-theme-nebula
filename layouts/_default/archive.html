@@ -1,5 +1,6 @@
 {{ define "main" }}
-{{- $posts := where site.RegularPages "Section" "posts" -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{- $posts := where site.RegularPages "Section" "in" $contentSections -}}
 {{- $groups := $posts.GroupByDate "2006" -}}
 
 <div class="card page-head">

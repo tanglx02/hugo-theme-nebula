@@ -1,0 +1,43 @@
+{{- /*
+  RSS 2.0 输出。
+
+  配置（hugo.toml）：
+    [params.rss]
+      fullContent = false   # true = 输出全文（content:encoded），false = 仅摘要
+      limit = 20            # 条数上限
+  */ -}}
+{{- $full := site.Params.rss.fullContent | default false -}}
+{{- $limit := int (site.Params.rss.limit | default 20) -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>{{ site.Title }}</title>
+    <link>{{ site.Home.Permalink }}</link>
+    <description>{{ site.Params.description | default site.Title }}</description>
+    <language>{{ site.Language.Lang }}</language>
+    <copyright>{{ with site.Params.author }}{{ . }}{{ end }}</copyright>
+    <lastBuildDate>{{ now.Format "Mon, 02 Jan 2006 15:04:05 -0700" }}</lastBuildDate>
+    <generator>Hugo -- gohugo.io</generator>
+    <atom:link href="{{ "index.xml" | absURL }}" rel="self" type="application/rss+xml"/>
+    {{- range first $limit (where site.RegularPages "Section" "in" $contentSections) }}
+    <item>
+      <title>{{ .Title }}</title>
+      <link>{{ .Permalink }}</link>
+      <guid isPermaLink="true">{{ .Permalink }}</guid>
+      <pubDate>{{ .Date.Format "Mon, 02 Jan 2006 15:04:05 -0700" }}</pubDate>
+      {{- if ne (.Lastmod.Format "2006-01-02") (.Date.Format "2006-01-02") }}
+      <atom:updated>{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}</atom:updated>
+      {{- end }}
+      {{- with .Params.author }}<author>{{ . }}</author>{{ end }}
+      {{- with site.Params.author }}<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">{{ . }}</dc:creator>{{ end }}
+      {{- range .Params.categories }}<category>{{ . }}</category>{{ end }}
+      {{- range .Params.tags }}<category>{{ . }}</category>{{ end }}
+      <description>{{ (.Description | default (.Summary | plainify)) | html }}</description>
+      {{- if $full }}
+      <content:encoded><![CDATA[{{ .Content | safeHTML }}]]></content:encoded>
+      {{- end }}
+    </item>
+    {{- end }}
+  </channel>
+</rss>

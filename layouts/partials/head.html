@@ -34,11 +34,25 @@
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
 <meta property="og:locale" content="{{ site.Language.Lang | default "zh-CN" }}">
-{{ with .Params.cover }}<meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
+{{ with .Params.cover }}
+<meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">
+<meta property="og:image:alt" content="{{ $.Title }}">
+{{- with $.Resources.GetMatch . }}
+<meta property="og:image:width" content="{{ .Width }}">
+<meta property="og:image:height" content="{{ .Height }}">
+{{- end }}
+{{ end }}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta name="twitter:description" content="{{ $desc }}">
 {{ with .Params.cover }}<meta name="twitter:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
+
+{{- /* hreflang：多语言站点输出各语言版本（单语言无输出） */ -}}
+{{- if gt (len .AllTranslations) 1 }}
+{{- range .AllTranslations }}
+<link rel="alternate" hreflang="{{ .Language.Lang }}" href="{{ .Permalink }}">
+{{- end }}
+{{- end }}
 
 {{ with .OutputFormats.Get "rss" -}}
   <link rel="alternate" type="{{ .MediaType.Type }}" href="{{ .Permalink }}" title="{{ site.Title }}">
@@ -48,6 +62,26 @@
 <link rel="icon" type="image/svg+xml" href="{{ with site.Params.favicon }}{{ partial "util/rel-url.html" . | safeURL }}{{ else }}{{ "img/favicon.svg" | relURL }}{{ end }}">
 <link rel="alternate icon" type="image/x-icon" href="{{ "favicon.ico" | relURL }}">
 <link rel="apple-touch-icon" href="{{ "img/favicon.svg" | relURL }}">
+
+{{- /* 首页 WebSite + SearchAction（搜索框支持 ?q= 参数） */ -}}
+{{ if .IsHome }}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": {{ site.Title | jsonify }},
+  "url": {{ site.Home.Permalink | jsonify }},
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": {{ printf "%s?q={search_term_string}" site.Home.Permalink | jsonify }}
+    },
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+{{ end }}
 
 {{- /* JSON-LD */ -}}
 <script type="application/ld+json">
