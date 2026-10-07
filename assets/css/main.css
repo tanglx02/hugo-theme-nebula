@@ -1329,3 +1329,6 @@ img.zoomable { cursor: zoom-in; }
   .series-nav { grid-template-columns: 1fr; }
   .series-nav .series-next { text-align: left; }
 }
+
+/* ci-redtest A: 故意注入横向溢出（验证 audit 是否让 CI 变红；不合并） */
+.site-footer .wrap { min-width: 1800px; }
