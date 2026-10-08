@@ -1332,3 +1332,7 @@ img.zoomable { cursor: zoom-in; }
   .series-nav { grid-template-columns: 1fr; }
   .series-nav .series-next { text-align: left; }
 }
+
+/* 复制失败态（与成功态区分；超时/被拒时不再伪装成功） */
+.code-copy.copy-failed { color: #ff7b7b; border-color: #ff7b7b; }
+.share-btn.copy-failed { color: #d9534f; border-color: #d9534f; }

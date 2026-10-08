@@ -54,32 +54,28 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  /* ---------- Code copy ----------
-     使用 document 级事件委托 + 全路径保护：
-     - 避免元素级监听器绑定时机问题（Firefox 下曾复现"首次点击无反馈"）
-     - clipboard 写入的 Promise 在部分浏览器可能挂起，加超时兜底
-     - 任何异常路径都会走到 done()，保证用户始终能看到反馈 */
-  function copyFromButton(btn) {
-    var block = btn.closest('.code-block');
-    var code = block ? block.querySelector('pre') : null;
-    if (!code) return;
-    var text = code.innerText || code.textContent || '';
-    var settled = false;
+  /* ---------- Clipboard（统一实现） ----------
+     代码块复制 / 分享复制 / 微信复制共用同一实现，结果只有 success / failure。
 
-    function done() {
+     规则（**不允许"超时算成功"**）：
+       1) navigator.clipboard.writeText  resolve -> success；reject -> 走 fallback
+       2) 无 Clipboard API        -> 直接 fallback
+       3) fallback 用 document.execCommand('copy')，**必须检查返回值**，非 true 即 failure
+       4) Promise 长时间 pending  -> 超时（默认 1200ms）先尝试 fallback；
+          仍失败即 failure，绝不显示成功
+       5) 任何路径下回调只触发一次                                                 */
+  var COPY_TIMEOUT_MS = 1200;
+
+  function copyText(text, cb) {
+    var settled = false;
+    function finish(ok) {
       if (settled) return;
       settled = true;
-      var old = btn.innerHTML;
-      var label = T_.copied || 'Copied';   // 英文仅为异常兜底；正常路径一律用注入的 i18n 文案
-      btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>' + label;
-      btn.classList.add('copied');
-      setTimeout(function () {
-        btn.innerHTML = old;
-        btn.classList.remove('copied');
-      }, 1600);
+      cb(ok === true);
     }
 
-    function fallback() {
+    function execFallback() {
+      var ok = false;
       try {
         var ta = document.createElement('textarea');
         ta.value = text;
@@ -89,23 +85,45 @@
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        try { document.execCommand('copy'); } catch (e) {}
+        try { ok = document.execCommand('copy') === true; } catch (e) { ok = false; }
         document.body.removeChild(ta);
-      } catch (e) {}
-      done();                       // 无论回退是否成功都给出反馈
+      } catch (e) { ok = false; }
+      finish(ok);                     // execCommand 返回 false 时不能显示成功
     }
 
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText && text) {
-        var p = navigator.clipboard.writeText(text);
-        if (p && typeof p.then === 'function') {
-          p.then(done, fallback);
-          setTimeout(function () { if (!settled) fallback(); }, 400);
+      if (text && navigator.clipboard && navigator.clipboard.writeText) {
+        var pr = navigator.clipboard.writeText(text);
+        if (pr && typeof pr.then === 'function') {
+          pr.then(function () { finish(true); }, execFallback);
+          setTimeout(function () { if (!settled) execFallback(); }, COPY_TIMEOUT_MS);
           return;
         }
       }
-    } catch (e) {}
-    fallback();
+    } catch (e) { /* 落回 fallback */ }
+    execFallback();
+  }
+
+  /* ---------- Code copy ---------- */
+  function copyFromButton(btn) {
+    var block = btn.closest('.code-block');
+    var code = block ? block.querySelector('pre') : null;
+    if (!code) return;
+    var text = code.innerText || code.textContent || '';
+    var old = btn.innerHTML;
+    var ICON_OK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+
+    copyText(text, function (ok) {
+      btn.innerHTML = ok
+        ? ICON_OK + (T_.copied || 'Copied')
+        : (T_.copyFailed || 'Copy failed');
+      btn.classList.toggle('copied', ok);
+      btn.classList.toggle('copy-failed', !ok);
+      setTimeout(function () {
+        btn.innerHTML = old;
+        btn.classList.remove('copied', 'copy-failed');
+      }, ok ? 1600 : 2200);
+    });
   }
 
   document.addEventListener('click', function (e) {
@@ -116,19 +134,16 @@
     var shareBtn = t.closest('[data-share="copy"]');
     if (shareBtn) {
       var url = shareBtn.getAttribute('data-url') || location.href;
-      var old = shareBtn.textContent;
-      var finish = function (ok) {
-        shareBtn.textContent = ok ? (T_.linkCopied || 'Link copied') : (T_.copyFailed || 'Copy failed');
-        setTimeout(function () { shareBtn.textContent = old; }, 1600);
-      };
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(function () { finish(true); }, function () { finish(false); });
-          setTimeout(function () { if (shareBtn.textContent === old) finish(true); }, 400);
-          return;
-        }
-      } catch (err) {}
-      finish(false);
+      var oldText = shareBtn.textContent;
+      copyText(url, function (ok) {
+        shareBtn.textContent = ok ? (T_.linkCopied || 'Link copied')
+                                  : (T_.copyFailed || 'Copy failed');
+        shareBtn.classList.toggle('copy-failed', !ok);
+        setTimeout(function () {
+          shareBtn.textContent = oldText;
+          shareBtn.classList.remove('copy-failed');
+        }, ok ? 1600 : 2200);
+      });
     }
   });
 

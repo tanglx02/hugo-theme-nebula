@@ -40,6 +40,11 @@ rssLimit = 20
   [params.busuanzi]
     enable = false
 
+  # 分享（默认关闭；demo/示例站点开启以便演示与测试）
+  [params.share]
+    enable = true
+    providers = ['copy', 'x', 'telegram', 'facebook', 'weibo', 'wechat']
+
   # 评论：provider 可选 giscus / waline / twikoo / disqus
   [params.comments]
     enable = false

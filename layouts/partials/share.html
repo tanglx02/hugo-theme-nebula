@@ -31,7 +31,7 @@
              href="https://www.reddit.com/submit?url={{ $url | urlquery }}&title={{ $title | urlquery }}">Reddit</a>
         {{- else if eq $p "weibo" }}
           <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.weibo" }}"
-             href="https://service.weibo.com/share/share.php?url={{ $url | urlquery }}&title={{ $title | urlquery }}">微博</a>
+             href="https://service.weibo.com/share/share.php?url={{ $url | urlquery }}&title={{ $title | urlquery }}">{{ i18n "share.weiboLabel" }}</a>
         {{- else if eq $p "wechat" }}
           <button type="button" class="share-btn" data-share="copy" data-url="{{ $url }}"
                   aria-label="{{ i18n "share.wechat" }}">{{ i18n "share.wechatNote" }}</button>

@@ -12,6 +12,7 @@ common:
   close: 关闭
   copy: 复制
   copied: 已复制
+  copyFailed: 复制失败，请手动复制
   retry: 重试
   loading: 加载中…
   backToTop: 返回顶部
@@ -82,12 +83,12 @@ share:
   title: 分享
   copyLink: 复制链接
   linkCopied: 链接已复制
-  copyFailed: 复制失败，请手动复制
   x: 分享到 X
   telegram: 分享到 Telegram
   facebook: 分享到 Facebook
   reddit: 分享到 Reddit
   weibo: 分享到微博
+  weiboLabel: 微博
   wechat: 微信（复制链接后粘贴）
   wechatNote: 微信（复制链接）
 

@@ -107,15 +107,34 @@ def t_theme(page):
     page.wait_for_timeout(200)
 
 
+EXPECT_LANG_COPIED = {"zh-CN": "已复制", "zh-TW": "已複製", "en": "Copied"}
+
+
 def t_code_copy(page):
     page.goto(BASE + "/posts/04-suricata-elk/", wait_until="load")
     btn = page.locator(".code-copy").first
+    # 期望文案不写死：从页面注入的 NEBULA_I18N 读取，交互测试与 i18n 测试保持一致
+    expect = page.evaluate("() => (window.NEBULA_I18N || {}).copied || ''")
+    record("代码复制：期望文案来自 NEBULA_I18N.copied", bool(expect), f'"{expect}"')
+    lang = os.environ.get("PW_EXPECT_LANG", "").strip()
+    if lang:
+        want = EXPECT_LANG_COPIED.get(lang)
+        record(f"代码复制：{lang} 文案符合预期", want == expect, f'期望 "{want}" 实际 "{expect}"')
+
     btn.click()
-    timeline = []
-    for _ in range(6):
+    timeline, hit = [], False
+    for _ in range(8):
         page.wait_for_timeout(200)
-        timeline.append(btn.inner_text().strip()[:6])
-    record("代码复制按钮反馈", any("已复制" in t for t in timeline), " → ".join(timeline))
+        txt = btn.inner_text().strip()
+        timeline.append(txt[:8])
+        if expect and expect in txt:
+            hit = True
+            break
+    record(f"代码复制按钮反馈（期望「{expect}」）", hit, " → ".join(timeline))
+    # 提示结束后应恢复原文案（不是永久变成"已复制"）
+    page.wait_for_timeout(2000)
+    record("代码复制按钮文案已恢复", expect not in btn.inner_text().strip(),
+           f'"{btn.inner_text().strip()}"')
     clip = page.evaluate("() => navigator.clipboard.readText().catch(() => '')")
     record("剪贴板内容非空", len((clip or "").strip()) > 0, (clip or "")[:40].replace("\n", " "))
 

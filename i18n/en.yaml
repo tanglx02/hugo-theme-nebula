@@ -11,6 +11,7 @@ common:
   close: Close
   copy: Copy
   copied: Copied
+  copyFailed: Copy failed, please copy manually
   retry: Retry
   loading: Loading…
   backToTop: Back to top
@@ -81,12 +82,12 @@ share:
   title: Share
   copyLink: Copy link
   linkCopied: Link copied
-  copyFailed: Copy failed, please copy manually
   x: Share on X
   telegram: Share on Telegram
   facebook: Share on Facebook
   reddit: Share on Reddit
   weibo: Share on Weibo
+  weiboLabel: Weibo
   wechat: WeChat (copy link and paste)
   wechatNote: WeChat (copy link)
 

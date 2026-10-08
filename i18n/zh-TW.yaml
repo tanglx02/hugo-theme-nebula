@@ -11,6 +11,7 @@ common:
   close: 關閉
   copy: 複製
   copied: 已複製
+  copyFailed: 複製失敗，請手動複製
   retry: 重試
   loading: 載入中…
   backToTop: 回到頂部
@@ -81,12 +82,12 @@ share:
   title: 分享
   copyLink: 複製連結
   linkCopied: 連結已複製
-  copyFailed: 複製失敗，請手動複製
   x: 分享到 X
   telegram: 分享到 Telegram
   facebook: 分享到 Facebook
   reddit: 分享到 Reddit
   weibo: 分享到微博
+  weiboLabel: 微博
   wechat: 微信（複製連結後貼上）
   wechatNote: 微信（複製連結）
 
