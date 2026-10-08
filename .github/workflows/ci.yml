@@ -169,6 +169,12 @@ jobs:
       - name: Pagination discovery retry semantics (4 scenarios)
         run: python3 tools/test_pagination_retry.py
 
+      - name: Date format consistency (UI dates via i18n, machine formats whitelisted)
+        run: python3 tools/check_date_format.py
+
+      - name: Inventory self-consistency (URL normalization + collision guard)
+        run: python3 tools/test_inventory.py
+
       - name: SEO and feeds (robots / sitemap / RSS / description / test-data leak)
         run: python3 tools/check_seo.py public
 
@@ -248,6 +254,16 @@ jobs:
       - name: Build (production)
         run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
 
+      - name: Build en / zh-TW (for accessible-name checks)
+        run: |
+          cp tools/lang-en.toml exampleSite/_ci-en.toml
+          cp tools/lang-zh-TW.toml exampleSite/_ci-zhtw.toml
+          hugo --source exampleSite --themesDir ../.. --gc --minify \
+               --config hugo.toml,_ci-en.toml -d ../public-en
+          hugo --source exampleSite --themesDir ../.. --gc --minify \
+               --config hugo.toml,_ci-zhtw.toml -d ../public-zh-tw
+          rm -f exampleSite/_ci-en.toml exampleSite/_ci-zhtw.toml
+
       - name: Build (shard search mode, small chunkSize to force >= 2 chunks)
         run: |
           printf '\n[params.search]\n  mode = "shard"\n  chunkSize = 40000\n' > exampleSite/shard-override.toml
@@ -261,8 +277,11 @@ jobs:
         run: |
           nohup python3 tools/serve.py public 8080 > /tmp/serve-main.log 2>&1 &
           nohup python3 tools/serve.py public-shard 8090 > /tmp/serve-shard.log 2>&1 &
+          nohup python3 tools/serve.py public-en 8081 > /tmp/serve-en.log 2>&1 &
+          nohup python3 tools/serve.py public-zh-tw 8082 > /tmp/serve-zhtw.log 2>&1 &
           for i in $(seq 1 25); do
-            if curl -sf http://127.0.0.1:8080/ > /dev/null && curl -sf http://127.0.0.1:8090/ > /dev/null; then
+            if curl -sf http://127.0.0.1:8080/ > /dev/null && curl -sf http://127.0.0.1:8090/ > /dev/null \
+               && curl -sf http://127.0.0.1:8081/ > /dev/null && curl -sf http://127.0.0.1:8082/ > /dev/null; then
               echo "servers ready"; break; fi
             sleep 1
           done
@@ -285,6 +304,11 @@ jobs:
 
       - name: Lightbox — dialog / focus trap / keyboard / linked images
         run: python3 tools/verify_lightbox.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Search modal accessibility — 14 checks (focus trap / inert / restore / deep link / i18n)
+        env:
+          SEARCH_MODAL_URLS: 'http://127.0.0.1:8081,http://127.0.0.1:8082'
+        run: python3 tools/verify_search_modal.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search edge cases & race conditions
         if: matrix.browser == 'chromium'
@@ -310,6 +334,7 @@ jobs:
           if-no-files-found: ignore
 
   # ------------------------------------------- Release 门禁：全站页面完整扫描
+  # Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
   release-full-audit:
     name: Release full-site audit (${{ matrix.browser }})
     # 仅 tag 推送（v*）或手动触发时执行，避免拖慢每次 PR
@@ -356,7 +381,7 @@ jobs:
           nohup python3 tools/serve.py public 8080 > /tmp/serve.log 2>&1 &
           for i in $(seq 1 25); do curl -sf http://127.0.0.1:8080/ > /dev/null && break; sleep 1; done
           curl -sf -o /dev/null -w "main:%{http_code}\n" http://127.0.0.1:8080/
-      - name: Full-site audit (AUDIT_FULL=1, sitemap 全量页面)
+      - name: Full-site audit (AUDIT_FULL=1, build-product inventory truth)
         env:
           AUDIT_FULL: '1'
           AUDIT_BROWSERS: ${{ matrix.browser }}

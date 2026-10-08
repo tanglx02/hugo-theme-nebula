@@ -36,7 +36,8 @@
 - 📡 **RSS 增强**：标题 / 描述 / 作者 / 分类 / pubDate / updated，支持 `fullContent` 全文输出
 - 🔎 **SEO**：canonical、OG、Twitter Card、BlogPosting + WebSite JSON-LD、SearchAction、hreflang、sitemap、robots
 - ♿ **无障碍**：键盘可达、焦点可见、`prefers-reduced-motion`、触屏点击区 ≥ 24px
-- 🛡️ **发布门禁**：Release 全站审计覆盖 sitemap 全部 HTML 页面（含分类/标签 term 与分页），
+- 🛡️ **发布门禁**：Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
+  （覆盖别名页与 404 等 sitemap 之外的页面）
   三浏览器 × 四视口；i18n 硬编码静态扫描防回归；测试脚本失败一律 `exit 1`
 - ⚡ **默认零依赖**：无 jQuery / 无外部字体 / 默认无外部 CDN 请求；
   启用可选的评论或统计功能后，页面会加载对应第三方服务的资源（见下方"第三方服务说明"）

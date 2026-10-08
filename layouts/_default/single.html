@@ -44,10 +44,10 @@
           </span>
           {{ end }}
           {{ if $showLastmod }}
-            {{ if ne (.Lastmod.Format "2006-01-02") (.Date.Format "2006-01-02") }}
+            {{ if ne (.Lastmod.Format (i18n "common.dateFormat")) (.Date.Format (i18n "common.dateFormat")) }}
             <span class="stat">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
-              {{ i18n "post.updatedOn" }} {{ .Lastmod.Format "2006-01-02" }}
+              {{ i18n "post.updatedOn" }} {{ .Lastmod.Format (i18n "common.dateFormat") }}
             </span>
             {{ end }}
           {{ end }}
@@ -128,7 +128,7 @@
           {{ range . }}
             <a class="related-card" href="{{ .RelPermalink }}">
               <div class="t">{{ .Title }}</div>
-              <div class="d">{{ .Date.Format "2006-01-02" }} · {{ .ReadingTime }} min</div>
+              <div class="d">{{ .Date.Format (i18n "common.dateFormat") }} · {{ .ReadingTime }} min</div>
             </a>
           {{ end }}
         </div>

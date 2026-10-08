@@ -174,63 +174,165 @@
     updateTOC();
   }
 
+  /* ================================================================
+   * createModalA11y —— 轻量 Modal 无障碍工厂（零依赖）
+   *
+   * 为所有 dialog 型浮层（搜索弹窗、灯箱）提供同一套交互契约：
+   *   - 打开：焦点移入 initialFocus；背景 inert + aria-hidden
+   *   - Tab / Shift+Tab 在 dialog 内循环，焦点无法逃出
+   *   - Escape 关闭；可选点击遮罩关闭
+   *   - 关闭：解除 inert，并把焦点还给触发元素
+   *   - 快速重复 open/close 幂等，不会残留 inert 或焦点错乱
+   *   - 无触发元素时（如 ?q= 深链自动打开）退化为聚焦 dialog 自身，不报错
+   *
+   * 抽成工厂而不是各自复制：任何新增 modal 调用它即可满足同一份契约
+   * （见 docs/测试说明.md 的 Modal 无障碍标准）。
+   * ================================================================ */
+  function createModalA11y(opts) {
+    var root = opts.root;
+    if (!root) return null;
+
+    var OPEN_CLASS = opts.openClass || 'open';
+    var CLOSE_ON_OVERLAY = opts.closeOnOverlay !== false;
+    var BG_SELECTORS = ['.progress-bar', '.site-header', 'main', '.site-footer', '.to-top'];
+    var inertNodes = [];
+    var lastTrigger = null;
+    var isOpen = false;
+    var keyHandler = null;
+
+    function focusables() {
+      return $$('button, [href], input, select, textarea, [tabindex]', root)
+        .filter(function (el) {
+          return el.getAttribute('tabindex') !== '-1' &&
+            el.offsetWidth > 0 && el.offsetHeight > 0;
+        });
+    }
+
+    /* 背景不可键盘交互：原生 inert 优先；旧浏览器退化为 aria-hidden，
+       此时 focus trap 仍保证焦点不会落到背景上 */
+    function setBackgroundInert(on) {
+      if (on) {
+        inertNodes = [];
+        BG_SELECTORS.forEach(function (sel) {
+          $$(sel).forEach(function (n) {
+            if (!n || n === root || root.contains(n)) return;
+            if (n.hasAttribute('inert')) return;   // 已被其它 modal 标记，避免误解除
+            inertNodes.push({ node: n, hadAria: n.getAttribute('aria-hidden') });
+            n.setAttribute('inert', '');
+            n.setAttribute('aria-hidden', 'true');
+          });
+        });
+        // 另一个浮层（灯箱 / 搜索）若已打开，同样标记为背景
+        $$('.lightbox, .search-overlay').forEach(function (n) {
+          if (!n || n === root) return;
+          if (n.classList.contains(OPEN_CLASS) && !n.hasAttribute('inert')) {
+            inertNodes.push({ node: n, hadAria: null });
+            n.setAttribute('inert', '');
+            n.setAttribute('aria-hidden', 'true');
+          }
+        });
+      } else {
+        inertNodes.forEach(function (r) {
+          r.node.removeAttribute('inert');
+          if (r.hadAria == null) r.node.removeAttribute('aria-hidden');
+          else r.node.setAttribute('aria-hidden', r.hadAria);
+        });
+        inertNodes = [];
+      }
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      var f = focusables();
+      if (!f.length) { e.preventDefault(); root.focus(); return; }
+      var first = f[0], last = f[f.length - 1];
+      var active = document.activeElement;
+      if (!root.contains(active)) { e.preventDefault(); first.focus(); return; }
+      if (e.shiftKey && (active === first || active === root)) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault(); first.focus();
+      }
+    }
+
+    function open(triggerEl, initialText) {
+      if (isOpen) close();                 // 幂等：重复打开先清理上一轮
+      isOpen = true;
+      lastTrigger = triggerEl || null;
+      root.classList.add(OPEN_CLASS);
+      root.setAttribute('aria-hidden', 'false');
+      if (root.getAttribute('tabindex') === null) root.setAttribute('tabindex', '-1');
+      setBackgroundInert(true);
+      keyHandler = onKeydown;
+      document.addEventListener('keydown', keyHandler, true);
+      if (initialText != null) {
+        var inp = opts.input || $('input, textarea', root);
+        if (inp) inp.value = initialText;
+      }
+      var target = opts.initialFocus || focusables()[0] || root;
+      requestAnimationFrame(function () { target.focus(); });
+    }
+
+    function close() {
+      if (!isOpen) return;                 // 幂等
+      isOpen = false;
+      root.classList.remove(OPEN_CLASS);
+      root.setAttribute('aria-hidden', 'true');
+      setBackgroundInert(false);
+      if (keyHandler) {
+        document.removeEventListener('keydown', keyHandler, true);
+        keyHandler = null;
+      }
+      /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身 */
+      if (lastTrigger && document.contains(lastTrigger) &&
+          typeof lastTrigger.focus === 'function') {
+        try { lastTrigger.focus(); } catch (e) { try { root.focus(); } catch (e2) {} }
+      } else if (!root.contains(document.activeElement)) {
+        try { root.focus(); } catch (e) {}
+      }
+      lastTrigger = null;
+    }
+
+    if (CLOSE_ON_OVERLAY) {
+      root.addEventListener('click', function (e) {
+        if (e.target === root) close();
+      });
+    }
+
+    return {
+      open: open,
+      close: close,
+      isOpen: function () { return isOpen; },
+      focusables: focusables
+    };
+  }
+
   /* ---------- Image lightbox（完整 modal：dialog 语义 + Focus Trap） ----------
      - 仅对"未被链接包裹"的图片启用；[![img](x)](url) 保持浏览器原生跳转
      - 图片可键盘聚焦：Enter / Space 打开
-     - 打开后：焦点移入 dialog、背景 inert（不可键盘交互）、Tab/Shift+Tab 在 dialog 内循环
+     - 交互契约由 createModalA11y 提供：焦点移入、背景 inert、Tab/Shift+Tab 循环、Escape
      - 关闭：Esc / 关闭按钮 / 点击遮罩；关闭后焦点归还触发图片
   ------------------------------------------------------------------ */
   var lightbox = $('#lightbox');
   var lightboxEnabled = document.body.getAttribute('data-lightbox') !== 'false';
   if (lightbox && lightboxEnabled) {
     var lbImg = lightbox.querySelector('img');
-    var lastTrigger = null;
-    var inertNodes = [];
 
-    /* 背景不可通过键盘交互：优先使用原生 inert，旧的浏览器退化为 no-op（focus trap 仍生效） */
-    function setBackgroundInert(on) {
-      if (on) {
-        inertNodes = $$('.progress-bar, .site-header, main, .site-footer, .search-overlay, .to-top');
-        inertNodes.forEach(function (n) {
-          if (!n || n === lightbox || lightbox.contains(n)) return;
-          n.setAttribute('inert', '');
-          n.setAttribute('aria-hidden', 'true');
-        });
-      } else {
-        inertNodes.forEach(function (n) {
-          n.removeAttribute('inert');
-          n.removeAttribute('aria-hidden');
-        });
-        inertNodes = [];
-      }
-    }
-
-    function dialogFocusables() {
-      return $$('button, [href], input, select, textarea, [tabindex]', lightbox).filter(function (el) {
-        return el.getAttribute('tabindex') !== '-1' && el.offsetWidth > 0 && el.offsetHeight > 0;
-      });
-    }
+    var lbA11y = createModalA11y({ root: lightbox, closeOnOverlay: false });
 
     function openLightbox(img) {
-      lastTrigger = img;
       lbImg.src = img.getAttribute('data-zoom-src') || img.currentSrc || img.src;
       lbImg.alt = img.alt || '';
-      lightbox.classList.add('open');
-      lightbox.setAttribute('aria-hidden', 'false');
-      setBackgroundInert(true);
-      var f = dialogFocusables();
-      (f.length ? f[0] : lightbox).focus();   // 焦点移入 dialog 内
+      lbA11y.open(img);                       // 工厂负责 focus trap / inert / 焦点归还
     }
 
     function closeLightbox() {
-      if (!lightbox.classList.contains('open')) return;
-      lightbox.classList.remove('open');
-      lightbox.setAttribute('aria-hidden', 'true');
-      setBackgroundInert(false);
-      if (lastTrigger && document.contains(lastTrigger)) {
-        lastTrigger.focus();                  // 焦点归还
-      }
-      lastTrigger = null;
+      lbA11y.close();
     }
 
     $$('.post-content img').forEach(function (img) {
@@ -256,24 +358,17 @@
     }
     lbImg.addEventListener('click', function (e) { e.stopPropagation(); });
 
-    /* Focus Trap + Esc：仅在灯箱打开时接管键盘 */
-    document.addEventListener('keydown', function (e) {
-      if (!lightbox.classList.contains('open')) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeLightbox();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      var f = dialogFocusables();
-      if (!f.length) { e.preventDefault(); lightbox.focus(); return; }
-      var first = f[0], last = f[f.length - 1], active = document.activeElement;
-      if (e.shiftKey) {
-        if (active === first || !lightbox.contains(active)) { e.preventDefault(); last.focus(); }
-      } else {
-        if (active === last || !lightbox.contains(active)) { e.preventDefault(); first.focus(); }
-      }
-    });
+    /* Escape / Tab 由 createModalA11y 统一处理（capture 阶段），
+       此处不再重复监听，避免双重触发 */
+  }
+
+  /* 当前焦点是否处于文本输入上下文（输入框 / textarea / contenteditable） */
+  function isTypingContext() {
+    var a = document.activeElement;
+    if (!a) return false;
+    var tag = a.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return a.isContentEditable === true;
   }
 
   /* ---------- Search ---------- */
@@ -525,20 +620,23 @@
       els[selected].scrollIntoView({ block: 'nearest' });
     }
 
-    function open(initialQuery) {
-      overlay.classList.add('open');
+    /* 搜索弹窗接入统一 Modal 契约：焦点 trap / 背景 inert / Escape /
+       遮罩关闭 / 焦点恢复 / 幂等开关，全部由工厂实现 */
+    var searchA11y = createModalA11y({
+      root: overlay,
+      input: input,
+      initialFocus: input
+    });
+
+    function open(initialQuery, triggerEl) {
       document.body.style.overflow = 'hidden';
-      setTimeout(function () { input.focus(); }, 30);
-      if (typeof initialQuery === 'string' && initialQuery) {
-        input.value = initialQuery;     // 支持 ?q= 深链
-      }
+      searchA11y.open(triggerEl || null, initialQuery);   // 工厂负责其余交互
       loadIndex();            // 打开即预取索引
       render(input.value);    // render 内部会 await 索引，避免竞态
     }
     function close() {
-      overlay.classList.remove('open');
       document.body.style.overflow = '';
-      input.blur();
+      searchA11y.close();
     }
 
     if (retryBtn) {
@@ -550,13 +648,12 @@
       });
     }
 
-    if (trigger) trigger.addEventListener('click', function () { open(); });
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    if (trigger) trigger.addEventListener('click', function () { open('', trigger); });
 
     // 支持 ?q= 深链（与 JSON-LD SearchAction 对应）
     try {
       var initialQ = new URLSearchParams(window.location.search).get('q');
-      if (initialQ) { open(initialQ); }
+      if (initialQ) { open(initialQ, null); }   // deep link: no trigger element
     } catch (e) {}
 
     // 输入防抖：大索引下避免每次按键都全量扫描
@@ -575,9 +672,18 @@
     });
 
     document.addEventListener('keydown', function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open(); }
-      if (e.key === '/' && document.activeElement === document.body) { e.preventDefault(); open(); }
-      if (e.key === 'Escape' && overlay.classList.contains('open')) close();
+      if (overlay.classList.contains('open')) return;   // 打开时 Escape/Tab 由工厂处理
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        open('', document.activeElement && document.activeElement !== document.body
+          ? document.activeElement : null);
+      }
+      /* "/" 快捷键：在**非输入上下文**时打开（焦点在 body、链接或按钮上都可以，
+         正在输入文本时不应劫持按键） */
+      if (e.key === '/' && !isTypingContext()) {
+        e.preventDefault();
+        open('', null);
+      }
     });
   }
 })();

@@ -9,18 +9,25 @@
   - 移动端点击区域过小（正文内联链接按 WCAG 1.4.10 内联豁免，不计入）
 
 **页面范围**
-  * 默认（抽样）：关键入口 + 分类/标签 term + 分页 + 文章页抽样 —— 每次 PR 使用
-  * `AUDIT_FULL=1`（全站）：sitemap 中**全部可审计 HTML 页面** —— Release 门禁
 
-  全站模式下会打印并断言：
-      SITEMAP HTML PAGES / AUDITED HTML PAGES / SKIPPED INTENTIONAL ENDPOINTS
-  二者数量必须一致，否则判为致命错误。
+  Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
+
+  * 默认（抽样）：关键入口 + 分类/标签 term + 分页 + 文章页抽样 —— 每次 PR 使用
+  * `AUDIT_FULL=1`（全站，Release 门禁）：以 `tools/html_inventory.py` 扫描构建产物
+    得到的 EXPECTED HTML URLS 为真值，硬断言 EXPECTED == AUDITED；
+    sitemap 仅做可解析性与 URL 合法性检查。
+
+  全站模式会打印并断言（任一不满足即 exit 1）：
+      PUBLIC HTML FILES / FILESYSTEM EXPECTED URLS / SITEMAP HTML URLS
+      AUDITED HTML URLS / MISSING URLS = 0 / UNEXPECTED URLS = 0
+      DISCOVERY FAILURES = 0 / PAGINATION EXHAUSTED = YES
 
 **懒加载**：每页进入后先记录初始态 → 分步滚动到底触发 lazy → 等待图片完成
 （有上限）→ 滚回顶部 → 有界等待网络静默 → 再做全部检查。
 
 退出码约定（见 tools/_testlib.py）：
-  * 发现任一问题 / 浏览器启动失败 / sitemap 获取失败 / 站点不可达 / 脚本异常 -> exit 1
+  * 发现任一问题 / 浏览器启动失败 / sitemap 获取失败 / inventory 覆盖不完整 /
+    分页发现失败或未耗尽 / 站点不可达 / 脚本异常 -> exit 1
 
 输出：tools/audit_report.json
 """
@@ -44,7 +51,7 @@ OUT = os.path.join(ROOT, "tools", "audit_report.json")
 BUILD_DIR = os.environ.get("AUDIT_BUILD_DIR", os.path.join(ROOT, "public"))
 FULL = os.environ.get("AUDIT_FULL", "").strip() not in ("", "0", "false", "False")
 
-# 抽样模式下的关键入口（全站模式下这些页面本身也在 sitemap 中）
+# 抽样模式下的关键入口（全站模式以构建产物 inventory 为真值，此处仅供抽样使用）
 KEY_URLS = ["/", "/posts/", "/categories/", "/tags/", "/archives/", "/about/"]
 
 # 明确"不是 HTML 页面"的 endpoint：不计入 HTML 审计，但会被显式列出并计数。
@@ -669,7 +676,10 @@ def run(h):
         print(f"PAGINATION EXHAUSTED = {'YES' if crawl.get('exhausted') else 'NO'}")
         print(f"DISCOVERY ATTEMPTS = {crawl.get('discovery_attempts')} "
               f"(RETRIES = {crawl.get('discovery_retries')})")
-        print(f"构建产物分类: {inv.get('by_class')}")
+        print("构建产物分类（alias 也必须审计，不得排除）:")
+        for kind, cnt in sorted((inv.get("by_class") or {}).items()):
+            print(f"    - {kind:6s} {cnt}")
+        print(f"    - {'other':6s} {inv.get('other_count', 0)}")
         if inv.get("excluded"):
             print("显式登记的排除项（不应为空而不说明）:")
             for u, why in inv["excluded"]:

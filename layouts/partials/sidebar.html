@@ -49,7 +49,7 @@
         <span class="mini-rank">{{ add $i 1 }}</span>
         <span>
           <a class="mini-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
-          <div class="mini-date">{{ .Date.Format "2006-01-02" }}</div>
+          <div class="mini-date">{{ .Date.Format (i18n "common.dateFormat") }}</div>
         </span>
       </li>
     {{ end }}

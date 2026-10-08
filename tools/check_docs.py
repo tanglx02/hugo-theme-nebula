@@ -25,6 +25,19 @@ from _testlib import Harness, guard
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+# Release 全站审计的**准确表述**（必须出现在 audit.py / CI / 文档中）
+REQUIRED_TRUTH_WORDING = "以构建产物 HTML inventory 为真值"
+
+# 禁止的过时表述：把 sitemap 当作全站真值
+STALE_PHRASES = [
+    "sitemap 中**全部可审计 HTML 页面**",
+    "sitemap 中全部 HTML 页面",
+    "sitemap 全部 HTML 页面",
+    "覆盖 sitemap 全部 HTML 页面",
+    "扫描 sitemap 中全部",
+    "sitemap + pagination = 全站",
+]
+
 # 绝对化表述：出现即判失败
 FORBIDDEN_PHRASES = [
     "零外部 CDN 请求",
@@ -45,6 +58,31 @@ REQUIRED_MEANINGS = [
     ("启用后加载第三方", ["启用可选评论", "启用评论", "启用可选的评论",
                           "开启后会", "启用评论/统计"]),
 ]
+
+
+def check_truth_wording(h):
+    """Release 全站审计的表述一致性（准确表述必须在场，过时表述必须缺席）。"""
+    targets = [
+        ("tools/audit.py", os.path.join(ROOT, "tools", "audit.py")),
+        (".github/workflows/ci.yml", os.path.join(ROOT, ".github", "workflows", "ci.yml")),
+        ("README.md", os.path.join(ROOT, "README.md")),
+    ]
+    missing, stale = [], []
+    for label, path in targets:
+        if not os.path.isfile(path):
+            missing.append(f"{label}(文件不存在)")
+            continue
+        text = open(path, encoding="utf-8").read()
+        if REQUIRED_TRUTH_WORDING not in text:
+            missing.append(f"{label} 缺少准确表述")
+        for ph in STALE_PHRASES:
+            if ph in text:
+                line_no = text[: text.index(ph)].count("\n") + 1
+                stale.append(f"{label}:{line_no} 仍写着「{ph}」")
+    h.record("audit.py / CI / README 均声明「inventory 为全站真值」",
+             not missing, "；".join(missing) if missing else "三处均已声明")
+    h.record("无「sitemap = 全站」类过时表述",
+             not stale, "；".join(stale[:3]) if stale else "无过时表述")
 
 
 def run(h):
@@ -95,6 +133,9 @@ def run(h):
              "默认关闭" in readme or "默认均为 false" in readme
              or "enable = false" in readme,
              "已说明默认关闭")
+
+    # ⓹ Release 全站审计表述一致性
+    check_truth_wording(h)
 
     # ⑤ CHANGELOG 存在且有当前版本
     chg = os.path.join(ROOT, "CHANGELOG.md")

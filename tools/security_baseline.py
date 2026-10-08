@@ -139,6 +139,41 @@ def check_html(path, rel, hits):
             hits.append(("unexpected-third-party-domain", rel, url[:80]))
 
 
+# ---------- 浮层（dialog 型 modal）无障碍契约 ----------
+# 任何新增 modal 都必须满足：role / aria-modal / 可访问名称（静态层）；
+# 交互层（focus owner / focus restore / Escape / 背景 inert）由
+# tools/verify_search_modal.py 与 tools/verify_lightbox.py 在浏览器里验证。
+OVERLAY_REQUIRED_ATTRS = ("role=", "aria-modal=", "aria-label=")
+OVERLAY_A11Y_HITS = []
+OVERLAY_RE = re.compile(
+    r'<(?:div|section)[^>]*class=(?:"[^"]*"|\'[^\']*\'|[^\s>]+)'
+    r'[^>]*>', re.I)
+
+
+def check_overlays(build_dir, hits):
+    for dirpath, _, names in os.walk(build_dir):
+        for n in names:
+            if not n.endswith(".html"):
+                continue
+            f = os.path.join(dirpath, n)
+            rel = os.path.relpath(f, build_dir).replace("\\", "/")
+            try:
+                html = open(f, encoding="utf-8").read()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for tag in OVERLAY_RE.findall(html):
+                if "role=" not in tag:
+                    continue                    # 不是 dialog 型浮层
+                if not re.search(r'(overlay|lightbox|modal)', tag, re.I):
+                    continue                    # class 不是浮层
+                missing = [a for a in OVERLAY_REQUIRED_ATTRS if a not in tag]
+                if missing:
+                    hits.append(("dialog-aria", rel,
+                                 f"浮层缺少 {', '.join(missing)} :: {tag[:70]}"))
+                else:
+                    OVERLAY_A11Y_HITS.append(rel)
+
+
 def check_source(root, hits, wl_hits):
     """主题源码：危险 JS API + unsafe 配置。"""
     targets = []
@@ -200,8 +235,15 @@ def run(h):
                 n += 1
                 rel = os.path.relpath(os.path.join(dirpath, name), BUILD_DIR)
                 check_html(os.path.join(dirpath, name), rel.replace("\\", "/"), hits)
+    check_overlays(BUILD_DIR, hits)
     check_source(THEME, hits, wl_hits)
     print(f"扫描 HTML 文件: {n} 个；主题源码: {THEME}")
+
+    # 浮层 dialog 语义（role / aria-modal / 可访问名称）
+    if OVERLAY_A11Y_HITS:
+        print(f"浮层 dialog 语义合规: {len(OVERLAY_A11Y_HITS)} 处")
+        for item in OVERLAY_A11Y_HITS[:6]:
+            print("   ", item)
 
     # 白名单命中（必须可见）
     if wl_hits:

@@ -35,6 +35,7 @@ import argparse
 import json
 import os
 import re
+import sys
 
 # 这些路径即便出现在 public/ 下也不是站点页面（当前无预留，每项必须给理由）
 EXCLUDE_PATHS = {
@@ -56,7 +57,9 @@ def normalize_url(rel_path):
         p = p[: -len("index.html")]
     elif p == "index.html":
         p = ""
-    return "/" + quote(p, safe="/~!*()'-._")
+    # safe 里包含 "%"：文件系统里可能已存在 percent-encoded 的目录名
+    # （Hugo 某些输出），若不保留会被二次编码成 %25...
+    return "/" + quote(p, safe="/~!*()'-._%")
 
 
 def classify(url, content):
@@ -67,6 +70,15 @@ def classify(url, content):
             or re.search(r'http-equiv=["\']?refresh', content):
         return "alias"
     return "site"
+
+
+class InventoryCollision(Exception):
+    """两个不同 HTML 文件规范化成同一 URL —— inventory 失去可信度。"""
+
+    def __init__(self, collisions, build_dir):
+        self.collisions = collisions
+        self.build_dir = build_dir
+        super().__init__(f"{len(collisions)} 组 URL 冲突")
 
 
 def scan(build_dir, read_content=True):
@@ -83,11 +95,18 @@ def scan(build_dir, read_content=True):
     files.sort()
 
     urls, by_class, excluded = [], {}, []
+    owner = {}          # url -> 产生它的文件（用于检测 normalize 冲突）
+    collisions = []    # [(url, file_a, file_b), ...]
     for rel, full in files:
         url = normalize_url(rel)
         if rel in EXCLUDE_PATHS:
             excluded.append((url, EXCLUDE_PATHS[rel]))
             continue
+        if url in owner and owner[url] != rel:
+            # 两个不同文件规范化成同一 URL —— inventory 本身就不可信，必须失败
+            collisions.append((url, owner[url], rel))
+            continue
+        owner[url] = rel
         content = ""
         if read_content:
             try:
@@ -98,12 +117,18 @@ def scan(build_dir, read_content=True):
         kind = classify(url, content)
         urls.append(url)
         by_class.setdefault(kind, []).append(url)
+    if collisions:
+        raise InventoryCollision(collisions, build_dir)
     return {
         "build_dir": os.path.abspath(build_dir),
         "public_html_files": len(files),
         "expected_html_urls": urls,
         "expected_count": len(urls),
         "by_class": {k: len(v) for k, v in sorted(by_class.items())},
+        # other = 未落入 site/alias/error 任一分类的页面（当前分类已全覆盖，恒为 0；
+        # 保留该字段以便将来新增分类时仍能看到"未归类"数量）
+        "other_count": len([u for u in urls
+                             if not any(u in v for v in by_class.values())]),
         "class_samples": {k: v[:2] for k, v in sorted(by_class.items())},
         "urls_by_class": {k: sorted(v) for k, v in sorted(by_class.items())},
         "excluded": excluded,
@@ -134,7 +159,16 @@ def main():
     ap.add_argument("build_dir", nargs="?", default="public")
     ap.add_argument("--json", help="把 inventory 写入该 json 文件")
     args = ap.parse_args()
-    inv = scan(args.build_dir)
+    try:
+        inv = scan(args.build_dir)
+    except InventoryCollision as e:
+        print(f"FAIL  构建产物存在 {len(e.collisions)} 组 URL 冲突"
+              f"（不同 HTML 文件规范化成同一 URL，inventory 已不可信）:")
+        for url, a, b in e.collisions[:10]:
+            print(f"    - {url}")
+            print(f"        {a}")
+            print(f"        {b}")
+        sys.exit(1)
     report(inv)
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
