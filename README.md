@@ -31,10 +31,13 @@
 - 🖼️ **灯箱**：`role=dialog` + Focus Trap（Tab 循环、背景 inert、Esc 关闭、焦点归还）
 - 🌍 **i18n**：内置 `zh-CN` / `zh-TW` / `en`
 - 🔀 **多 Section**：内容范围通过 `params.content.sections` 配置，不写死 `posts`
-- 🔗 **分享**：可选开关（复制链接 / X / Telegram / Facebook / Reddit / 微博 / 微信）
+- 🔗 **分享**：可选开关（复制链接 / X / Telegram / Facebook / Reddit / 微博 / 微信），
+  复制失败会明确提示"复制失败，请手动复制"，**绝不把超时/被拒伪装成成功**
 - 📡 **RSS 增强**：标题 / 描述 / 作者 / 分类 / pubDate / updated，支持 `fullContent` 全文输出
 - 🔎 **SEO**：canonical、OG、Twitter Card、BlogPosting + WebSite JSON-LD、SearchAction、hreflang、sitemap、robots
 - ♿ **无障碍**：键盘可达、焦点可见、`prefers-reduced-motion`、触屏点击区 ≥ 24px
+- 🛡️ **发布门禁**：Release 全站审计覆盖 sitemap 全部 HTML 页面（含分类/标签 term 与分页），
+  三浏览器 × 四视口；i18n 硬编码静态扫描防回归；测试脚本失败一律 `exit 1`
 - ⚡ **零依赖**：无 jQuery / 无外部字体 / 无 CDN
 
 ## 环境要求
@@ -404,12 +407,40 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- |
 | Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 |
-| Static checks | 死链、索引完整性、功能断言、**i18n 三语言构建与文案校验**、**多 Section 完整回归**、auto 阈值分片 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、灯箱 Focus Trap、搜索边界与竞态、**分片失败深层关键词语义**、三种 baseURL 部署 |
-| Release full-site audit | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 扫描 sitemap 中**全部页面** |
+| Static checks | 死链、索引完整性、功能断言、**i18n 静态硬编码扫描**、**i18n 三语言构建与文案校验**、**多 Section 完整回归**、auto 阈值分片 |
+| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、**复制语义专项**、灯箱 Focus Trap、搜索边界与竞态、**分片失败深层关键词语义**、三种 baseURL 部署 |
+| Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 扫描 sitemap 中**全部 HTML 页面**（320/375/768/1440），并断言覆盖了分类 term、标签 term、分页、归档等必需页面类型 |
 
-> PR 阶段用抽样页面（`posts[:8]` + 分类/标签各 5 个）保证时长可控；
-> Release 阶段用全量页面。二者的覆盖面差异在验收报告里分别标注。
+> PR 阶段用抽样页面保证时长可控；Release 阶段用全量页面。
+> 全站模式会打印 `SITEMAP HTML PAGES` / `EXTRA PAGINATION PAGES` / `AUDITED HTML PAGES`
+> 并断言三者一致 —— **抽样冒充全站会被直接判失败**。
+>
+> Hugo 的 sitemap 不包含 `/page/N/`，这些分页页由审计脚本沿站点真实链接抓取并单独计数。
+
+### 全站审计的覆盖保证
+
+`AUDIT_FULL=1` 不只是"跑得多"，还会主动证明没有漏：
+
+- **数量一致**：`sitemap_html + extra_pagination == audited_html`，对不上即失败；
+- **类型齐全**：`分类 term / 标签 term / page/2/ / page/3/ / 分类首页 / 标签首页 / 归档页 / 文章页`
+  任一类型缺失即失败；
+- **白名单精确匹配**：故意缺失的测试资源按 **pathname 精确比对**豁免。
+  绝不使用 `endswith` —— 否则 `/images/not-exist.png` 这类真实损坏资源会被误豁免成假绿灯。
+
+### 复制行为的硬性约定
+
+代码块复制、分享复制链接、微信复制共用同一实现，**结果只有成功 / 失败两种**：
+
+| 场景 | 结果 |
+| --- | --- |
+| `navigator.clipboard.writeText` resolve | 成功 |
+| `writeText` reject | 走 fallback |
+| `writeText` 长时间 pending（>1200ms） | 走 fallback，**绝不显示成功** |
+| 无 Clipboard API | 走 fallback |
+| `document.execCommand('copy')` 返回非 `true` | **失败**（显示"复制失败，请手动复制"） |
+
+`tools/verify_copy.py` 对以上每条路径都有断言（13 例），并对代码块按钮、
+分享按钮、微信按钮分别验证。
 
 ### 本地运行
 
@@ -421,10 +452,14 @@ python3 tools/serve.py public 8080 &   # 独立静态服务器（勿用 hugo ser
 python3 tools/link_check.py public                 # 死链（失败即 exit 1）
 python3 tools/check_index.py public/index.json     # 索引完整性
 python3 tools/check_features.py public             # 功能断言（26 项）
-python3 tools/verify_i18n.py public zh-CN          # UI 文案是否来自 i18n
+python3 tools/check_i18n_hardcode.py               # UI 文案是否被写死进模板/脚本
+python3 tools/verify_i18n.py public zh-CN          # 渲染结果文案是否来自 i18n
 SITE_DIR=exampleSite HUGO_ARGS='--source . --themesDir ../..' \
   python3 tools/verify_multisection.py             # 多 Section 完整回归
 AUDIT_BROWSERS=chromium python3 tools/audit.py http://127.0.0.1:8080
+AUDIT_FULL=1 AUDIT_BROWSERS=chromium AUDIT_VIEWPORTS=320,375,768,1440 \
+  python3 tools/audit.py http://127.0.0.1:8080     # 等价于 Release 全站审计
+python3 tools/verify_copy.py http://127.0.0.1:8080 chromium   # 复制语义（13 例）
 PW_BROWSERS=chromium python3 tools/interactions.py http://127.0.0.1:8080
 python3 tools/verify_lightbox.py http://127.0.0.1:8080 chromium
 python3 tools/verify_search_edge.py http://127.0.0.1:8080
@@ -432,7 +467,55 @@ python3 tools/verify_search_shard.py http://127.0.0.1:8090 chromium
 python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录体积/请求数/耗时/内存）
 ```
 
+> `check_i18n_hardcode.py` 会自动定位主题源码目录：命令行参数 > `NEBULA_THEME_DIR` >
+> 仓库根 > 站点侧 `myblog/themes/hugo-theme-nebula`；全部候选都不合格时报错退出，
+> 不会因为"扫不到文件"而静默通过。
+
+
 ## 更新日志
+
+### v1.0.5 — 发布门禁与测试覆盖修复
+
+**发布门禁**
+
+- Release 全站审计从"chromium 单浏览器 2 视口"升级为 **chromium / firefox / webkit 三浏览器 ×
+  320/375/768/1440 四视口**，并接入复制语义与交互回归
+- 全站审计**取消了 taxonomy / page 排除**：v1.0.4 的 `AUDIT_FULL=1` 实际漏掉分类、标签 term 页与
+  `/page/N/` 分页页，122 个 sitemap 页里只审了 105 个。现覆盖 **122 + 3 分页 = 125 个 HTML 页面**
+- 新增两条硬断言，防止"抽样冒充全站"：
+  - `sitemap_html + extra_pagination == audited_html`（数量对不上即失败）
+  - 分类 term / 标签 term / `page/2/` / `page/3/` / 分类首页 / 标签首页 / 归档页 / 文章页
+    任一类型缺失即失败
+- Hugo sitemap 不含 `/page/N/`，改为沿站点真实链接多轮抓取分页，并单独计数
+
+**复制行为的真实缺陷**
+
+- 此前 `writeText` 的 Promise 若长时间 pending，400ms 后走 fallback，而 fallback **不检查
+  `execCommand` 返回值**就调用成功回调 —— 复制实际失败，界面却提示"已复制"
+- 修复后：只有 clipboard resolve 才算成功；reject / pending 超时 / 无 Clipboard API /
+  `execCommand` 返回非 `true`，**一律判失败**并提示"复制失败，请手动复制"
+- 超时阈值 400ms → 1200ms；代码块复制、分享复制链接、微信复制统一到同一个 `copyText` 实现
+- 新增 `common.copyFailed`（zh-CN / zh-TW / en）与 `.copy-failed` 失败态样式
+
+**i18n 防回归**
+
+- 新增 `tools/check_i18n_hardcode.py`：扫描 `layouts/**/*.html` 与 `assets/**/*.js`，
+  命中 36 个禁用 UI 文案即失败（注释、`i18n` 调用、README 除外）
+- 扫描到 0 个文件时同样 `exit 1`，不会因路径解析错误而静默通过；
+  主题目录按 `命令行参数 > NEBULA_THEME_DIR > 仓库根 > 站点主题副本` 依次探测
+- `tools/interactions.py` 的复制断言改为读取 `NEBULA_I18N.copied`，不再写死"已复制"
+
+**四次故意注入验证（门禁非假绿）**
+
+| # | 注入内容 | 预期变红的 CI 步骤 | Run |
+| --- | --- | --- | --- |
+| 1 | 复制超时重新伪装成成功 | Copy semantics（chromium / firefox） | `37711591702` |
+| 2 | `share.copyLink` 改回硬编码中文 | i18n static check | `37712114477` |
+| 3 | 全站审计静默丢弃分类 term 页 | Release full-site audit（三浏览器） | `37713385742` |
+| 4 | 文章内引入真实损坏资源 `/images/not-exist.png` | 死链检查 + 三浏览器 Audit | `37713921224` |
+
+第 4 项附带做了 A/B 对照：把白名单从 pathname 精确匹配放宽为 `endswith` 后，
+审计报 `0 问题`（假绿）；换回精确匹配后报 `3 个 broken-image`（正确判红）。
 
 ### v1.0.4 — CI 可靠性终验
 
