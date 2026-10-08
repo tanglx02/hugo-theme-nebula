@@ -294,18 +294,27 @@ def settle_lazy_images(page, budget_ms=8000):
 
     def pending_now():
         """返回未完成图片的**明细**（而不只是数量），便于 CI 日志直接定位。"""
+        # 故意缺失的测试资源（白名单）不应计入"未加载"——它们本来就加载不出来。
+        # 判定 broken-image 时已按 pathname 精确豁免，这里必须同步豁免，
+        # 否则同一张图会先被豁免一次、又被判"未完成"一次（CI 上表现为 Release 审计挂掉）。
+        exempt = json.dumps(list(INTENTIONAL_MISSING_PATHS))
         try:
             return page.evaluate(
-                base + """
+                base + f"""
                 .filter(i => !i.complete || i.naturalWidth === 0)
-                .map(i => ({
+                .filter(i => !({exempt}).includes((i.currentSrc || i.getAttribute('src') || '')
+                                                 .replace(/^https?:\\/\\/[^/]+/, '')
+                                                 .replace(/[?#].*$/, '')))
+                .map(i => ({{
                     src: (i.currentSrc || i.getAttribute('src') || '').split('/').pop(),
+                    path: (i.currentSrc || i.getAttribute('src') || '')
+                             .replace(/^https?:\\/\\/[^/]+/, '').replace(/[?#].*$/, ''),
                     complete: i.complete,
                     nw: i.naturalWidth,
                     loading: i.getAttribute('loading') || '',
                     w: Math.round(i.getBoundingClientRect().width),
                     h: Math.round(i.getBoundingClientRect().height)
-                }))""")
+                }}))""")
         except Exception:
             return []
 
