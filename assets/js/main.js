@@ -490,7 +490,7 @@
       results.innerHTML = hits.map(function (x, i) {
         var it = x.it;
         var snippet = snippetFor(it, terms);
-        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + it.url + '">' +
+        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(it.url) + '">' +
           '<div class="t">' + highlight(it.title, terms) + '</div>' +
           '<div class="p">' + esc(it.date) + (snippet ? ' · ' + highlight(snippet, terms) : '') + '</div>' +
           '</a>';

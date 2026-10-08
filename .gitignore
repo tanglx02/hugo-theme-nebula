@@ -30,3 +30,6 @@ tools/bench-*.json
 # Python 缓存
 __pycache__/
 *.pyc
+
+# inventory 交叉验证产物（由 tools/html_inventory.py 生成）
+tools/html_inventory.json

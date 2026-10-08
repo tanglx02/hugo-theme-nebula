@@ -32,12 +32,15 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _testlib import Harness, launch, reachable, guard  # noqa: E402
+from html_inventory import scan as scan_inventory  # noqa: E402
 
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "tools", "audit_report.json")
+# Release 全站模式的真值来自构建产物 inventory；可用 AUDIT_BUILD_DIR 覆盖
+BUILD_DIR = os.environ.get("AUDIT_BUILD_DIR", os.path.join(ROOT, "public"))
 FULL = os.environ.get("AUDIT_FULL", "").strip() not in ("", "0", "false", "False")
 
 # 抽样模式下的关键入口（全站模式下这些页面本身也在 sitemap 中）
@@ -158,26 +161,62 @@ def is_article_page(path):
 
 PAGINATION_HREF_RE = re.compile(r'href=["\']?([^"\'> ]*/page/\d+/)')
 
+DISCOVERY_RETRIES = 2          # 每个 URL 的重试次数（总尝试 = 1 + 2 = 3 次）
 
-def discover_pagination(base, seeds, limit=None):
-    """队列耗尽式分页发现（Hugo 的 sitemap **不包含** /page/N/）。
 
-    从种子页（所有 sitemap HTML 列表页 / 分类 term / 标签 term / 归档等
-    可能产生分页的页面）出发做 BFS：解析页面上所有含 /page/N/ 的链接，
-    新发现的分页页继续入队抓取，**直到队列耗尽（没有任何新分页页）为止**。
+def _fetch_once(base, path):
+    """单次抓取。返回 (html, failure_reason)，不做重试。
 
-    终止条件只有两个：
-      * 队列耗尽               -> 正常完成，meta["exhausted"] = True；
-      * 发现数达到 limit        -> **异常终止**，meta["exhausted"] = False，
-        调用方必须判定"未完成全站审计"并 FAIL，绝不允许继续判 PASS。
+    重试由 _fetch_with_retry 负责 —— 这样注入的假 fetch 也能被重试覆盖，
+    重试语义才可被 tools/test_pagination_retry.py 真实验证。
+    """
+    try:
+        with urllib.request.urlopen(base + path, timeout=10) as r:
+            return r.read().decode("utf-8", "ignore"), None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {str(e)[:80]}"
 
-    不允许用固定轮数当完成条件；rounds 只是记录实际跑了几轮 BFS。
 
-    limit 默认取环境变量 AUDIT_PAGINATION_LIMIT（默认 10000），
-    是防失控的安全上限，不是覆盖目标。
+def _fetch_with_retry(fetch, base, path, stats):
+    """带重试的抓取。全部重试失败才返回失败 —— **不再静默 continue**。"""
+    last_err = None
+    for attempt in range(DISCOVERY_RETRIES + 1):
+        stats["attempts"] += 1
+        html, err = fetch(base, path)
+        if err is None:
+            return html, None
+        last_err = err
+        if attempt < DISCOVERY_RETRIES:
+            stats["retries"] += 1
+            if stats["retries"] <= 10:
+                print(f"  [retry {attempt + 1}/{DISCOVERY_RETRIES}] {path} -> {err}")
+    return None, last_err
+
+
+def discover_pagination(base, seeds, limit=None, fetch=None):
+    """队列耗尽式分页发现（Hugo 的 sitemap 不包含 /page/N/）。
+
+    从种子页（列表页 / 分类 term / 标签 term / 归档等所有可能产生分页的页面）
+    出发做 BFS：解析页面上所有含 /page/N/ 的链接，新发现的分页页继续入队，
+    **直到队列耗尽（没有任何新分页页）为止**。
+
+    完成条件必须同时满足：
+      * 队列耗尽；
+      * discovery_failures 为空。
+
+    任何一次抓取在耗尽重试后仍失败，都记入 discovery_failures，
+    FULL 模式下据此判 FAIL —— 绝不允许"抓取失败 + 队列空 + 判 PASS"。
+
+    limit 是防失控的安全上限，不是覆盖目标：达到即 exhausted=False，
+    调用方必须判定"未完成全站审计"并 FAIL。
+
+    fetch 仅用于测试注入（默认走真实 HTTP）。
     """
     if limit is None:
         limit = int(os.environ.get("AUDIT_PAGINATION_LIMIT", "10000"))
+    if fetch is None:
+        fetch = _fetch_once
+
     found = set()
     visited = set()
     queue = []
@@ -187,15 +226,21 @@ def discover_pagination(base, seeds, limit=None):
             queue.append(p)
     rounds = 0
     limit_reached = False
+    stats = {"attempts": 0, "retries": 0}
+    failures = []
 
     while queue and not limit_reached:
         rounds += 1
         next_frontier = []
         for page_path in queue:
-            try:
-                with urllib.request.urlopen(base + page_path, timeout=10) as r:
-                    html = r.read().decode("utf-8", "ignore")
-            except Exception:
+            html, err = _fetch_with_retry(fetch, base, page_path, stats)
+            if err is not None:
+                failures.append({"url": page_path, "error": err})
+                if len(failures) <= 10:
+                    print(f"  [discovery-failure] {page_path} -> {err}")
+                elif len(failures) == 11:
+                    print("  [discovery-failure] ...（后续失败不再逐条打印，"
+                          "最终以 DISCOVERY FAILURES 计数判定）")
                 continue
             for href in PAGINATION_HREF_RE.findall(html):
                 path = path_of(href if href.startswith("/") else "/" + href)
@@ -211,12 +256,18 @@ def discover_pagination(base, seeds, limit=None):
                 break
         queue = next_frontier
 
+    queue_exhausted = not queue
     meta = {
         "discovered": len(found),
         "rounds": rounds,
         "limit": limit,
-        "exhausted": not limit_reached,
+        "queue_exhausted": queue_exhausted,
+        "discovery_attempts": stats["attempts"],
+        "discovery_retries": stats["retries"],
+        "discovery_failures": failures,
         "limit_reached": limit_reached,
+        # 只有队列耗尽且零失败才算覆盖完整
+        "exhausted": queue_exhausted and not failures and not limit_reached,
     }
     return sorted(found), meta
 
@@ -235,7 +286,8 @@ def get_urls(base, full=False):
     """
     stats = {"sitemap_total": 0, "sitemap_html": 0, "extra_pagination": 0,
              "skipped": [], "audited_html": 0, "missing_specials": [], "sitemap_ok": False,
-             "pagination_crawl": None}
+             "pagination_crawl": None, "sitemap_bad_urls": [],
+             "sitemap_only_urls": [], "not_in_sitemap": []}
     html_pages = []
     try:
         with urllib.request.urlopen(base + "/sitemap.xml", timeout=15) as r:
@@ -255,15 +307,43 @@ def get_urls(base, full=False):
         stats["sitemap_html"] = len(html_pages)
         stats["skipped"] = skipped
         stats["sitemap_ok"] = len(locs) > 0
+        # sitemap 独立质量检查：URL 必须合法
+        stats["sitemap_bad_urls"] = [l for l in locs
+                                     if not l.startswith(("http://", "https://"))]
     except Exception as e:
         print("sitemap error:", e)
 
     if full:
-        seeds = [p for p in html_pages if not is_article_page(p)] or ["/", "/posts/"]
+        # ---- Release 全站真值 = 构建产物 inventory（不是 sitemap）----
+        inv = scan_inventory(BUILD_DIR)
+        stats["inventory"] = inv
+        expected = list(inv["expected_html_urls"])
+        stats["public_html_files"] = inv["public_html_files"]
+
+        # sitemap 仅作为独立 SEO 索引检查，不再充当全站真值
+        stats["sitemap_only_urls"] = [p for p in html_pages
+                                      if p not in set(expected)]
+        stats["not_in_sitemap"] = [p for p in expected
+                                   if p not in set(html_pages)]
+
+        # 分页发现：种子取 inventory 中的"正常内容页且非文章页"
+        # （alias 页本身不含分页链接，抓它纯属浪费；它仍在审计列表里）
+        alias_urls = set(inv.get("urls_by_class", {}).get("alias", []))
+        seeds = [p for p in expected
+                 if not is_article_page(p) and p not in alias_urls] or ["/", "/posts/"]
         extra, crawl = discover_pagination(base, seeds)
         stats["pagination_crawl"] = crawl
-        urls = list(html_pages) + [p for p in extra if p not in set(html_pages)]
-        stats["extra_pagination"] = len(urls) - len(html_pages)
+        stats["extra_pagination"] = len([p for p in extra if p not in set(expected)])
+
+        # 审计 URL = inventory 真值 + sitemap 独有的 URL + 新发现的分页
+        urls = list(expected) + [p for p in html_pages if p not in set(expected)]
+        urls += [p for p in extra if p not in set(urls)]
+        seen, uniq = set(), []
+        for u in urls:
+            if u not in seen:
+                seen.add(u)
+                uniq.append(u)
+        urls = uniq
         stats["audited_html"] = len(urls)
         for name, pred in REQUIRED_COVERAGE:
             if not any(pred(p) for p in urls):
@@ -275,6 +355,8 @@ def get_urls(base, full=False):
         pages = [p for p in html_pages if "/page/" in p]
         if not pages:      # sitemap 不含分页，抽样时按需抓一份（抽样模式允许小额上限）
             pages, _ = discover_pagination(base, ["/", "/posts/"], limit=20)
+            if pages:
+                stats["pagination_crawl_sampled"] = True
         other = [p for p in html_pages
                  if p not in posts + cats + tags + pages]
         sample = list(KEY_URLS) + posts[:6] + cats[:3] + tags[:3] + pages[:3] + other[:4]
@@ -534,49 +616,134 @@ def run(h):
 
     urls, stats = get_urls(BASE, full=FULL)
     crawl = stats.get("pagination_crawl") or {}
-    print(f"模式: {'FULL（全站）' if FULL else 'SAMPLED（抽样）'}")
-    print(f"SITEMAP HTML PAGES = {stats['sitemap_html']} (sitemap <loc> 总数 {stats['sitemap_total']})")
-    if FULL:
-        print(f"DISCOVERED PAGINATION PAGES = {crawl.get('discovered')} "
-              f"(Hugo sitemap 不含 /page/N/，队列耗尽式爬取发现)")
-        print(f"PAGINATION CRAWL ROUNDS = {crawl.get('rounds')}  LIMIT = {crawl.get('limit')}")
-        print("PAGINATION CRAWL = "
-              + ("exhausted（队列耗尽，覆盖完整）" if crawl.get("exhausted")
-                 else "LIMIT REACHED（达到安全上限，未完成全站发现）"))
-    print(f"AUDITED HTML PAGES = {stats['audited_html']}")
-    if stats["skipped"]:
-        print(f"SKIPPED INTENTIONAL ENDPOINTS = {len(stats['skipped'])}")
-        for p, why in stats["skipped"][:10]:
-            print(f"    - {p}  ({why})")
-    else:
-        print("SKIPPED INTENTIONAL ENDPOINTS = 0")
-    print(f"探针页面: /this-page-does-not-exist/ (404.html)  |  本次实际加载 {len(urls)} 个 URL")
+    inv = stats.get("inventory") or {}
+    loaded_urls = set()      # 实际加载过的 HTML URL（用于报告与交叉验证）
 
+    # ---------------- 覆盖证明（Release 报告的核心数字）----------------
+    print(f"模式: {'FULL（全站）' if FULL else 'SAMPLED（抽样）'}")
+    PROBE = "/this-page-does-not-exist/"     # 404 探针：故意不存在的 URL，不参与 inventory 比对
+    if FULL:
+        expected = set(inv.get("expected_html_urls") or [])
+        audited = set(urls) - {PROBE}
+        missing = sorted(expected - audited)
+        unexpected = sorted(audited - expected)
+        sitemap_urls = set(stats.get("sitemap_only_urls") or []) | set(expected) - set(
+            stats.get("not_in_sitemap") or [])
+        print("=== Release HTML 覆盖证明 ===")
+        print(f"PUBLIC HTML FILES = {inv.get('public_html_files')}")
+        print(f"FILESYSTEM EXPECTED URLS = {len(expected)}")
+        print(f"SITEMAP HTML URLS = {stats['sitemap_html']}")
+        print(f"DISCOVERED PAGINATION URLS = {crawl.get('discovered')} "
+              f"(其中 inventory 之外的新增: {stats.get('extra_pagination')})")
+        print("  注：分页页本身也在构建产物中，crawler 的作用是交叉验证"
+              "没有 inventory 之外的分页遗漏")
+        print(f"AUDITED HTML URLS = {len(audited)}")
+        print(f"MISSING URLS = {len(missing)}" + (f" {missing[:5]}" if missing else ""))
+        print(f"UNEXPECTED URLS = {len(unexpected)}" + (f" {unexpected[:5]}" if unexpected else ""))
+        print(f"DISCOVERY FAILURES = {len(crawl.get('discovery_failures') or [])}")
+        print(f"PAGINATION EXHAUSTED = {'YES' if crawl.get('exhausted') else 'NO'}")
+        print(f"DISCOVERY ATTEMPTS = {crawl.get('discovery_attempts')} "
+              f"(RETRIES = {crawl.get('discovery_retries')})")
+        print(f"构建产物分类: {inv.get('by_class')}")
+        if inv.get("excluded"):
+            print("显式登记的排除项（不应为空而不说明）:")
+            for u, why in inv["excluded"]:
+                print(f"    - {u} ({why})")
+        # sitemap 与 inventory 的双向差异（可观测性）
+        only_sitemap = sorted(set(stats.get("sitemap_only_urls") or []))
+        not_in_sitemap = sorted(set(stats.get("not_in_sitemap") or []))
+        print(f"仅在 sitemap、不在构建产物: {len(only_sitemap)}")
+        print(f"在构建产物、被 sitemap 排除: {len(not_in_sitemap)}（例如 /page/1/ 别名页）")
+        if not_in_sitemap[:3]:
+            print(f"    例: {not_in_sitemap[:3]}")
+    else:
+        expected = set()
+        audited = set(urls) - {PROBE}
+        missing = unexpected = []
+        print(f"SITEMAP HTML PAGES = {stats['sitemap_html']} (sitemap <loc> 总数 {stats['sitemap_total']})")
+        print(f"AUDITED HTML PAGES = {stats['audited_html']}")
+    if stats["skipped"]:
+        print(f"SKIPPED NON-HTML ENDPOINTS = {len(stats['skipped'])}")
+        for p_, why in stats["skipped"][:10]:
+            print(f"    - {p_}  ({why})")
+    else:
+        print("SKIPPED NON-HTML ENDPOINTS = 0")
+    print(f"404 PROBE = 1 ({PROBE}，不参与 inventory 比对)"
+          f"  |  本次实际加载 {len(urls)} 个 URL")
+
+    # ---------------- 硬断言 ----------------
     if not stats["sitemap_ok"]:
-        h.fatal_error("sitemap 获取失败", f"{BASE}/sitemap.xml 无法解析，无法枚举站点页面")
+        h.fatal_error("sitemap 检查失败", f"{BASE}/sitemap.xml 无法解析")
         return
-    if FULL and (stats["audited_html"] - stats["extra_pagination"]) != stats["sitemap_html"]:
-        h.fatal_error("全站审计页面数与 sitemap 不一致",
-                      f"sitemap 页 {stats['sitemap_html']}，实际审计 sitemap 页 "
-                      f"{stats['audited_html'] - stats['extra_pagination']}")
+    if stats.get("sitemap_bad_urls"):
+        h.fatal_error("sitemap 含非法 URL", str(stats["sitemap_bad_urls"][:5]))
         return
-    if FULL and crawl and not crawl.get("exhausted"):
-        h.fatal_error("分页爬取达到安全上限，未完成全站发现（pagination crawl limit reached）",
-                      f"发现 {crawl.get('discovered')} 个分页页即达到 limit={crawl.get('limit')}，"
-                      f"可能仍有未发现的分页页。判定：未完成全站审计。"
-                      f"如确需更大规模，请调高 AUDIT_PAGINATION_LIMIT。")
-        return
-    if FULL and stats["missing_specials"]:
-        h.fatal_error("全站审计缺少必需页面类型", "、".join(stats["missing_specials"]))
-        return
+    if FULL:
+        # ⓪ 与 check_html_quality 的 inventory 交叉验证
+        # （两套检查必须用同一份规范化结果；任何一套漏掉都要 CI 红）
+        inv_json = os.path.join(ROOT, "tools", "html_inventory.json")
+        if os.path.isfile(inv_json):
+            with open(inv_json, encoding="utf-8") as f:
+                other = json.load(f)
+            other_urls = set(other.get("expected_html_urls") or [])
+            only_audit = sorted(expected - other_urls)
+            only_other = sorted(other_urls - expected)
+            print(f"交叉验证 check_html_quality inventory: "
+                  f"{len(other_urls)} 个 URL"
+                  f"{'（一致）' if not only_audit and not only_other else '（不一致）'}")
+            if only_audit or only_other:
+                h.fatal_error("audit 与 HTML quality 的 inventory 不一致",
+                              f"仅 audit 有: {only_audit[:5]}；"
+                              f"仅 HTML quality 有: {only_other[:5]}")
+                return
+            h.record("audit 与 HTML quality inventory 完全一致",
+                     True, f"{len(other_urls)} 个 URL")
+        else:
+            print("交叉验证: 未找到 tools/html_inventory.json（跳过，"
+                  "CI 中 static-checks 会先生成）")
+
+        # ① 构建产物 inventory 100% 被审计
+        if missing:
+            h.fatal_error("构建产物中存在未被审计的 HTML（inventory 覆盖不完整）",
+                          f"缺失 {len(missing)} 个: {missing[:8]}")
+            return
+        if unexpected:
+            h.fatal_error("审计了构建产物中不存在的 URL",
+                          f"多出 {len(unexpected)} 个: {unexpected[:8]}")
+            return
+        # ② 分页发现零失败
+        fails = crawl.get("discovery_failures") or []
+        if fails:
+            h.fatal_error("分页发现存在抓取失败（不允许 fetch failed + exhausted）",
+                          "；".join(f"{f['url']} -> {f['error']}" for f in fails[:5]))
+            return
+        # ③ 队列耗尽（未达上限）
+        if not crawl.get("exhausted"):
+            if crawl.get("limit_reached"):
+                detail = (f"发现 {crawl.get('discovered')} 个分页页即达到 "
+                          f"limit={crawl.get('limit')}，可能仍有未发现的分页页。"
+                          f"判定：未完成全站审计。")
+            else:
+                detail = "队列未耗尽或存在抓取失败，判定：未完成全站发现。"
+            h.fatal_error("分页爬取未完成（未耗尽 / 达到安全上限）", detail)
+            return
+        if stats["missing_specials"]:
+            h.fatal_error("全站审计缺少必需页面类型", "、".join(stats["missing_specials"]))
+            return
     if len(urls) < 5:
         h.fatal_error("可审计 URL 过少", f"仅 {len(urls)} 条")
         return
 
     if FULL:
-        h.record("全站审计覆盖 sitemap 全部 HTML 页面",
-                 True, f"{stats['audited_html']} 页")
-        h.record("分页爬取已耗尽（pagination crawl exhausted）",
+        h.record("Release 覆盖：构建产物 HTML 100% 被审计（inventory 真值）",
+                 not missing, f"{len(expected)} 个 URL，缺失 {len(missing)}")
+        h.record("Release 覆盖：无审计产物中不存在的 URL",
+                 not unexpected, f"多出 {len(unexpected)} 个")
+        h.record("分页发现零失败（discovery_failures = 0）",
+                 not crawl.get("discovery_failures"),
+                 f"attempts={crawl.get('discovery_attempts')} "
+                 f"retries={crawl.get('discovery_retries')}")
+        h.record("分页爬取已耗尽（exhausted）",
                  bool(crawl.get("exhausted")),
                  f"rounds={crawl.get('rounds')} limit={crawl.get('limit')} "
                  f"discovered={crawl.get('discovered')}")
@@ -601,7 +768,9 @@ def run(h):
     print("浏览器计划:", {k: f"{len(v)} 视口 × {len(urls)} 页" for k, v in plan.items()})
 
     report = {"coverage": {**stats, "mode": "full" if FULL else "sampled",
-                           "urls": len(urls), "plan": plan}}
+                           "urls": len(urls), "plan": plan,
+                           "loaded_urls": sorted(loaded_urls),
+                           "expected_urls": sorted(expected) if FULL else []}}
     by_type = {}
     total_problems = 0
     ignored_log = []
@@ -622,6 +791,8 @@ def run(h):
                 page = ctx.new_page()
                 vp_problems = 0
                 for url in urls:
+                    if url not in loaded_urls:
+                        loaded_urls.add(url)
                     probs = check_page(page, url, vp, int(vp) <= 430, ignored_log)
                     if probs:
                         browser_report.setdefault(vp, {})[url] = probs

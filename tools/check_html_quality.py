@@ -34,6 +34,7 @@ import sys
 from html.parser import HTMLParser
 
 from _testlib import Harness, guard
+from html_inventory import scan as scan_inventory
 
 DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
 
@@ -229,6 +230,16 @@ def run(h):
     if not os.path.isdir(DIR):
         h.fatal_error("构建目录不存在", DIR)
         return
+    # 构建产物 inventory（与 audit.py 使用同一模块、同一 URL 规范化）
+    inv = scan_inventory(DIR)
+    print(f"PUBLIC HTML FILES = {inv['public_html_files']}")
+    print(f"EXPECTED HTML URLS = {inv['expected_count']}")
+    print("分类明细:", inv["by_class"])
+    if inv["excluded"]:
+        print("显式登记的排除项:")
+        for u, why in inv["excluded"]:
+            print(f"    - {u} ({why})")
+
     files = []
     for dirpath, _, names in os.walk(DIR):
         for n in names:
@@ -237,6 +248,15 @@ def run(h):
     if not files:
         h.fatal_error("未扫描到 HTML 文件", DIR)
         return
+    h.record("HTML quality 扫描的文件数与 inventory 一致",
+             len(files) == inv["public_html_files"],
+             f"扫描 {len(files)} 个，inventory {inv['public_html_files']} 个")
+    # inventory 落盘，供 audit.py 交叉验证
+    out_json = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "html_inventory.json")
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(inv, f, ensure_ascii=False, indent=1)
+    print(f"inventory 已写入 {out_json}（audit.py 将读取它做交叉验证）")
 
     by_rule = {}
     total = 0
