@@ -1,0 +1,16 @@
+# 统一换行符：仓库内一律 LF。
+# 否则 Windows 工作区的 CRLF 会让 `git status` 出现“假改动”（内容完全相同）。
+* text=auto eol=lf
+
+# 二进制资源不做换行符转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.avif binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
