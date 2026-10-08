@@ -504,6 +504,34 @@ python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录
 
 ## 更新日志
 
+> 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v1.0.6 — 长期开发基线（分页门禁 / 多语言 / 文档纠正）
+
+**发布门禁**
+
+- 分页发现由固定 3 轮改为**队列耗尽式 BFS**；安全上限（默认 10000）达到即判"未完成全站审计"并 FAIL
+- 新增 `check_pagination.py`（1/3/10/100 分页 + 分类/标签/多 section + 上限语义，19 项）
+- 新增 `check_html_quality.py`（alt / button type / 重复 id / 嵌套 / heading / aria / noopener / JSON-LD）
+- 新增 `check_seo.py`（robots / sitemap / RSS / description / 测试数据泄漏）
+- 新增 `verify_multilingual.py`（真实 zh-CN + en 构建回归，23 项）
+- 新增 `check_comments.py`（provider 渲染 + locale + 关闭时零第三方资源，12 项）
+
+**真实缺陷修复**
+
+- 评论组件 locale 不再硬编码 `zh-CN`，跟随站点语言并支持 per-provider 覆盖
+- 全站 516 处 `<button>` 补 `type="button"`；widget 标题 `h3 → h2` 消除 heading 跳级
+- hreflang 改用 `LanguageCode`（不再输出小写 `zh-cn`）；og:locale 输出 `zh_CN` 规范格式并补 alternate
+- `verify_i18n.py` 兼容 minify 产物形态、去掉硬编码压测文件名
+
+**文档**
+
+- 更正 CDN 表述：**默认无外部 CDN 请求**；启用评论/统计后加载第三方资源（附各服务行为清单）
+- 新增第三方服务说明、多语言站点说明、`docs/性能基线.md`（实测数据）、`CHANGELOG.md`
+
+**门禁可信度**：五次故意故障注入（分页达上限 / 漏分页页 / 评论写死语言 / 重复 id / 缺 alt）
+全部使 CI 真实变红，恢复后九项静态检查与全站审计全绿。
+
 ### v1.0.5 — 发布门禁与测试覆盖修复
 
 **发布门禁**
