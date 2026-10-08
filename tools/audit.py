@@ -399,6 +399,21 @@ def _loaded_expr():
 
 REVIEW_ROUNDS = 2      # 首轮之后的复查轮数（预算逐轮加倍）
 
+# 逐图驻留：把仍未完成的图片 scrollIntoView 并短暂停留。
+# 浏览器的懒加载实现允许在图片离开视口时取消加载；audit 的快速滚动
+# （每步 40ms）可能让 webkit 还没开始请求就滚过去了。驻留给它一个
+# 真正的加载机会 —— 这不是放宽阈值，最终判定标准不变。
+DWELL_JS = """
+async () => {
+  const pend = Array.from(document.images).filter(i => !i.complete);
+  for (const img of pend) {
+    img.scrollIntoView({ block: 'center' });
+    await new Promise(r => setTimeout(r, 90));
+  }
+  return pend.length;
+}
+"""
+
 
 def settle_lazy_images(page, budget_ms=8000):
     """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默 -> 复查。
@@ -467,6 +482,11 @@ def settle_lazy_images(page, budget_ms=8000):
     for attempt in range(1, REVIEW_ROUNDS + 1):
         if not pending:
             break
+        # 先让每张未完成的图片真正进入视口并停留，再滚动 + 给预算
+        try:
+            page.evaluate(DWELL_JS)
+        except Exception:
+            pass
         try:
             page.evaluate(SCROLL_JS)
         except Exception:
