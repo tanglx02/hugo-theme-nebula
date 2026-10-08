@@ -1,0 +1,6 @@
+# 测试 / CI 用：启用 Twikoo 评论
+[params.comments]
+  enable = true
+  provider = 'twikoo'
+  [params.comments.twikoo]
+    envId = 'https://twikoo.example.com'

@@ -1,8 +1,17 @@
 {{- /* 评论系统：giscus / waline / disqus / twikoo，通过 site.Params.comments 配置，默认关闭 */ -}}
+{{- /* 语言映射：第三方组件 locale 跟随当前 Hugo 语言，允许按 provider 覆盖。
+     只收录第三方服务真实支持的 locale；未命中映射时原样传递，不强造。 */ -}}
+{{- $lang := lower (site.Language.Lang) -}}
+{{- $locMap := dict
+      "zh" "zh-CN" "zh-cn" "zh-CN" "zh-hans" "zh-CN"
+      "zh-tw" "zh-TW" "zh-hant" "zh-TW" "zh-hk" "zh-TW"
+      "en" "en" "en-us" "en" "en-gb" "en" -}}
+{{- $loc := index $locMap $lang | default (site.Language.Lang) -}}
+
 {{- $c := site.Params.comments -}}
 {{- if and $c (eq $c.enable true) -}}
 <div class="card" id="comments" style="padding:26px 30px;margin-top:22px">
-  <h3 class="widget-title">{{ i18n "comment.title" }}</h3>
+  <h2 class="widget-title">{{ i18n "comment.title" }}</h2>
 
   {{ if eq $c.provider "giscus" }}
     <script src="https://giscus.app/client.js"
@@ -16,7 +25,7 @@
       data-emit-metadata="0"
       data-input-position="bottom"
       data-theme="{{ $c.giscus.theme | default "preferred_color_scheme" }}"
-      data-lang="zh-CN"
+      data-lang="{{ $c.giscus.lang | default $loc }}"
       crossorigin="anonymous"
       async>
     </script>
@@ -28,7 +37,7 @@
       init({
         el: '#waline',
         serverURL: '{{ $c.waline.serverURL }}',
-        lang: 'zh-CN',
+        lang: '{{ $c.waline.lang | default $loc }}',
         emoji: ['https://unpkg.com/@waline/emojis@1.2.0/weibo'],
         requiredMeta: ['nick'],
         dark: 'auto'
@@ -38,7 +47,7 @@
     <div id="tcomment"></div>
     <script src="https://cdn.jsdelivr.net/npm/twikoo@1.6.39/dist/twikoo.all.min.js"></script>
     <script>
-      twikoo.init({ envId: '{{ $c.twikoo.envId }}', el: '#tcomment', lang: 'zh-CN' });
+      twikoo.init({ envId: '{{ $c.twikoo.envId }}', el: '#tcomment', lang: '{{ $c.twikoo.lang | default $loc }}' });
     </script>
   {{ else if eq $c.provider "disqus" }}
     <div id="disqus_thread"></div>

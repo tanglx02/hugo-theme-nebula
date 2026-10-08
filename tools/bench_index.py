@@ -28,7 +28,7 @@ os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
 os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-THEME = os.path.join(ROOT, "hugo-theme-nebula")
+THEME = ROOT                      # 仓库根即主题根（tools/ 的上一级）
 WORK = os.path.join(ROOT, "tmp", "bench")
 HUGO = os.environ.get("HUGO_BIN", "hugo")
 SIZES = [int(x) for x in (sys.argv[1].split(",") if len(sys.argv) > 1 else ["500", "1000", "2000"])]

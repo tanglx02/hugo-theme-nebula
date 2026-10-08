@@ -1,0 +1,6 @@
+# 测试 / CI 用：启用 Disqus 评论
+[params.comments]
+  enable = true
+  provider = 'disqus'
+  [params.comments.disqus]
+    shortname = 'nebula-test'

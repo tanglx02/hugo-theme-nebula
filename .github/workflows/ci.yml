@@ -152,6 +152,27 @@ jobs:
           HUGO_ARGS: '--source . --themesDir ../..'
         run: python3 tools/verify_multisection.py
 
+      - name: HTML quality (alt / button type / dup id / nesting / heading / aria / noopener)
+        run: python3 tools/check_html_quality.py public
+
+      - name: SEO and feeds (robots / sitemap / RSS / description / test-data leak)
+        run: python3 tools/check_seo.py public
+
+      - name: Comments - provider rendering, locale follows site language, off means no third-party
+        env:
+          HUGO_BIN: hugo
+        run: python3 tools/check_comments.py
+
+      - name: Pagination discovery - queue-exhaustion crawl (1/3/10/100 pages, term and multi-section)
+        env:
+          HUGO_BIN: hugo
+        run: python3 tools/check_pagination.py
+
+      - name: Multilingual regression - real zh-CN + en build (hreflang / canonical / og / search / series)
+        env:
+          HUGO_BIN: hugo
+        run: python3 tools/verify_multilingual.py
+
       - name: Auto shard threshold check
         run: |
           set -e

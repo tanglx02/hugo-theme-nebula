@@ -4,7 +4,7 @@
 [![Hugo](https://img.shields.io/badge/Hugo-%E2%89%A5%200.128-blue)](https://gohugo.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖、零外部 CDN 请求。
+面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖；默认配置下无外部 CDN 请求（启用可选评论/统计功能后会加载对应第三方服务资源，见下方说明）。
 
 | 亮色 | 暗色 |
 | --- | --- |
@@ -38,7 +38,8 @@
 - ♿ **无障碍**：键盘可达、焦点可见、`prefers-reduced-motion`、触屏点击区 ≥ 24px
 - 🛡️ **发布门禁**：Release 全站审计覆盖 sitemap 全部 HTML 页面（含分类/标签 term 与分页），
   三浏览器 × 四视口；i18n 硬编码静态扫描防回归；测试脚本失败一律 `exit 1`
-- ⚡ **零依赖**：无 jQuery / 无外部字体 / 无 CDN
+- ⚡ **默认零依赖**：无 jQuery / 无外部字体 / 默认无外部 CDN 请求；
+  启用可选的评论或统计功能后，页面会加载对应第三方服务的资源（见下方"第三方服务说明"）
 
 ## 环境要求
 
@@ -169,6 +170,35 @@ hugo server -D      # 打开 http://localhost:1313
   [params.busuanzi]
     enable = false
 ```
+
+### 第三方服务说明（可选功能）
+
+主题**默认配置下不加载任何第三方资源**（已由 CI 断言）。以下功能一旦启用，
+页面会加载对应第三方服务的脚本/样式，其可用性与隐私政策由服务方决定：
+
+| 功能 | 服务 | 加载的资源 | 备注 |
+| --- | --- | --- | --- |
+| 评论（giscus） | giscus.app | `https://giscus.app/client.js` 及其 iframe | locale 跟随站点语言，可用 `comments.giscus.lang` 覆盖 |
+| 评论（Waline） | Waline + unpkg | `unpkg.com` 上的 CSS/JS + 你自建的 `serverURL` | locale 跟随站点语言，可用 `comments.waline.lang` 覆盖 |
+| 评论（Twikoo） | Twikoo + jsDelivr | `cdn.jsdelivr.net` 上的 JS + 你自建的 `envId` | locale 跟随站点语言，可用 `comments.twikoo.lang` 覆盖 |
+| 评论（Disqus） | disqus.com | `https://<shortname>.disqus.com/embed.js` 及其 iframe | Disqus 无 locale 参数，语言在其后台配置 |
+| 访问统计（busuanzi） | busuanzi.ibruce.info | 不蒜子统计脚本 | 仅 `params.busuanzi.enable = true` 时加载 |
+| 浏览量（views） | 你自己的统计后端 | 取决于 `params.views` 配置 | 默认关闭 |
+
+评论组件语言映射：站点语言 `zh` / `zh-cn` / `zh-hans` → `zh-CN`；
+`zh-tw` / `zh-hant` / `zh-hk` → `zh-TW`；`en` / `en-us` / `en-gb` → `en`。
+未命中映射的语言会原样传给第三方组件，不会强造不存在的 locale。
+
+### 多语言站点
+
+主题完整支持 Hugo multilingual（`[languages]` 配置）：
+
+- 页面 `<html lang>`、`og:locale`（含 `og:locale:alternate`）、`hreflang` 自动输出；
+- UI 文案内置 zh-CN / zh-TW / en 三语言，评论组件 locale 跟随站点语言；
+- 分类、标签、Series、搜索索引、RSS 均按语言隔离。
+
+主题**没有语言切换按钮**——语言切换通过 URL 结构与 `<link rel="alternate" hreflang>` 完成
+（如 zh-CN 在根路径、en 在 `/en/` 子路径），这是有意为之的轻量设计。
 
 ### 导航菜单
 

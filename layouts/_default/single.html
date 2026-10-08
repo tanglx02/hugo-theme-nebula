@@ -123,7 +123,7 @@
       {{- $related := first 3 (union $sameCat $others) -}}
       {{ with $related }}
       <div class="card related" style="padding:22px 26px;margin-top:22px">
-        <h3 class="widget-title">{{ i18n "post.related" }}</h3>
+        <h2 class="widget-title">{{ i18n "post.related" }}</h2>
         <div class="related-grid">
           {{ range . }}
             <a class="related-card" href="{{ .RelPermalink }}">
@@ -146,10 +146,10 @@
     {{ with .TableOfContents }}
       {{ if gt (len .) 60 }}
         <div class="widget toc-card toc">
-          <h3 class="widget-title">
+          <h2 class="widget-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
             {{ i18n "common.toc" }}
-          </h3>
+          </h2>
           {{ . }}
         </div>
       {{ end }}

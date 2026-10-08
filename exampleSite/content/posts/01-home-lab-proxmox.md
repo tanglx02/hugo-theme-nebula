@@ -8,6 +8,8 @@ tags: ["虚拟化", "实验室", "Proxmox"]
 categories: ["环境搭建"]
 cover: "/img/cover/lab.svg"
 sticky: true
+series: ["Home Lab 实战"]
+series_order: 1
 toc: true
 ---
 

@@ -156,34 +156,69 @@ def is_article_page(path):
     return bool(re.fullmatch(r"/[^/]+/[^/]+/", path)) and "/page/" not in path
 
 
-def discover_pagination(base, seeds, max_urls=800, rounds=3):
-    """发现分页页面（Hugo 的 sitemap **不包含** /page/N/）。
+PAGINATION_HREF_RE = re.compile(r'href=["\']?([^"\'> ]*/page/\d+/)')
 
-    从列表页/分类/标签 term 页里抓取 `.pagination` 中的 /page/N/ 链接，
-    再对发现的分页页继续抓（有轮次与数量上限），保证覆盖全部分页。
+
+def discover_pagination(base, seeds, limit=None):
+    """队列耗尽式分页发现（Hugo 的 sitemap **不包含** /page/N/）。
+
+    从种子页（所有 sitemap HTML 列表页 / 分类 term / 标签 term / 归档等
+    可能产生分页的页面）出发做 BFS：解析页面上所有含 /page/N/ 的链接，
+    新发现的分页页继续入队抓取，**直到队列耗尽（没有任何新分页页）为止**。
+
+    终止条件只有两个：
+      * 队列耗尽               -> 正常完成，meta["exhausted"] = True；
+      * 发现数达到 limit        -> **异常终止**，meta["exhausted"] = False，
+        调用方必须判定"未完成全站审计"并 FAIL，绝不允许继续判 PASS。
+
+    不允许用固定轮数当完成条件；rounds 只是记录实际跑了几轮 BFS。
+
+    limit 默认取环境变量 AUDIT_PAGINATION_LIMIT（默认 10000），
+    是防失控的安全上限，不是覆盖目标。
     """
-    found, seen_seed = set(), set()
-    worklist = list(seeds)
-    for _ in range(rounds):
-        next_round = []
-        for p in worklist:
-            if p in seen_seed or len(found) >= max_urls:
-                continue
-            seen_seed.add(p)
+    if limit is None:
+        limit = int(os.environ.get("AUDIT_PAGINATION_LIMIT", "10000"))
+    found = set()
+    visited = set()
+    queue = []
+    for p in seeds:
+        if p not in visited:
+            visited.add(p)
+            queue.append(p)
+    rounds = 0
+    limit_reached = False
+
+    while queue and not limit_reached:
+        rounds += 1
+        next_frontier = []
+        for page_path in queue:
             try:
-                with urllib.request.urlopen(base + p, timeout=10) as r:
+                with urllib.request.urlopen(base + page_path, timeout=10) as r:
                     html = r.read().decode("utf-8", "ignore")
             except Exception:
                 continue
-            for href in re.findall(r'href=["\']?([^"\'> ]*/page/\d+/)', html):
+            for href in PAGINATION_HREF_RE.findall(html):
                 path = path_of(href if href.startswith("/") else "/" + href)
-                if path not in found:
-                    found.add(path)
-                    next_round.append(path)
-        worklist = next_round
-        if not worklist or len(found) >= max_urls:
-            break
-    return sorted(found)
+                if path in found or path in visited:
+                    continue
+                if len(found) >= limit:
+                    limit_reached = True
+                    break
+                found.add(path)
+                visited.add(path)
+                next_frontier.append(path)
+            if limit_reached:
+                break
+        queue = next_frontier
+
+    meta = {
+        "discovered": len(found),
+        "rounds": rounds,
+        "limit": limit,
+        "exhausted": not limit_reached,
+        "limit_reached": limit_reached,
+    }
+    return sorted(found), meta
 
 
 def get_urls(base, full=False):
@@ -199,7 +234,8 @@ def get_urls(base, full=False):
     }
     """
     stats = {"sitemap_total": 0, "sitemap_html": 0, "extra_pagination": 0,
-             "skipped": [], "audited_html": 0, "missing_specials": [], "sitemap_ok": False}
+             "skipped": [], "audited_html": 0, "missing_specials": [], "sitemap_ok": False,
+             "pagination_crawl": None}
     html_pages = []
     try:
         with urllib.request.urlopen(base + "/sitemap.xml", timeout=15) as r:
@@ -224,7 +260,8 @@ def get_urls(base, full=False):
 
     if full:
         seeds = [p for p in html_pages if not is_article_page(p)] or ["/", "/posts/"]
-        extra = discover_pagination(base, seeds)
+        extra, crawl = discover_pagination(base, seeds)
+        stats["pagination_crawl"] = crawl
         urls = list(html_pages) + [p for p in extra if p not in set(html_pages)]
         stats["extra_pagination"] = len(urls) - len(html_pages)
         stats["audited_html"] = len(urls)
@@ -236,8 +273,8 @@ def get_urls(base, full=False):
         cats = [p for p in html_pages if p.startswith("/categories/")]
         tags = [p for p in html_pages if p.startswith("/tags/")]
         pages = [p for p in html_pages if "/page/" in p]
-        if not pages:      # sitemap 不含分页，抽样时按需抓一份
-            pages = discover_pagination(base, ["/", "/posts/"], max_urls=20, rounds=1)
+        if not pages:      # sitemap 不含分页，抽样时按需抓一份（抽样模式允许小额上限）
+            pages, _ = discover_pagination(base, ["/", "/posts/"], limit=20)
         other = [p for p in html_pages
                  if p not in posts + cats + tags + pages]
         sample = list(KEY_URLS) + posts[:6] + cats[:3] + tags[:3] + pages[:3] + other[:4]
@@ -488,11 +525,16 @@ def run(h):
         return
 
     urls, stats = get_urls(BASE, full=FULL)
+    crawl = stats.get("pagination_crawl") or {}
     print(f"模式: {'FULL（全站）' if FULL else 'SAMPLED（抽样）'}")
     print(f"SITEMAP HTML PAGES = {stats['sitemap_html']} (sitemap <loc> 总数 {stats['sitemap_total']})")
     if FULL:
-        print(f"EXTRA PAGINATION PAGES = {stats['extra_pagination']} "
-              f"(Hugo sitemap 不含 /page/N/，由站点实际链接抓取)")
+        print(f"DISCOVERED PAGINATION PAGES = {crawl.get('discovered')} "
+              f"(Hugo sitemap 不含 /page/N/，队列耗尽式爬取发现)")
+        print(f"PAGINATION CRAWL ROUNDS = {crawl.get('rounds')}  LIMIT = {crawl.get('limit')}")
+        print("PAGINATION CRAWL = "
+              + ("exhausted（队列耗尽，覆盖完整）" if crawl.get("exhausted")
+                 else "LIMIT REACHED（达到安全上限，未完成全站发现）"))
     print(f"AUDITED HTML PAGES = {stats['audited_html']}")
     if stats["skipped"]:
         print(f"SKIPPED INTENTIONAL ENDPOINTS = {len(stats['skipped'])}")
@@ -510,6 +552,12 @@ def run(h):
                       f"sitemap 页 {stats['sitemap_html']}，实际审计 sitemap 页 "
                       f"{stats['audited_html'] - stats['extra_pagination']}")
         return
+    if FULL and crawl and not crawl.get("exhausted"):
+        h.fatal_error("分页爬取达到安全上限，未完成全站发现（pagination crawl limit reached）",
+                      f"发现 {crawl.get('discovered')} 个分页页即达到 limit={crawl.get('limit')}，"
+                      f"可能仍有未发现的分页页。判定：未完成全站审计。"
+                      f"如确需更大规模，请调高 AUDIT_PAGINATION_LIMIT。")
+        return
     if FULL and stats["missing_specials"]:
         h.fatal_error("全站审计缺少必需页面类型", "、".join(stats["missing_specials"]))
         return
@@ -520,6 +568,10 @@ def run(h):
     if FULL:
         h.record("全站审计覆盖 sitemap 全部 HTML 页面",
                  True, f"{stats['audited_html']} 页")
+        h.record("分页爬取已耗尽（pagination crawl exhausted）",
+                 bool(crawl.get("exhausted")),
+                 f"rounds={crawl.get('rounds')} limit={crawl.get('limit')} "
+                 f"discovered={crawl.get('discovered')}")
         for name, pred in REQUIRED_COVERAGE:
             hit = [p for p in urls if pred(p)][:1]
             h.record(f"覆盖面：{name} 已纳入审计", bool(hit), hit[0] if hit else "未找到")

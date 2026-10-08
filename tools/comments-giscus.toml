@@ -1,0 +1,9 @@
+# 测试 / CI 用：启用 giscus 评论（假数据，仅验证参数渲染，不实际加载）
+[params.comments]
+  enable = true
+  provider = 'giscus'
+  [params.comments.giscus]
+    repo = 'test-owner/test-repo'
+    repoID = 'R_kgTESTREPOID'
+    category = 'Announcements'
+    categoryID = 'DIC_kwTESTCATEGORY'

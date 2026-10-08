@@ -713,6 +713,7 @@ h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity
 .mini-title,
 .related-card .t,
 .search-item .t,
+.term-card h2,
 .term-card h3,
 .archive-list a {
   overflow-wrap: break-word;
@@ -1037,7 +1038,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   transition: all .25s ease;
 }
 .term-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: var(--brand); }
-.term-card h3 { margin: 0 0 6px; font-size: 16.5px; }
+.term-card h2 { margin: 0 0 6px; font-size: 16.5px; }
 .term-card p { margin: 0; font-size: 13.5px; color: var(--text-muted); }
 
 /* ---------- 13. Search modal ---------- */

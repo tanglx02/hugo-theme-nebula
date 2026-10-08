@@ -149,7 +149,9 @@ else:
     else:
         blob = m.group(1)
         for label, expect_val in (("copied", exp["jsCopied"]), ("zoom", exp["jsZoom"])):
-            pat = rf'{label}:\s*"{re.escape(expect_val)}"'
+            # 兼容两种形态：--minify 会把合法 JS 标识符键的引号去掉（copied:"x"），
+            # 非压缩输出保留引号（"copied":"x"）—— 两种都必须能匹配
+            pat = rf'"?{label}"?\s*:\s*"{re.escape(expect_val)}"'
             if re.search(pat, blob):
                 ok(f"JS i18n {label} = {expect_val}")
             else:
@@ -196,11 +198,19 @@ if terms is not None:
         bad("标签总览统计（数字已替换）", strip_ws(terms)[:200])
 
 # ---------------- 文章页 ----------------
-post = read("posts/zz-02-10k/index.html")
+# 动态选取第一个可用文章页（不硬编码压测数据文件名，适配任意内容目录）
+_post_dir = None
+_posts_root = os.path.join(DIR, "posts")
+if os.path.isdir(_posts_root):
+    for _name in sorted(os.listdir(_posts_root)):
+        if os.path.isfile(os.path.join(_posts_root, _name, "index.html")):
+            _post_dir = f"posts/{_name}"
+            break
+post = read(f"{_post_dir}/index.html") if _post_dir else None
 if post is None:
-    bad("文章页存在（posts/zz-02-10k）")
+    bad("文章页存在（未找到任何 /posts/*/index.html）")
 else:
-    ok("文章页存在")
+    ok("文章页存在", _post_dir)
     meta = re.search(r'class=["\']?article-meta["\']?[^>]*>(.*?)</div>', post, re.S)
     meta_html = strip_ws(meta.group(1)) if meta else strip_ws(post)
     m = re.search(exp["dateRe"], meta_html)

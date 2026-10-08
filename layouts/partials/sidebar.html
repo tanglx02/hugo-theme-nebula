@@ -5,7 +5,7 @@
   {{ else }}
     <img class="profile-avatar" src="{{ "img/avatar.svg" | relURL }}" alt="{{ site.Params.author }}">
   {{ end }}
-  <h3 class="profile-name">{{ site.Params.author }}</h3>
+  <h2 class="profile-name">{{ site.Params.author }}</h2>
   <p class="profile-desc">{{ site.Params.profile.bio | default site.Params.description }}</p>
 
   <div class="profile-stats">
@@ -39,10 +39,10 @@
 {{ $hot := first (site.Params.sidebar.hotCount | default 6) (sort (where site.RegularPages "Section" "in" $contentSections) "Date" "desc") }}
 {{ if $hot }}
 <div class="widget">
-  <h3 class="widget-title">
+  <h2 class="widget-title">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1.2.5-2.3 1-3.2C8 8 7 9.5 7 11a5 5 0 0010 0c0-4.5-5-9-5-9z"/></svg>
     {{ i18n "sidebar.latest" }}
-  </h3>
+  </h2>
   <ol class="mini-list">
     {{ range $i, $page := $hot }}
       <li>
@@ -60,10 +60,10 @@
 {{- /* 分类 */ -}}
 {{ with site.Taxonomies.categories }}
 <div class="widget">
-  <h3 class="widget-title">
+  <h2 class="widget-title">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h5l2 3h11v9a2 2 0 01-2 2H3z"/></svg>
     {{ i18n "sidebar.categories" }}
-  </h3>
+  </h2>
   <ul class="cat-list">
     {{ range .Alphabetical }}
       <li><a href="{{ .Page.RelPermalink }}"><span>{{ .Page.Title }}</span><span class="count">{{ .Count }}</span></a></li>
@@ -75,10 +75,10 @@
 {{- /* 标签云 */ -}}
 {{ with site.Taxonomies.tags }}
 <div class="widget">
-  <h3 class="widget-title">
+  <h2 class="widget-title">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7.2-7.2a2 2 0 01-.6-1.4V4a2 2 0 012-2h8a2 2 0 011.4.6l6 6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/></svg>
     {{ i18n "sidebar.tagCloud" }}
-  </h3>
+  </h2>
   <div class="tag-cloud">
     {{ range first 24 .ByCount }}
       <a href="{{ .Page.RelPermalink }}">{{ .Page.Title }}<span style="opacity:.6"> · {{ .Count }}</span></a>

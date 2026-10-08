@@ -1,0 +1,6 @@
+# 测试 / CI 用：启用 Waline 评论
+[params.comments]
+  enable = true
+  provider = 'waline'
+  [params.comments.waline]
+    serverURL = 'https://waline.example.com'

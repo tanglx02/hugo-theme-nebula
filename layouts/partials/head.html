@@ -33,7 +33,11 @@
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
-<meta property="og:locale" content="{{ site.Language.Lang | default "zh-CN" }}">
+<meta property="og:locale" content="{{ replace (site.Language.LanguageCode | default site.Language.Lang) "-" "_" }}">
+{{- /* 多语言时附加其它语言的 og:locale:alternate */ -}}
+{{- range .AllTranslations }}{{ if ne .Language.LanguageCode (site.Language.LanguageCode) }}
+<meta property="og:locale:alternate" content="{{ replace .Language.LanguageCode "-" "_" }}">
+{{- end }}{{ end -}}
 {{ with .Params.cover }}
 <meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">
 <meta property="og:image:alt" content="{{ $.Title }}">
@@ -47,10 +51,12 @@
 <meta name="twitter:description" content="{{ $desc }}">
 {{ with .Params.cover }}<meta name="twitter:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 
-{{- /* hreflang：多语言站点输出各语言版本（单语言无输出） */ -}}
+{{- /* hreflang：多语言站点输出各语言版本（单语言无输出）。
+     用 LanguageCode（如 zh-CN / en-US）而非 Lang（Hugo 会输出小写 zh-cn），
+     保证 hreflang 值与配置里的 languageCode 大小写一致。 */ -}}
 {{- if gt (len .AllTranslations) 1 }}
 {{- range .AllTranslations }}
-<link rel="alternate" hreflang="{{ .Language.Lang }}" href="{{ .Permalink }}">
+<link rel="alternate" hreflang="{{ .Language.LanguageCode | default .Language.Lang }}" href="{{ .Permalink }}">
 {{- end }}
 {{- end }}
 

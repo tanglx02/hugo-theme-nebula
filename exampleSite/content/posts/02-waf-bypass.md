@@ -8,6 +8,8 @@ tags: ["WAF", "绕过", "Web安全"]
 categories: ["渗透测试"]
 cover: "/img/cover/waf.svg"
 sticky: true
+series: ["Home Lab 实战"]
+series_order: 2
 toc: true
 ---
 

@@ -10,7 +10,7 @@
 <div class="term-grid">
   {{ range .Data.Terms.Alphabetical }}
     <a class="term-card" href="{{ .Page.RelPermalink }}">
-      <h3>{{ .Page.Title }}</h3>
+      <h2>{{ .Page.Title }}</h2>
       <p>{{ i18n "list.count" (dict "n" .Count) }}</p>
     </a>
   {{ end }}

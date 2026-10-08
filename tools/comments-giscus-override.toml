@@ -1,0 +1,10 @@
+# 测试 / CI 用：giscus locale 显式覆盖（zh 站点强制 en 组件）
+[params.comments]
+  enable = true
+  provider = 'giscus'
+  [params.comments.giscus]
+    repo = 'test-owner/test-repo'
+    repoID = 'R_kgTESTREPOID'
+    category = 'Announcements'
+    categoryID = 'DIC_kwTESTCATEGORY'
+    lang = 'en'
