@@ -289,8 +289,9 @@
         keyHandler = null;
       }
       /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身 */
-      if (false) {   // INJECTED-B: focus restore removed
-        try { root.focus(); } catch (e) {}
+      if (lastTrigger && document.contains(lastTrigger) &&
+          typeof lastTrigger.focus === 'function') {
+        try { lastTrigger.focus(); } catch (e) { try { root.focus(); } catch (e2) {} }
       } else if (!root.contains(document.activeElement)) {
         try { root.focus(); } catch (e) {}
       }

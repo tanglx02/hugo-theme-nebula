@@ -10,7 +10,7 @@
 
 **页面范围**
 
-  `AUDIT_FULL=1`（全站）：sitemap 中**全部可审计 HTML 页面** —— Release 门禁
+  Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
 
   * 默认（抽样）：关键入口 + 分类/标签 term + 分页 + 文章页抽样 —— 每次 PR 使用
   * `AUDIT_FULL=1`（全站，Release 门禁）：以 `tools/html_inventory.py` 扫描构建产物
@@ -26,7 +26,8 @@
 （有上限）→ 滚回顶部 → 有界等待网络静默 → 再做全部检查。
 
 退出码约定（见 tools/_testlib.py）：
-  * 发现任一问题 / 浏览器启动失败 / sitemap 获取失败 / 站点不可达 / 脚本异常 -> exit 1
+  * 发现任一问题 / 浏览器启动失败 / sitemap 获取失败 / inventory 覆盖不完整 /
+    分页发现失败或未耗尽 / 站点不可达 / 脚本异常 -> exit 1
 
 输出：tools/audit_report.json
 """
