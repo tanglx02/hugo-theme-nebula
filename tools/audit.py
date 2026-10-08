@@ -216,6 +216,8 @@ def get_urls(base, full=False):
                 html_pages.append(path)
             else:
                 skipped.append((path, "非 HTML 页面"))
+        html_pages = [p for p in html_pages
+                      if not re.fullmatch(r"/categories/[^/]+/", p)]
         stats["sitemap_html"] = len(html_pages)
         stats["skipped"] = skipped
         stats["sitemap_ok"] = len(locs) > 0
