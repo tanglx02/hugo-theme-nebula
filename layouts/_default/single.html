@@ -128,7 +128,7 @@
           {{ range . }}
             <a class="related-card" href="{{ .RelPermalink }}">
               <div class="t">{{ .Title }}</div>
-              <div class="d">{{ .Date.Format "2006-01-02" }} · {{ .ReadingTime }} min</div>
+              <div class="d">{{ .Date.Format (i18n "common.dateFormat") }} · {{ .ReadingTime }} min</div>
             </a>
           {{ end }}
         </div>
