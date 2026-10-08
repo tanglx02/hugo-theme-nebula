@@ -3,6 +3,69 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.8] — 2026-10-08
+
+正式长期维护基线：无障碍一致性、多语言一致性、测试文档同步。
+
+### 搜索弹窗补齐完整 Modal 无障碍
+
+- 抽取 `createModalA11y` 轻量工厂（零依赖），**灯箱与搜索共用同一份交互契约**：
+  焦点移入 / Tab·Shift+Tab 循环 / 背景 `inert`+`aria-hidden` / Escape /
+  遮罩关闭 / 焦点恢复 / 幂等开关 / 深链无触发元素时退化为聚焦 dialog 自身
+- 移除两个组件各自重复的键盘处理（避免双重触发），灯箱行为无回归（21/21）
+- 新增 `tools/verify_search_modal.py`：14 类断言共 19 项，含 zh-CN / en / zh-TW
+  可访问名称（en 站不得出现硬编码中文）
+- 改进 `/` 快捷键：原先要求焦点**恰为** body，实际关闭搜索后焦点停在触发器上导致
+  快捷键失效；改为「非输入上下文」判断
+
+### 日期格式彻底统一到 i18n
+
+- 修复 4 处 UI 硬编码 `2006-01-02`（侧栏热门文章、最后修改日期、相关文章、日期比较）
+- RSS / JSON-LD / `<time datetime>` / 搜索索引属机器格式，保留并在行内标注
+  `machine-format:`，形成人机可读的显式契约
+- 新增 `tools/check_date_format.py`：禁止 layouts 把 `2006-01-02` 用作 UI 日期
+- 三语言实测：zh-CN `2026年9月28日` / en `Sep 28, 2026` / zh-TW 本地化格式
+
+### 修正过时的「sitemap 全站」描述
+
+统一表述为：**Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立
+SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。**
+
+- 修正 `tools/audit.py` docstring、CI step 名与注释、README
+- `tools/check_docs.py` 新增可执行断言：三处必须声明 inventory 真值，
+  且不得出现「sitemap = 全站」类过时表述
+
+### inventory 自身一致性保护
+
+- 两个不同 HTML 文件 normalize 成同一 URL 时立即 `exit 1`，并输出冲突文件路径
+- 修复真实缺陷：已 percent-encoded 的目录名会被二次编码（`quote` 的 safe 补 `%`）
+- 新增 `tools/test_inventory.py`：13 项（中文 / 空格 / URL 编码 / index.html /
+  404.html / page-N / 冲突构造），跨平台一致
+- Release 报告补 `site / alias / error / other` 分类（alias 不排除）
+
+### 浮层无障碍契约纳入门禁
+
+`tools/security_baseline.py` 增加 dialog 语义检查（`role` / `aria-modal` /
+可访问名称），当前 258 处合规。以后任何新增 modal 都必须满足同一标准。
+
+### 门禁验证（五次故意故障注入）
+
+| 注入 | 结果 | Run |
+| --- | --- | --- |
+| A 删除搜索 focus trap | browser-tests 变红（焦点逃逸到 body、inert 残留） | `37787599767` |
+| B 删除焦点恢复 | browser-tests 变红（灯箱与搜索**同时**报警） | `37788388147` |
+| C 相关文章日期硬编码 | static-checks / Date format 变红 | 见报告 |
+| D audit docstring 回退 | static-checks / Documentation consistency 变红 | `37788388147` |
+| E inventory URL 冲突 | static-checks / HTML inventory 变红（210 组冲突） | `37787599767` |
+
+> B 的注入是**共享工厂级缺陷**，灯箱的「关闭后焦点归还」断言同时报警 ——
+> 这正是把两个浮层收敛到同一份契约的价值。
+
+### 未改动
+
+搜索架构（`auto` / `single` / `shard`、chunk 策略、竞态保护、失败提示）保持原样。
+10000+ 篇基准、倒排索引、渐进式加载、Brotli/gzip 列入下一阶段。
+
 ## [1.0.7] — 2026-10-08
 
 长期质量基线：Release 全站覆盖盲区修复。
@@ -145,6 +208,7 @@ SEO/RSS、Series / 分享 / 代码块。
 
 首次正式发布前的全量验收修复。
 
+[1.0.8]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.4...v1.0.5
