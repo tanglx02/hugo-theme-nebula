@@ -315,6 +315,9 @@ def _loaded_expr():
         })"""
 
 
+REVIEW_ROUNDS = 2      # 首轮之后的复查轮数（预算逐轮加倍）
+
+
 def settle_lazy_images(page, budget_ms=8000):
     """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默 -> 复查。
 
@@ -375,8 +378,13 @@ def settle_lazy_images(page, budget_ms=8000):
         pass
 
     pending = pending_now()
-    if pending:
-        # 复查：网络静默后仍未完成 -> 再滚动一次并给一次完整预算
+    # 分级复查：CI runner 负载高时，webkit 解码 SVG 封面会明显排队
+    # （实测 3s 人为延迟下需要约 12s 才收敛）。单次 8s 预算 + 单次复查
+    # 仍会偶发误报，因此复查预算逐轮加倍；但**判定标准不变**——
+    # 所有轮次结束后仍未完成的图片照样判为缺陷，不会被"多等几轮"洗白。
+    for attempt in range(1, REVIEW_ROUNDS + 1):
+        if not pending:
+            break
         try:
             page.evaluate(SCROLL_JS)
         except Exception:
@@ -384,7 +392,7 @@ def settle_lazy_images(page, budget_ms=8000):
         try:
             page.wait_for_function(
                 base + ".every(i => i.complete && i.naturalWidth > 0)",
-                timeout=budget_ms)
+                timeout=budget_ms * (2 ** attempt))
         except Exception:
             pass
         try:
