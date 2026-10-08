@@ -258,37 +258,61 @@ def get_urls(base, full=False):
     return uniq, stats
 
 
+def _loaded_expr():
+    """JS 片段：图片是否算"已加载好"。
+
+    只统计**真正会发起网络请求**的图片：
+      * 必须有非空 src / currentSrc —— 否则（如灯箱容器里那个待填的 `<img alt="">`）
+        永远不会 complete，webkit 下会被误判成"懒加载图片未完成"；
+      * 尺寸为 0 的元素（display:none / 未布局）同样跳过。
+
+    注意不能用 `!i.complete` 单独判定：`complete` 在图片还在排队解码时即为 true，
+    但那时 `naturalWidth` 可能仍是 0。因此要求 complete 且已解码出实际宽度。
+    """
+    return """() => Array.from(document.images).filter(i => {
+            const s = i.currentSrc || i.getAttribute('src') || '';
+            if (!s) return false;
+            const r = i.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return false;
+            return true;
+        })"""
+
+
 def settle_lazy_images(page, budget_ms=8000):
     """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默 -> 复查。
 
     返回仍处于未完成状态的图片数量（用于 image-not-loaded 判定）。
 
-    注意顺序：**必须先等网络静默，再采样 pending**。
-    此前把 pending 采样放在 networkidle 之前，等于"等完网络却用旧快照下结论"，
-    在 CI 机器负载较高时会把已加载完的图片误判为 image-not-loaded。
-    这里额外做一次复查（settle 后再等一轮），只有两轮都仍未完成才算缺陷。
+    两个关键点：
+      1. **必须先等网络静默，再采样 pending**。此前把 pending 采样放在 networkidle
+         之前，等于"等完网络却用旧快照下结论"，CI 机器负载高时会误报。
+      2. **只统计真正会加载的图片**（有 src 且有尺寸）。灯箱里那个待填的
+         `<img alt="">` 没有 src，webkit 下 `complete` 长期为 false，
+         会被误判成"懒加载图片未完成"—— 这是审计脚本缺陷，不是产品缺陷。
     """
+    base = _loaded_expr()
+
     def pending_now():
         try:
             return page.evaluate(
-                "() => Array.from(document.images).filter(i => !i.complete).length")
+                base + ".filter(i => !i.complete || i.naturalWidth === 0).length")
         except Exception:
             return 0
+
+    def wait_loaded():
+        try:
+            page.wait_for_function(
+                base + ".every(i => i.complete && i.naturalWidth > 0)",
+                timeout=budget_ms)
+        except Exception:
+            pass
 
     try:
         page.evaluate(SCROLL_JS)
     except Exception:
         pass
 
-    # 第一轮：等所有图片 complete
-    try:
-        page.wait_for_function(
-            "() => Array.from(document.images).every(i => i.complete)",
-            timeout=budget_ms)
-    except Exception:
-        pass
-
-    # 有界等待网络静默
+    wait_loaded()
     try:
         page.wait_for_load_state("networkidle", timeout=4000)
     except Exception:
@@ -303,7 +327,7 @@ def settle_lazy_images(page, budget_ms=8000):
             pass
         try:
             page.wait_for_function(
-                "() => Array.from(document.images).every(i => i.complete)",
+                base + ".every(i => i.complete && i.naturalWidth > 0)",
                 timeout=budget_ms)
         except Exception:
             pass

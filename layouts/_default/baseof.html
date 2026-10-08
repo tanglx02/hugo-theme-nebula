@@ -21,7 +21,10 @@
 
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true"
        aria-label="{{ i18n "lightbox.label" }}" tabindex="-1" aria-hidden="true">
-    <img alt="">
+    {{/* src 用 1x1 透明 GIF 占位：真正的图片地址由 main.js 打开灯箱时填入。
+         若留空 src，webkit 下该 <img> 的 complete 会长期为 false，
+         审计脚本会把它误判成"懒加载图片未加载"。 */}}
+    <img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
     <button class="lightbox-close" type="button" aria-label="{{ i18n "lightbox.close" }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
