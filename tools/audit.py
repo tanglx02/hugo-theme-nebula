@@ -28,6 +28,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -397,7 +398,7 @@ def _loaded_expr():
         })"""
 
 
-REVIEW_ROUNDS = 2      # 首轮之后的复查轮数（预算逐轮加倍）
+REVIEW_ROUNDS = 3      # 首轮之后的复查轮数（预算逐轮加倍：16s/32s/64s）
 
 # 逐图驻留：把仍未完成的图片 scrollIntoView 并短暂停留。
 # 浏览器的懒加载实现允许在图片离开视口时取消加载；audit 的快速滚动
@@ -408,7 +409,7 @@ async () => {
   const pend = Array.from(document.images).filter(i => !i.complete);
   for (const img of pend) {
     img.scrollIntoView({ block: 'center' });
-    await new Promise(r => setTimeout(r, 90));
+    await new Promise(r => setTimeout(r, 150));
   }
   return pend.length;
 }
@@ -428,6 +429,7 @@ def settle_lazy_images(page, budget_ms=8000):
          会被误判成"懒加载图片未完成"—— 这是审计脚本缺陷，不是产品缺陷。
     """
     base = _loaded_expr()
+    t_start = time.time()
 
     def pending_now():
         """返回未完成图片的**明细**（而不只是数量），便于 CI 日志直接定位。"""
@@ -502,6 +504,10 @@ def settle_lazy_images(page, budget_ms=8000):
         except Exception:
             pass
         pending = pending_now()
+    dt = time.time() - t_start
+    if dt > 20:
+        # settle 耗时异常偏高通常意味着 CI 负载高（图片解码排队），打印便于诊断
+        print(f"  [slow-settle] {dt:.0f}s pending={len(pending)}")
     return pending
 
 
