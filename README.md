@@ -506,6 +506,29 @@ python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录
 
 > 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v1.0.7 — Release 全站覆盖盲区修复（长期质量基线）
+
+**Release 审计真值改为构建产物 inventory**
+
+- 新增 `tools/html_inventory.py`：扫描 `public/**/*.html` 并规范化为 URL，作为全站审计真值
+- 此前"全站"由 `sitemap + pagination` 推出，但 **sitemap 是 SEO 索引**：实测 sitemap 122 /
+  audit 125 / public **212** —— 87 个页面（83 个 `/page/1/` 别名页 + 404 等）曾被漏掉
+- 现在硬断言 `EXPECTED == AUDITED`，任一差集即失败；sitemap 降级为独立质量项
+- 页面分类仅用于报告，不排除任何页面
+
+**分页发现失败不再静默**：每个 URL 重试 2 次，记录 `discovery_attempts` / `discovery_retries` /
+`discovery_failures`；`exhausted` 仅在队列耗尽**且**零失败时成立（新增四场景测试 13/13）
+
+**交叉验证**：HTML quality 与 browser audit 共用同一 inventory，任一套漏掉新模板即 CI 红
+
+**安全基线**：新增 `tools/security_baseline.py`（javascript:/vbscript:/空 href/noopener/inline
+handler/第三方域名/unsafe 配置），并修复搜索结果 `it.url` 未转义的真实加固点
+
+**文档一致性**：新增 `tools/check_docs.py`，防止 README 回退为"零外部 CDN 请求"这类绝对化表述
+
+**搜索架构未改动**（auto / single / shard、chunk 策略、失败提示、竞态保护保持原样）；
+10000+ 篇基准、倒排索引、渐进式加载、gzip/brotli 列入下一阶段。
+
 ### v1.0.6 — 长期开发基线（分页门禁 / 多语言 / 文档纠正）
 
 **发布门禁**

@@ -3,6 +3,70 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.7] — 2026-10-08
+
+长期质量基线：Release 全站覆盖盲区修复。
+
+### Release 审计真值改为构建产物 inventory
+
+此前"全站"由 `sitemap + pagination crawler` 推出，但 **sitemap 是 SEO 索引、不是构建产物清单** ——
+Hugo 允许页面通过 `sitemap.disable` 把自己排除出去，这类页面真实存在却完全不在"全站"统计里。
+v1.0.6 的实测数据正是这样：sitemap 122 / audit 125 / public **212**（87 个页面被漏掉）。
+
+- 新增 `tools/html_inventory.py`：递归扫描 `public/**/*.html` 并规范化为 URL
+  （`index.html → /`，`about/index.html → /about/`，`404.html → /404.html`）；
+  URL 统一 percent-encode（中文路径直接交给 `urlopen` 会抛 `UnicodeEncodeError`）
+- 页面分三类仅用于报告、**不排除任何页面**：`site` 128 / `alias` 83（`/page/1/` meta-refresh 别名页）
+  / `error` 1（`/404.html`）
+- `audit.py` FULL 模式的审计 URL = inventory 真值 + sitemap 独有 + 新发现分页，
+  硬断言 `EXPECTED == AUDITED`，任一差集即 `exit 1`
+- sitemap 降级为独立质量项（可解析 / URL 合法），不再充当全站真值
+- 404 探针不参与 inventory 比对
+
+### 分页发现失败不再静默
+
+旧实现在抓取异常时 `continue`，可能出现"fetch failed + 队列空 + exhausted=True + PASS"。
+
+- 每个 URL 至少重试 2 次（总计 3 次尝试），记录 `discovery_attempts` / `discovery_retries` /
+  `discovery_failures`
+- `exhausted` 仅在「队列耗尽 **且** failures == 0 **且** 未达安全上限」时为 `true`
+- 重试逻辑置于 `discover_pagination` 层，注入的假 fetch 也被覆盖，语义可被真实验证
+- 新增 `tools/test_pagination_retry.py`：正常 / 1 败 2 成 / 2 败 3 成 / 全败 四场景，13/13
+
+### HTML quality 与 browser audit 交叉验证
+
+两者共用同一 inventory 模块与 URL 规范化：任一套漏掉新产出的 HTML 模板，双方计数或路径不一致即
+`exit 1`。
+
+### 安全基线
+
+新增 `tools/security_baseline.py`（仅标准库）：`javascript:` / `vbscript:` / `data:text/html`、
+空 `href`、`target=_blank` 缺 `noopener`、inline event handler、非预期外部 script / iframe /
+第三方域名、危险 JS API、`markup.goldmark.renderer.unsafe` 配置。白名单全部可见打印并附豁免理由。
+
+修复一处真实加固点：搜索结果把 `it.url` 拼接进 `href` 前未转义，现已 `esc()`。
+
+### 文档一致性门禁
+
+新增 `tools/check_docs.py`：README 不得回退为"零外部 CDN 请求"这类绝对化表述，必须列出
+giscus / Waline / Twikoo / Disqus / busuanzi 五个第三方服务并说明默认关闭。
+
+### 门禁验证（六次故意故障注入）
+
+| 注入 | 结果 | Run |
+| --- | --- | --- |
+| A 从 audit 漏掉一个产物页面 | Release audit ×3 变红（`MISSING URLS = 1 ['/about/']`） | `37768173524` |
+| B 分页发现首次失败 | 重试救回，覆盖证明仍全绿（FAILURES=0 / EXHAUSTED=YES） | `37768906011` |
+| C 分页发现所有重试失败 | Release audit ×3 变红 | `37768173524` |
+| D 页面不进 sitemap | inventory 发现并覆盖（EXPECTED 213），覆盖证明全绿 | `37768906011` |
+| E 插入 `javascript:` 链接 | static-checks / Security baseline 变红 | `37768906011` |
+| F README 回退错误 CDN 表述 | `check_docs.py` 变红（CI 中因 Security 先失败被跳过，本地取证） | 本地 |
+
+### 未改动
+
+搜索架构（`auto` / `single` / `shard`、chunk 策略、失败提示、竞态保护）保持原样。
+10000+ 篇基准、倒排索引、渐进式加载、gzip/brotli、keyword→chunk 路由列入下一阶段。
+
 ## [1.0.6] — 2026-10-08
 
 长期开发基线版本：发布门禁完善、多语言修复、文档纠正。
@@ -81,6 +145,7 @@ SEO/RSS、Series / 分享 / 代码块。
 
 首次正式发布前的全量验收修复。
 
+[1.0.7]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/tanglx02/hugo-theme-nebula/compare/v1.0.3...v1.0.4
