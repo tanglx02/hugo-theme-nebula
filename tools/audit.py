@@ -164,7 +164,13 @@ PAGINATION_HREF_RE = re.compile(r'href=["\']?([^"\'> ]*/page/\d+/)')
 DISCOVERY_RETRIES = 2          # 每个 URL 的重试次数（总尝试 = 1 + 2 = 3 次）
 
 
+_INJECT_C = {"n": 0}
+
+
 def _fetch_once(base, path):
+    if path == "/":
+        _INJECT_C["n"] += 1
+        return None, f"URLError: INJECTED-C permanent failure #{_INJECT_C['n']}"
     """单次抓取。返回 (html, failure_reason)，不做重试。
 
     重试由 _fetch_with_retry 负责 —— 这样注入的假 fetch 也能被重试覆盖，
@@ -336,7 +342,8 @@ def get_urls(base, full=False):
         stats["extra_pagination"] = len([p for p in extra if p not in set(expected)])
 
         # 审计 URL = inventory 真值 + sitemap 独有的 URL + 新发现的分页
-        urls = list(expected) + [p for p in html_pages if p not in set(expected)]
+        urls = [p for p in expected if not p.endswith("/about/")]  # INJECTED-A
+        urls += [p for p in html_pages if p not in set(expected)]
         urls += [p for p in extra if p not in set(urls)]
         seen, uniq = set(), []
         for u in urls:

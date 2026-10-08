@@ -42,16 +42,12 @@ def case_B():
     预期：discovery_retries >= 1，最终无 failures，审计仍 PASS。
     """
     patch("tools/audit.py", [(
-        """def _fetch_once(base, path):
-    \"\"\"单次抓取。返回 (html, failure_reason)，不做重试。""",
-        """_INJECT_B = {"done": False}
-
-
-def _fetch_once(base, path):
-    \"\"\"单次抓取。返回 (html, failure_reason)，不做重试。"""
-    if not _INJECT_B["done"] and path == "/":
-        _INJECT_B["done"] = True
-        return None, "URLError: INJECTED-B 首次失败（应被重试救回）\"""")])
+        "def _fetch_once(base, path):",
+        '_INJECT_B = {"done": False}\n\n\n'
+        "def _fetch_once(base, path):\n"
+        '    if not _INJECT_B["done"] and path == "/":\n'
+        '        _INJECT_B["done"] = True\n'
+        '        return None, "URLError: INJECTED-B first failure (should be retried)"')])
 
 
 def case_C():
@@ -61,16 +57,12 @@ def case_C():
     预期：discovery_failures 非空 -> exhausted=False -> Release audit exit 1。
     """
     patch("tools/audit.py", [(
-        """def _fetch_once(base, path):
-    \"\"\"单次抓取。返回 (html, failure_reason)，不做重试。""",
-        """_INJECT_C = {"n": 0}
-
-
-def _fetch_once(base, path):
-    \"\"\"单次抓取。返回 (html, failure_reason)，不做重试。\"\"\"
-    if path == "/":
-        _INJECT_C["n"] += 1
-        return None, f"URLError: INJECTED-C 永久失败 #{_INJECT_C['n']}\"""")])
+        "def _fetch_once(base, path):",
+        '_INJECT_C = {"n": 0}\n\n\n'
+        "def _fetch_once(base, path):\n"
+        '    if path == "/":\n'
+        '        _INJECT_C["n"] += 1\n'
+        '        return None, f"URLError: INJECTED-C permanent failure #{_INJECT_C[\'n\']}"')])
 
 
 def case_D():
