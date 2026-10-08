@@ -16,7 +16,7 @@
         {{- $p := . -}}
         {{- if eq $p "copy" }}
           <button type="button" class="share-btn" data-share="copy" data-url="{{ $url }}"
-                  aria-label="复制链接">复制链接</button>
+                  aria-label="{{ i18n "share.copyLink" }}">{{ i18n "share.copyLink" }}</button>
         {{- else if eq $p "x" }}
           <a class="share-btn" target="_blank" rel="noopener" aria-label="{{ i18n "share.x" }}"
              href="https://twitter.com/intent/tweet?url={{ $url | urlquery }}&text={{ $title | urlquery }}">X</a>

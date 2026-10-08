@@ -96,7 +96,7 @@
         var pr = navigator.clipboard.writeText(text);
         if (pr && typeof pr.then === 'function') {
           pr.then(function () { finish(true); }, execFallback);
-          setTimeout(function () { if (!settled) finish(true); }, COPY_TIMEOUT_MS);
+          setTimeout(function () { if (!settled) execFallback(); }, COPY_TIMEOUT_MS);
           return;
         }
       }
