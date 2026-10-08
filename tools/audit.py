@@ -484,13 +484,12 @@ def settle_lazy_images(page, budget_ms=8000):
     for attempt in range(1, REVIEW_ROUNDS + 1):
         if not pending:
             break
-        # 先让每张未完成的图片真正进入视口并停留，再滚动 + 给预算
+        # 顺序很关键：先逐图 scrollIntoView 并停留，让它们**留在视口内**，
+        # 然后直接给预算等待。此前版本在 DWELL 之后又执行快速滚动
+        # （40ms/步），把刚进入视口的图片又滚出视口，chromium 会取消懒加载，
+        # 导致"预算用尽仍未完成"（CI 上表现为 122s 后仍 pending=1）。
         try:
             page.evaluate(DWELL_JS)
-        except Exception:
-            pass
-        try:
-            page.evaluate(SCROLL_JS)
         except Exception:
             pass
         try:
