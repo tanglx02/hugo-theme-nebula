@@ -59,7 +59,6 @@ def normalize_url(rel_path):
         p = ""
     # safe 里包含 "%"：文件系统里可能已存在 percent-encoded 的目录名
     # （Hugo 某些输出），若不保留会被二次编码成 %25...
-    p = p.split('/')[-1]  # INJECTED-E: collapse to basename -> mass collision
     return "/" + quote(p, safe="/~!*()'-._%")
 
 

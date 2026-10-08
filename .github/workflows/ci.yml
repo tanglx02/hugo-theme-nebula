@@ -155,22 +155,22 @@ jobs:
       - name: HTML inventory (build-product truth for Release audit)
         run: python3 tools/html_inventory.py public --json tools/html_inventory.json
 
+      - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
+        env:
+          DOC_VERSION: '1.0.8'
+        run: python3 tools/check_docs.py
+
+      - name: Date format consistency (UI dates via i18n, machine formats whitelisted)
+        run: python3 tools/check_date_format.py
+
       - name: HTML quality (alt / button type / dup id / nesting / heading / aria / noopener)
         run: python3 tools/check_html_quality.py public
 
       - name: Security baseline (javascript:/vbscript:/empty href/noopener/inline handler/3rd-party)
         run: python3 tools/security_baseline.py public
 
-      - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
-        env:
-          DOC_VERSION: '1.0.7'
-        run: python3 tools/check_docs.py
-
       - name: Pagination discovery retry semantics (4 scenarios)
         run: python3 tools/test_pagination_retry.py
-
-      - name: Date format consistency (UI dates via i18n, machine formats whitelisted)
-        run: python3 tools/check_date_format.py
 
       - name: Inventory self-consistency (URL normalization + collision guard)
         run: python3 tools/test_inventory.py

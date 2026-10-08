@@ -247,8 +247,17 @@
         close();
         return;
       }
-      // INJECTED-A: focus trap removed
       if (e.key !== 'Tab') return;
+      var f = focusables();
+      if (!f.length) { e.preventDefault(); root.focus(); return; }
+      var first = f[0], last = f[f.length - 1];
+      var active = document.activeElement;
+      if (!root.contains(active)) { e.preventDefault(); first.focus(); return; }
+      if (e.shiftKey && (active === first || active === root)) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault(); first.focus();
+      }
     }
 
     function open(triggerEl, initialText) {
@@ -259,7 +268,8 @@
       root.setAttribute('aria-hidden', 'false');
       if (root.getAttribute('tabindex') === null) root.setAttribute('tabindex', '-1');
       setBackgroundInert(true);
-      keyHandler = null;  // INJECTED-A: no key handler for search modal
+      keyHandler = onKeydown;
+      document.addEventListener('keydown', keyHandler, true);
       if (initialText != null) {
         var inp = opts.input || $('input, textarea', root);
         if (inp) inp.value = initialText;
