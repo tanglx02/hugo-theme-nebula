@@ -56,15 +56,28 @@ def run(h):
 
     # ① 绝对化表述
     bad = []
+    quoted = []          # 作为"被批评的示例"被引号包裹的引用，豁免但必须打印
     for ph in FORBIDDEN_PHRASES:
         for m in re.finditer(re.escape(ph), readme):
             line_no = readme[: m.start()].count("\n") + 1
-            ctx = readme[max(0, m.start() - 30): m.end() + 20].replace("\n", " ")
+            line_start = readme.rfind("\n", 0, m.start()) + 1
+            line_end = readme.find("\n", m.end())
+            line = readme[line_start: line_end if line_end > 0 else len(readme)]
+            ctx = line.strip()[:80]
             # "默认配置下无外部 CDN 请求" 这类限定表述不算问题
             if "默认" in ctx:
                 continue
+            # 元语境：把该短语作为"被禁止/被回退的示例"引用时豁免（如更新日志、
+            # 门禁说明），但必须打印，保证"引用"不会被误当成"声明"
+            if re.search(r"[\"“”「」]|防止|回退|不再|这类表述|绝对化", line):
+                quoted.append(f"第 {line_no} 行（作为示例引用，豁免）: {ctx}")
+                continue
             bad.append(f"第 {line_no} 行: …{ctx}…")
     h.record("README 无绝对化的 CDN 表述", not bad, "；".join(bad[:3]) if bad else "干净")
+    if quoted:
+        print("\n被禁短语作为示例被引用（已豁免，请确认是批评性引用而非声明）:")
+        for q in quoted:
+            print("   ", q)
 
     # ② 必须说明默认无 CDN + 启用后有第三方
     missing = [name for name, pats in REQUIRED_MEANINGS
