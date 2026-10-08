@@ -40,7 +40,7 @@
   {{- end -}}
   <figure style="margin:1.4em 0">
     <img src="{{ $fallback }}" srcset="{{ delimit $srcset ", " }}" sizes="{{ $sizes }}"
-         width="{{ .Width }}" height="{{ .Height }}" data-alt-removed="{{ $alt }}"
+         width="{{ .Width }}" height="{{ .Height }}" alt="{{ $alt }}"
          loading="lazy" decoding="async" data-zoom-src="{{ .RelPermalink }}"
          {{ with $.Title }}title="{{ . }}"{{ end }}>
     {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
