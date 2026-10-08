@@ -486,6 +486,18 @@
       });
     }
 
+    /* 日期标签：直接取构建产物里的 dateDisplay（Hugo 在构建期已按站点语言格式化）。
+
+       前端**不做**语言判断、也不重复实现日期格式化 —— 否则会和模板里的一分为二，
+       出现"UI 日期已本地化、搜索结果仍是 2026-09-28"这类不一致缺陷。
+
+       兼容：新索引一定带 dateDisplay（缺失日期时为空串）；只有遇到旧版索引
+       （字段完全不存在）才退回机器格式的 date，避免直接不显示日期。 */
+    function dateLabel(it) {
+      if (Object.prototype.hasOwnProperty.call(it, 'dateDisplay')) return it.dateDisplay || '';
+      return it.date || '';
+    }
+
     function highlight(text, terms) {
       var out = esc(text);
       terms.forEach(function (t) {
@@ -585,9 +597,13 @@
       results.innerHTML = hits.map(function (x, i) {
         var it = x.it;
         var snippet = snippetFor(it, terms);
+        var dateText = dateLabel(it);
         return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(it.url) + '">' +
           '<div class="t">' + highlight(it.title, terms) + '</div>' +
-          '<div class="p">' + esc(it.date) + (snippet ? ' · ' + highlight(snippet, terms) : '') + '</div>' +
+          '<div class="p">' +
+            (dateText ? esc(dateText) : '') +
+            (snippet ? (dateText ? ' · ' : '') + highlight(snippet, terms) : '') +
+          '</div>' +
           '</a>';
       }).join('');
       bindHover();

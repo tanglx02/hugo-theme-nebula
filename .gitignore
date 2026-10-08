@@ -18,6 +18,8 @@ exampleSite/content/notes/zz-*.md
 exampleSite/content/projects/zz-*.md
 
 # 测试时写入站点目录的临时配置
+exampleSite/_ci-*.toml
+exampleSite/_datecheck-*.toml
 exampleSite/shard-override.toml
 exampleSite/shard-auto.toml
 exampleSite/ms-verify.toml

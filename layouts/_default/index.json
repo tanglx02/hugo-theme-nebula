@@ -13,6 +13,15 @@
 
   体积控制：正文完整收录（不做 3000 字截断），仅压缩连续空白；
   可选 params.search.contentLimit 限制单篇上限（默认 0 = 不限制）。
+
+日期字段约定（UI / 机器分离）
+--------------------------------
+    date         机器字段：固定 `YYYY-MM-DD`，供程序解析 / 排序，**不得用于 UI 展示**
+    dateDisplay  UI 字段：由 Hugo 在**构建期**按当前站点语言生成（走 i18n common.dateFormat），
+                 前端只负责原样输出，不允许在 JS 里猜语言或重复实现日期格式化
+
+  缺失日期（front matter 无 date 且文件名无日期前缀）时两个字段都输出空串，
+  前端据此省略日期片段 —— 而不是显示 "0001-01-01" 或 "January 1, year 1"。
 */ -}}
 {{- $limit := int (site.Params.search.contentLimit | default 0) -}}
 {{- $mode := site.Params.search.mode | default "" -}}
@@ -42,7 +51,8 @@
   {{- $items = $items | append (dict
       "title" .Title
       "url" .RelPermalink
-      "date" (.Date.Format "2006-01-02")
+      "date" (cond .Date.IsZero "" (.Date.Format "2006-01-02"))
+      "dateDisplay" (cond .Date.IsZero "" (.Date.Format (i18n "common.dateFormat")))
       "summary" $summary
       "content" $content
       "file" (.File.BaseFileName | default (anchorize .Title))
@@ -101,6 +111,7 @@
       "title" .title
       "url" .url
       "date" .date
+      "dateDisplay" .dateDisplay
       "summary" .summary
       "content" $content
       "key" .file

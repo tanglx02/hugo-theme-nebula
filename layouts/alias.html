@@ -1,0 +1,31 @@
+{{- /*
+Alias 页面模板（覆盖 Hugo 内建实现）。
+
+为什么要覆盖
+------------
+Hugo 内建的 alias 模板输出 `<html lang="zh-CN">`（来自语言 Locale/LanguageCode），
+而主题其它页面用 `site.Language.Lang`（如 `zh`）。同一个站点里于是同时存在两种
+lang 声明——浏览器/朗读器/翻译器看到的语言不一致。
+
+本模板让 alias 页与站点主体保持一致，并且：
+
+  * 有 canonical + meta refresh（0 秒），语义与内建版本一致
+  * `robots: noindex` —— alias 页是重定向副本，不该被索引
+  * 不含任何 `<script>` 与内联事件处理器（alias 页不该执行脚本）
+  * 标题取目标页面标题，没有则用目标 URL
+
+可用变量（Hugo 文档）：`.Permalink`（目标 URL）、`.Page`（目标 Page 对象）。
+*/ -}}
+{{- $lang := site.Language.Lang | default site.Language.LanguageCode -}}
+{{- $title := .Page.Title | default .Permalink -}}
+<!DOCTYPE html>
+<html lang="{{ $lang }}">
+<head>
+<meta charset="utf-8">
+<title>{{ $title }}</title>
+<link rel="canonical" href="{{ .Permalink }}">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url={{ .Permalink }}">
+</head>
+<body></body>
+</html>

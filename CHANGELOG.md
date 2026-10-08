@@ -3,6 +3,94 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.9] — 2026-10-09
+
+最终封版：搜索日期 i18n、pagination crawler 判定、GitHub Actions 现代化。
+v1.0.9 起作为长期稳定基线，后续按「开发 → 测试 → CI → Release」正常迭代
+（契约清单见 `docs/稳定基线.md`）。
+
+### 修复：搜索结果日期没有 i18n（最后一个真实 UI 国际化缺陷）
+
+- `index.json` 新增 UI 字段 `dateDisplay`，由 Hugo **在构建期**用
+  `i18n "common.dateFormat"` 生成；`date` 保留为机器字段 `YYYY-MM-DD`
+- `assets/js/main.js` 搜索结果改为输出 `dateDisplay`：前端不再猜语言、
+  也不再重复实现日期格式化（旧索引无该字段时才退回 `date`）
+- 缺日期的文章两个字段均为空串，UI 省略日期片段，绝不显示 `0001-01-01` / `January 1`
+- 新增 `tools/check_search_date.py`（30 项）：zh-CN / en / zh-TW 三语言真实构建 ×
+  多篇文章 × 缺日期异常 × `date` 仍为机器格式 × JSON 结构向后兼容
+  —— 期望值由测试自己按 i18n 布局重算，不复用被测逻辑
+- `check_date_format.py` 增加索引日期契约断言（dateDisplay 必须走 i18n；
+  JS 中禁止 `toLocaleDateString` / `Intl.DateTimeFormat`）
+- 发现并修复测试侧隐患：语言切换配置必须复制到站点目录内再用相对路径 `--config`
+  引用，否则 Hugo 会**静默忽略**它，表现为"英文构建实际仍是中文"
+
+### 修复：pagination crawler 的 article 判断
+
+- `is_article_page()` 改为基于 `params.content.sections`
+  （回退 `params.content.section`，再回退 `posts/tutorials/notes/projects`）：
+  `/categories/foo/`、`/tags/foo/`、`/archives/`、`/page/N/`、`/posts/page/2/`
+  均不再被判成文章页（旧规则 `/[^/]+/[^/]+/` 会把两级 term 页误判为文章页）
+- `pagination.path` 不再写死 `page`：优先从构建产物 URL 反推 token，
+  再读 `[pagination] path`，最后才用默认值；新增 `detect_pagination_token()` /
+  `is_pagination_page()`
+- **种子排除分页页本身**：此前分页页也在种子里，新发现的分页全部命中 `visited`，
+  `discovered` 恒为 0，交叉验证形同虚设（v1.0.8 Release 报告里的
+  "DISCOVERED PAGINATION URLS = 0" 就是这个症状）。现在实测 6/6 全部发现
+- 新增硬断言：构建产物中每个可爬取的分页页都必须能被 crawler 发现
+  （`/page/1/` 别名分页页按设计不被链接，单独计数并由 inventory 覆盖）
+- 新增 `tools/check_article_classification.py`（39 项）：判定表 + 旧规则误判回归证据 +
+  `pagination.path = page` 与 `= p` 两种真实构建
+
+### 新增：alias 页面专项静态检查
+
+- 新增 `tools/check_alias_pages.py`（11 项）：文件存在 / meta refresh 唯一且带目标 /
+  canonical 存在 / 目标为构建产物中的真实页面 / 无自引用 / 无 `<script>` 与 inline 事件 /
+  本地资源完好 / `lang` 合法且与站点一致 / title 非空
+- Release 报告现在区分「alias HTML 结构检查」与「普通 HTML 页面浏览器行为审计」：
+  浏览器加载 alias 会被重定向到 canonical，观察到的其实是目标页
+- 新增 `layouts/alias.html`：修正"站点页面 `lang=zh`、Hugo 内建 alias 模板 `lang=zh-CN`"
+  的不一致；同时补上 `robots: noindex`，并保证 alias 页不含任何脚本
+
+### 修正：CI job 数量报告（此前一直写成 13）
+
+- v1.0.8 及之前的报告把 tag CI 写成 `13/13 job 全绿`，而 matrix 展开后实际是 **12**
+  （build 4 + subdir 1 + static-checks 1 + browser-tests 3 + release-full-audit 3）
+- 新增 `tools/check_ci_jobs.py`：按 GitHub matrix 展开规则计算每个 job 的实际数量，
+  与 workflow 注释里的 `# CI-JOBS:` 清单比对；改 matrix 不更新清单即 CI 变红
+- workflow 内登记：`CI-JOBS-TOTAL: 12`、`CI-JOBS-PUSH-TOTAL: 9`（非 tag 推送）
+- 同步修正 `docs/验收报告-v1.0.5/6/7/8.md` 中的错误数字
+
+### GitHub Actions 现代化
+
+- Action 升级到 Node 24 兼容稳定版：`actions/checkout@v7.0.1`、
+  `actions/setup-python@v7.0.0`、`actions/cache@v6.1.0`、
+  `actions/upload-artifact@v7.0.2`
+- `peaceiris/actions-hugo` 保持 v3 线（v3.1.0 起即为 node24），**不为版本号好看而升级**，
+  现显式固定 `@v3.2.1` 以便静态校验
+- 生产门禁 runner 固定 `ubuntu-24.04`（`ubuntu-latest` 将于 2026-10-19 迁到 Ubuntu 26.04）；
+  最新环境兼容性另建 `.github/workflows/compat-latest.yml`（`ubuntu-latest`，每周 + 手动），
+  不计入生产门禁
+- 顶层 `permissions: contents: read`；无 `*: write`；仅检出源码的 `subdir` job
+  进一步设 `permissions: {}`
+- 新增 `tools/check_workflow_policy.py`（4 项）：最小权限 / runner 固定 /
+  Action Node24 版本基线 / 登记未注册的新 action
+
+### 新增：搜索高亮特殊字符安全回归
+
+- 新增 `tools/verify_search_highlight.py`（17 项，拦截注入索引内容）：
+  `A&B <hello>`、`foo&bar`、`REGEX.*+?^${}()|[]\`、双引号/单引号、字面 `<mark>`、
+  XSS 载荷 `<img src=x onerror=...>`
+- 断言：文本不丢字不变形、`<hello>` 不变成元素、无残缺实体、`<mark>` 不嵌套、
+  结果中无 `<img>`/`<script>`、`window.__xss` 未定义、全过程无 console error
+
+### 新增：`docs/稳定基线.md`
+
+修改主题前必读：Hugo 最低版本、支持浏览器、CI runner、CI job 结构、测试工具清单、
+Release 全站 inventory、pagination crawler、search / modal / i18n / image / security
+契约，以及下一阶段未做项（10000+ 基准、倒排索引、渐进加载、gzip/Brotli、屏幕阅读器）。
+
+---
+
 ## [1.0.8] — 2026-10-08
 
 正式长期维护基线：无障碍一致性、多语言一致性、测试文档同步。

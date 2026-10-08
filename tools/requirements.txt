@@ -1,3 +1,5 @@
 # CI 与本地测试所需的 Python 依赖
 playwright>=1.44
 Pillow>=10.0
+# CI job inventory / workflow 策略门禁需要解析 workflow YAML
+PyYAML>=6.0

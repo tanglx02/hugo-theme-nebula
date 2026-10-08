@@ -11,23 +11,54 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 最小权限原则：本 workflow 只需要读取源码；不使用任何 write 权限。
+# 需要凭证的步骤（checkout / cache / artifact）由 runner 的 Actions 运行时
+# 自行携带临时 token，不需要给 GITHUB_TOKEN 任何写权限。
+# 校验工具：tools/check_workflow_policy.py（禁止 *: write，必须 contents: read）
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: '3.12'
 
+# ---------------------------------------------------------------------------
+# CI JOB INVENTORY —— 由 tools/check_ci_jobs.py 自动校验，**禁止手工改数字**
+#
+#   job                    matrix 维度            展开数量   备注
+#   build                  hugo-version x4        4
+#   subdir                 -                      1
+#   static-checks          -                      1
+#   browser-tests          browser x3             3
+#   release-full-audit     browser x3             3          仅 tag 推送
+#
+# 改动 matrix（加/删浏览器、加 Hugo 版本等）必须同步更新下面两行，
+# 否则 tools/check_ci_jobs.py 判定失败，CI 变红。
+#
+# CI-JOBS: build=4
+# CI-JOBS: subdir=1
+# CI-JOBS: static-checks=1
+# CI-JOBS: browser-tests=3
+# CI-JOBS: release-full-audit=3
+# CI-JOBS-TOTAL: 12
+# CI-JOBS-PUSH-TOTAL: 9        （非 tag 推送：Release job 被 if 跳过）
+# ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------- 构建矩阵
   build:
     name: Build (Hugo ${{ matrix.hugo-version }})
-    runs-on: ubuntu-latest
+    # 需要上传构建产物：沿用顶层 contents: read（artifact 走 Actions 运行时凭证）
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
+        uses: peaceiris/actions-hugo@v3.2.1
         with:
           hugo-version: ${{ matrix.hugo-version }}
           extended: true
@@ -65,7 +96,7 @@ jobs:
 
       - name: Upload build artifact (for release audit reuse)
         if: matrix.hugo-version == '0.167.0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: public-zh-cn
           path: public
@@ -73,10 +104,12 @@ jobs:
   # ------------------------------------------------------- 子目录 / baseURL
   subdir:
     name: Sub-directory baseURL
-    runs-on: ubuntu-latest
+    # 只检出源码后本地构建，不写 anything —— 连 contents: read 都不需要
+    permissions: {}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: peaceiris/actions-hugo@v3
+      - uses: actions/checkout@v7.0.1
+      - uses: peaceiris/actions-hugo@v3.2.1
         with:
           hugo-version: '0.167.0'
           extended: true
@@ -102,14 +135,17 @@ jobs:
   # ------------------------------------------------------------- 静态检查
   static-checks:
     name: Static checks (links / index / features / i18n / sections)
-    runs-on: ubuntu-latest
+    # setup-python 的 pip 缓存由 Actions 运行时凭证处理，无需 GITHUB_TOKEN 写权限
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: peaceiris/actions-hugo@v3
+      - uses: actions/checkout@v7.0.1
+      - uses: peaceiris/actions-hugo@v3.2.1
         with:
           hugo-version: '0.167.0'
           extended: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -155,9 +191,29 @@ jobs:
       - name: HTML inventory (build-product truth for Release audit)
         run: python3 tools/html_inventory.py public --json tools/html_inventory.json
 
+      - name: Alias pages - static structure check (meta refresh / canonical / target / lang)
+        run: python3 tools/check_alias_pages.py public
+
+      - name: Search date contract - date machine field + dateDisplay per language
+        env:
+          SITE_DIR: exampleSite
+          HUGO_ARGS: '--source . --themesDir ../..'
+        run: python3 tools/check_search_date.py
+
+      - name: Pagination crawler - article classification + custom pagination.path
+        run: python3 tools/check_article_classification.py
+
+      - name: CI job inventory (job count must be derived, never hand-written)
+        env:
+          CI_REPORT: '1'
+        run: python3 tools/check_ci_jobs.py
+
+      - name: Workflow policy (least privilege / pinned runner / Node24 actions)
+        run: python3 tools/check_workflow_policy.py
+
       - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
         env:
-          DOC_VERSION: '1.0.8'
+          DOC_VERSION: '1.0.9'
         run: python3 tools/check_docs.py
 
       - name: Date format consistency (UI dates via i18n, machine formats whitelisted)
@@ -206,7 +262,10 @@ jobs:
   # --------------------------------------------------------- 浏览器端测试
   browser-tests:
     name: Browser tests (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    # 需要 playwright 缓存 + 上传审计报告：仍是只读仓库权限即可
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -220,14 +279,14 @@ jobs:
           - browser: webkit
             viewports: '375,768,1440'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
-      - uses: peaceiris/actions-hugo@v3
+      - uses: peaceiris/actions-hugo@v3.2.1
         with:
           hugo-version: '0.167.0'
           extended: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -239,7 +298,7 @@ jobs:
           python3 -m pip install -r tools/requirements.txt
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('.github/workflows/ci.yml') }}
@@ -312,7 +371,19 @@ jobs:
 
       - name: Search edge cases & race conditions
         if: matrix.browser == 'chromium'
+        env:
+          SEARCH_DATE_LOCALE: 'zh-CN'
         run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
+
+      - name: Search date i18n in rendered results (en build must show "Sep 28, 2026")
+        if: matrix.browser == 'chromium'
+        env:
+          SEARCH_DATE_LOCALE: 'en'
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081
+
+      - name: Search highlight - HTML entities & regex/XSS safety on & < > " '
+        if: matrix.browser == 'chromium'
+        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 chromium
 
       - name: Search shard failure handling + deep-keyword semantics
         if: matrix.browser == 'chromium'
@@ -327,31 +398,39 @@ jobs:
 
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: audit-report-${{ matrix.browser }}
           path: tools/audit_report.json
           if-no-files-found: ignore
 
   # ------------------------------------------- Release 门禁：全站页面完整扫描
-  # Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
+  # Release 全站审计以构建产物 HTML inventory 为真值；sitemap 仅为独立 SEO 索引质量检查。
+  # 三条独立证据链，彼此不互相冒充：
+  #   1. 构建产物 HTML inventory -> 100% 浏览器加载审计
+  #   2. pagination crawler      -> 交叉验证所有可爬取的分页页均被覆盖
+  #   3. tools/check_alias_pages.py -> alias 页的 meta-refresh 结构（浏览器会重定向，
+  #      加载 alias 观察到的其实是目标页，因此必须单独静态验证）
+  # sitemap 仅作为 SEO 索引质量检查，不作为全站真值。
   release-full-audit:
     name: Release full-site audit (${{ matrix.browser }})
     # 仅 tag 推送（v*）或手动触发时执行，避免拖慢每次 PR
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
     steps:
-      - uses: actions/checkout@v4
-      - uses: peaceiris/actions-hugo@v3
+      - uses: actions/checkout@v7.0.1
+      - uses: peaceiris/actions-hugo@v3.2.1
         with:
           hugo-version: '0.167.0'
           extended: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -360,7 +439,7 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -r tools/requirements.txt
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: pw-release-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('.github/workflows/ci.yml') }}
@@ -376,6 +455,8 @@ jobs:
         run: |
           python3 tools/html_inventory.py public --json tools/html_inventory.json
           python3 tools/check_html_quality.py public
+      - name: Alias pages - static structure check (browser audit loads them, this verifies them)
+        run: python3 tools/check_alias_pages.py public
       - name: Start server
         run: |
           nohup python3 tools/serve.py public 8080 > /tmp/serve.log 2>&1 &
@@ -395,7 +476,7 @@ jobs:
         run: python3 tools/interactions.py http://127.0.0.1:8080
       - name: Upload release audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: release-audit-report-${{ matrix.browser }}
           path: tools/audit_report.json

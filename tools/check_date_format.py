@@ -105,6 +105,45 @@ def run(h):
         ok = os.path.isfile(p) and needle in open(p, encoding="utf-8").read()
         h.record(f"{label} 走 i18n（{rel}）", ok, needle)
 
+    # ---------------- 搜索索引日期契约（P1） ----------------
+    # 索引必须同时提供机器字段 date 与 UI 字段 dateDisplay；dateDisplay 由 Hugo
+    # 在构建期用 i18n 生成。**前端不得再自己格式化日期** —— 否则 UI 已本地化、
+    # 搜索结果却仍是 2026-09-28 的不一致缺陷会再次出现。
+    idx = os.path.join(LAYOUTS, "_default", "index.json")
+    if not os.path.isfile(idx):
+        h.fatal_error("缺少搜索索引模板", idx)
+        return
+    idx_src = open(idx, encoding="utf-8").read()
+    idx_lines = idx_src.splitlines()
+    gen_disp_lines = [l for l in idx_lines if '"dateDisplay" (' in l]
+    machine_lines = [l for l in idx_lines if l.strip().startswith('"date" (')]
+
+    h.record("搜索索引同时提供机器字段 date 与 UI 字段 dateDisplay",
+             bool(gen_disp_lines) and bool(machine_lines),
+             f"date x{len(machine_lines)} / dateDisplay x{len(gen_disp_lines)}")
+    h.record("搜索索引 dateDisplay 由构建期 i18n 生成（不是硬编码 / 机器格式）",
+             bool(gen_disp_lines) and all(I18N_DATE_RE.search(l) for l in gen_disp_lines),
+             gen_disp_lines[0].strip()[:90] if gen_disp_lines else "未找到 dateDisplay")
+    h.record("搜索索引 date 仍为机器格式且带 dateDisplay 以外的独立行",
+             all('"date" (' in l and 'i18n' not in l for l in machine_lines)
+             and bool(machine_lines),
+             machine_lines[0].strip()[:90] if machine_lines else "未找到 date")
+
+    js = os.path.join(ROOT, "assets", "js", "main.js")
+    if not os.path.isfile(js):
+        h.fatal_error("缺少前端脚本", js)
+        return
+    js_src = open(js, encoding="utf-8").read()
+    h.record("前端搜索结果使用 dateLabel(it) 输出日期",
+             "dateLabel(it)" in js_src, "dateLabel(it)")
+    # 注意用 (?![\w])：it.dateDisplay 也包含 it.date 这个子串，直接 count 会误报
+    raw_date_uses = re.findall(r"it\.date(?![\w])", js_src)
+    h.record("前端不再直接渲染机器字段 it.date（旧索引兼容除外，最多 1 处）",
+             len(raw_date_uses) <= 1, f"it.date 直接出现 {len(raw_date_uses)} 次")
+    h.record("前端不重复实现日期格式化（无 toLocaleDateString / Intl.DateTimeFormat）",
+             "toLocaleDateString" not in js_src and "Intl.DateTimeFormat" not in js_src,
+             "未在 JS 中格式化日期")
+
 
 if __name__ == "__main__":
     main_h = Harness("date-format")

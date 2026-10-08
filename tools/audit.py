@@ -10,7 +10,7 @@
 
 **页面范围**
 
-  Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 用于交叉验证额外分页，不再作为全站真值。
+  Release 全站审计以构建产物 HTML inventory 为真值；sitemap 作为独立 SEO 索引质量检查；分页 crawler 交叉验证"所有可爬取的分页页"是否都被覆盖（不再只是发现额外分页）；alias 页结构由 tools/check_alias_pages.py 单独静态验证。
 
   * 默认（抽样）：关键入口 + 分类/标签 term + 分页 + 文章页抽样 —— 每次 PR 使用
   * `AUDIT_FULL=1`（全站，Release 门禁）：以 `tools/html_inventory.py` 扫描构建产物
@@ -163,11 +163,150 @@ def is_non_html_endpoint(path):
     return any(path.startswith(p) for p in NON_HTML_PREFIXES)
 
 
-def is_article_page(path):
-    return bool(re.fullmatch(r"/[^/]+/[^/]+/", path)) and "/page/" not in path
+# --------------------------------------------------------------------------
+# 内容 section：决定"什么才是真正的文章页"
+# --------------------------------------------------------------------------
+# 与主题模板完全一致的一套取值逻辑（见 layouts 里的 $contentSections）：
+#   params.content.sections  ->  params.content.section  ->  默认列表。
+# 只有 /<section>/<slug>/ 才是文章页；/categories/<term>/、/tags/<term>/ 等
+# 两级 term 页是**列表页**，它们自己也可能分页，必须留下来当 crawl 种子。
+DEFAULT_CONTENT_SECTIONS = ("posts", "tutorials", "notes", "projects")
 
 
-PAGINATION_HREF_RE = re.compile(r'href=["\']?([^"\'> ]*/page/\d+/)')
+def _sections_from_env():
+    raw = os.environ.get("AUDIT_CONTENT_SECTIONS", "").strip()
+    if not raw:
+        return None
+    return tuple(s.strip() for s in raw.split(",") if s.strip())
+
+
+def _sections_from_config(path):
+    """从 Hugo 配置读取 params.content.sections（没有 tomllib 则返回 None）。"""
+    env_cfg = os.environ.get("AUDIT_SITE_CONFIG", "").strip()
+    cfg = path or env_cfg
+    if not cfg or not os.path.isfile(cfg):
+        return None
+    try:
+        import tomllib
+    except Exception:
+        return None
+    try:
+        with open(cfg, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return None
+    content = (data.get("params") or {}).get("content") or {}
+    secs = content.get("sections")
+    if secs:
+        return tuple(str(s) for s in secs)
+    single = content.get("section")
+    if single:
+        return (str(single),)
+    return None
+
+
+def content_sections(config_path=None):
+    """解析当前站点的内容 section 列表。优先级：环境变量 > 站点配置 > 默认列表。"""
+    return (_sections_from_env() or _sections_from_config(config_path)
+            or DEFAULT_CONTENT_SECTIONS)
+
+
+def is_article_page(path, sections=None, page_token=None):
+    """是否为真正的文章页 `/<content-section>/<slug>/`。
+
+    旧实现是 `re.fullmatch(r"/[^/]+/[^/]+/", path)` —— 会误判所有**两级 term 页**：
+    `/categories/linux/`、`/tags/hugo/` 会被当成文章页，从 crawl 种子里剔除掉，
+    于是这些页面的分页（`/categories/linux/page/2/`）在"交叉验证"里可能漏掉。
+
+    现在的判定：
+      * 路径恰好两段（`/<a>/<b>/`）；
+      * `<a>` 必须属于 params.content.sections（或其他来源解析出的 section 列表）；
+      * `<b>` 不能是分页路径片段（`/posts/page/` 这种伪文章页）。
+
+    因此以下都不是文章页：
+        /categories/foo/  /tags/foo/  /archives/
+        /page/N/  /categories/foo/page/N/  /tags/foo/page/N/
+    """
+    secs = set(sections or content_sections())
+    parts = [p for p in path.split("/") if p]
+    if len(parts) != 2:
+        return False
+    section, slug = parts
+    token = page_token or pagination_path()
+    return section in secs and slug != token
+
+
+DEFAULT_PAGINATION_PATH = "page"
+
+
+def pagination_path(config_path=None):
+    """Hugo 的分页路径片段（默认 `page`，可通过 `[pagination] path` 配置）。
+
+    优先级：环境变量 AUDIT_PAGINATION_PATH > 站点配置 > 默认 `page`。
+    不要在测试工具里把 `page` 写死：站点一旦配置 `[pagination] path = "p"`，
+    crawler 只认 `/page/N/` 就会一个分页都发现不了（还会误报 404）。
+    """
+    env_token = os.environ.get("AUDIT_PAGINATION_PATH", "").strip()
+    if env_token:
+        return env_token
+    cfg_token = _config_scalar(config_path, "pagination", "path")
+    return cfg_token or DEFAULT_PAGINATION_PATH
+
+
+def _config_scalar(config_path, table, key):
+    """读取 Hugo 配置里 [table] key 的标量值（读不到返回 None）。"""
+    cfg = config_path or os.environ.get("AUDIT_SITE_CONFIG", "").strip()
+    if not cfg or not os.path.isfile(cfg):
+        return None
+    try:
+        import tomllib
+    except Exception:
+        return None
+    try:
+        with open(cfg, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return None
+    val = (data.get(table) or {}).get(key)
+    return str(val).strip() if val else None
+
+
+def is_pagination_page(path, page_token=None):
+    """是否为分页页 `/.../<token>/<N>/`（含根级 `/page/1/` 这类别名页）。
+
+    分页页**不能当 crawl 种子**：它们是 BFS 的结果而不是起点。此前种子取自整个
+    inventory，分页页自己也在里面，于是新发现的分页全部命中 `visited` 被跳过，
+    结果永远是 discovered=0 —— 交叉验证形同虚设（v1.0.8 Release 报告里
+    "DISCOVERED PAGINATION URLS = 0" 就是这个症状）。
+    """
+    parts = [p for p in path.split("/") if p]
+    return len(parts) >= 2 and parts[-1].isdigit() \
+        and parts[-2] == (page_token or pagination_path())
+
+
+def detect_pagination_token(urls, sections=None):
+    """从 URL 集合反推 pagination.path（数据驱动，不依赖猜测）。
+
+    形如 `/.../<token>/<digits>/` 的 URL —— 取末段数字前的那一段即为 token。
+    用出现次数最多的候选，避免单篇数字 slug 的文章污染结果。
+    """
+    from collections import Counter
+    secs = set(sections or DEFAULT_CONTENT_SECTIONS)
+    cnt = Counter()
+    for u in urls:
+        parts = [p for p in u.split("/") if p]
+        if len(parts) >= 2 and parts[-1].isdigit() and parts[-2] not in secs:
+            cnt[parts[-2]] += 1
+    if not cnt:
+        return None
+    token, hits = cnt.most_common(1)[0]
+    return token if hits >= 2 else None
+
+
+def pagination_href_re(token=None):
+    """匹配页面上 `/<token>/<N>/` 形式的分页链接。"""
+    return re.compile(r'href=["\']?([^"\'> ]*/' + re.escape(token or pagination_path())
+                      + r'/\d+/)')
 
 DISCOVERY_RETRIES = 2          # 每个 URL 的重试次数（总尝试 = 1 + 2 = 3 次）
 
@@ -201,12 +340,16 @@ def _fetch_with_retry(fetch, base, path, stats):
     return None, last_err
 
 
-def discover_pagination(base, seeds, limit=None, fetch=None):
+def discover_pagination(base, seeds, limit=None, fetch=None, page_token=None):
     """队列耗尽式分页发现（Hugo 的 sitemap 不包含 /page/N/）。
 
-    从种子页（列表页 / 分类 term / 标签 term / 归档等所有可能产生分页的页面）
-    出发做 BFS：解析页面上所有含 /page/N/ 的链接，新发现的分页页继续入队，
-    **直到队列耗尽（没有任何新分页页）为止**。
+    从种子页（列表页 / 分类 term / 标签 term / 归档等**所有可能产生分页**的页面）
+    出发做 BFS：解析页面上所有含 `/<pagination.path>/<N>/` 的链接，新发现的分页页
+    继续入队，**直到队列耗尽（没有任何新分页页）为止**。
+
+    分页路径片段不再写死为 `page`：Hugo 支持 `[pagination] path = "p"`，
+    FULL 模式下先从构建产物 URL 反推（数据驱动），推不出来再读配置，
+    最后才用默认值 —— 见 `pagination_path()` / `detect_pagination_token()`。
 
     完成条件必须同时满足：
       * 队列耗尽；
@@ -225,6 +368,7 @@ def discover_pagination(base, seeds, limit=None, fetch=None):
     if fetch is None:
         fetch = _fetch_once
 
+    token = page_token or pagination_path()
     found = set()
     visited = set()
     queue = []
@@ -250,7 +394,8 @@ def discover_pagination(base, seeds, limit=None, fetch=None):
                     print("  [discovery-failure] ...（后续失败不再逐条打印，"
                           "最终以 DISCOVERY FAILURES 计数判定）")
                 continue
-            for href in PAGINATION_HREF_RE.findall(html):
+            href_re = pagination_href_re(token)
+            for href in href_re.findall(html):
                 path = path_of(href if href.startswith("/") else "/" + href)
                 if path in found or path in visited:
                     continue
@@ -266,6 +411,7 @@ def discover_pagination(base, seeds, limit=None, fetch=None):
 
     queue_exhausted = not queue
     meta = {
+        "pagination_path": token,
         "discovered": len(found),
         "rounds": rounds,
         "limit": limit,
@@ -334,12 +480,46 @@ def get_urls(base, full=False):
         stats["not_in_sitemap"] = [p for p in expected
                                    if p not in set(html_pages)]
 
-        # 分页发现：种子取 inventory 中的"正常内容页且非文章页"
-        # （alias 页本身不含分页链接，抓它纯属浪费；它仍在审计列表里）
+        # 存续的分页路径片段：优先从构建产物反推（站点若配置了 pagination.path
+        # 只认 page 就会漏），推不出来再走配置 / 默认值
+        token = detect_pagination_token(expected) or pagination_path()
+        # 分页发现：种子 = 构建产物中**所有可能产生分页的列表页**
+        # = 非文章页（含首页 / section 列表 / 分类与标签 term / 归档 / 各种分页页），
+        #   alias 页本身不含分页链接，抓它纯属浪费；但它仍在审计列表里
+        secs = content_sections()
         alias_urls = set(inv.get("urls_by_class", {}).get("alias", []))
+        # 种子 = 可能产生分页的列表页，**排除分页页本身**（它们是 BFS 的产物，
+        # 放进 visited 会让交叉验证退化成 discovered=0）。alias 页同理剔除：
+        # 它只是 meta-refresh 副本，谁也不会链接到它。
         seeds = [p for p in expected
-                 if not is_article_page(p) and p not in alias_urls] or ["/", "/posts/"]
-        extra, crawl = discover_pagination(base, seeds)
+                 if not is_article_page(p, secs, token)
+                 and not is_pagination_page(p, token)
+                 and p not in alias_urls] or ["/", "/posts/"]
+        # 交叉验证真值：构建产物里所有"可爬取"的分页页（别名分页页除外 ——
+        # 它们按设计不被任何页面链接，只能由 inventory 直接覆盖）
+        truth_pagination = sorted(
+            set(p for p in expected if is_pagination_page(p, token)) - alias_urls)
+        seed_prefixes = tuple(f"/{s}/" for s in secs)
+        stats["pagination_seeds"] = len(seeds)
+        stats["seed_article_leak"] = [p for p in seeds
+                                      if is_article_page(p, secs, token)]
+        stats["pagination_seed_kinds"] = {
+            "首页": sum(1 for p in seeds if p == "/"),
+            "内容 section 列表页": sum(
+                1 for p in seeds
+                if p.strip("/") in set(secs) or p.startswith(seed_prefixes)),
+            "分类 term 页": sum(1 for p in seeds if p.startswith("/categories/")
+                              and not p.startswith("/categories/page/")),
+            "标签 term 页": sum(1 for p in seeds if p.startswith("/tags/")
+                             and not p.startswith("/tags/page/")),
+            "归档页": sum(1 for p in seeds if p.startswith("/archives/")),
+        }
+        extra, crawl = discover_pagination(base, seeds, page_token=token)
+        stats["pagination_path"] = token
+        stats["truth_pagination"] = truth_pagination
+        found_set = set(extra)
+        stats["pagination_missing"] = sorted(set(truth_pagination) - found_set)
+        stats["pagination_unexpected"] = sorted(found_set - set(expected))
         stats["pagination_crawl"] = crawl
         stats["extra_pagination"] = len([p for p in extra if p not in set(expected)])
 
@@ -665,10 +845,24 @@ def run(h):
         print(f"PUBLIC HTML FILES = {inv.get('public_html_files')}")
         print(f"FILESYSTEM EXPECTED URLS = {len(expected)}")
         print(f"SITEMAP HTML URLS = {stats['sitemap_html']}")
+        alias_set = set(inv.get("urls_by_class", {}).get("alias", []))
+        alias_pagination = len([p for p in expected
+                                if is_pagination_page(p, crawl.get("pagination_path"))
+                                and p in alias_set])
+        print(f"PAGINATION CROSS-CHECK: 构建产物中分页页真值 "
+              f"{len(stats.get('truth_pagination') or [])}"
+              f"（另有 {alias_pagination} 个别名分页页，按设计不被链接，由 inventory 直接覆盖）")
         print(f"DISCOVERED PAGINATION URLS = {crawl.get('discovered')} "
               f"(其中 inventory 之外的新增: {stats.get('extra_pagination')})")
-        print("  注：分页页本身也在构建产物中，crawler 的作用是交叉验证"
-              "没有 inventory 之外的分页遗漏")
+        print(f"PAGINATION MISSING = {len(stats.get('pagination_missing') or [])}"
+              f"{' ' + str(stats['pagination_missing'][:5]) if stats.get('pagination_missing') else ''}")
+        print(f"PAGINATION UNEXPECTED = {len(stats.get('pagination_unexpected') or [])}"
+              f"{' ' + str(stats['pagination_unexpected'][:5]) if stats.get('pagination_unexpected') else ''}")
+        print(f'PAGINATION PATH = "{crawl.get("pagination_path")}"'
+              f'（{"构建产物反推" if detect_pagination_token(expected) else "配置 / 默认值"}）')
+        print(f"CRAWL SEEDS = {stats['pagination_seeds']}（所有可能产生分页的列表页）")
+        for kind, cnt in (stats.get("pagination_seed_kinds") or {}).items():
+            print(f"    - {kind:20s} {cnt}")
         print(f"AUDITED HTML URLS = {len(audited)}")
         print(f"MISSING URLS = {len(missing)}" + (f" {missing[:5]}" if missing else ""))
         print(f"UNEXPECTED URLS = {len(unexpected)}" + (f" {unexpected[:5]}" if unexpected else ""))
@@ -752,7 +946,18 @@ def run(h):
             h.fatal_error("分页发现存在抓取失败（不允许 fetch failed + exhausted）",
                           "；".join(f"{f['url']} -> {f['error']}" for f in fails[:5]))
             return
-        # ③ 队列耗尽（未达上限）
+        # ③ 交叉验证：构建产物里每个可爬取的分页页都必须被 crawler 发现
+        if stats.get("pagination_missing"):
+            h.fatal_error("分页交叉验证失败：存在 crawler 未发现的分页页",
+                          f"{len(stats['pagination_missing'])} 个: "
+                          f"{stats['pagination_missing'][:8]}")
+            return
+        if stats.get("pagination_unexpected"):
+            h.fatal_error("分页交叉验证失败：crawler 发现了构建产物之外的分页页",
+                          f"{len(stats['pagination_unexpected'])} 个: "
+                          f"{stats['pagination_unexpected'][:8]}")
+            return
+        # ④ 队列耗尽（未达上限）
         if not crawl.get("exhausted"):
             if crawl.get("limit_reached"):
                 detail = (f"发现 {crawl.get('discovered')} 个分页页即达到 "
@@ -782,6 +987,18 @@ def run(h):
                  bool(crawl.get("exhausted")),
                  f"rounds={crawl.get('rounds')} limit={crawl.get('limit')} "
                  f"discovered={crawl.get('discovered')}")
+        h.record("分页交叉验证：构建产物中的分页页全部可由列表页爬取到",
+                 not stats.get("pagination_missing"),
+                 f"真值 {len(stats.get('truth_pagination') or [])} 个，"
+                 f"缺失 {len(stats.get('pagination_missing') or [])} 个")
+        # ④ crawl 种子必须覆盖所有可能产生分页的列表页类型
+        kinds = stats.get("pagination_seed_kinds") or {}
+        for kind, cnt in kinds.items():
+            h.record(f"crawl 种子覆盖：{kind}", cnt > 0, f"{cnt} 个")
+        leak = stats.get("seed_article_leak") or []
+        h.record("crawl 种子不含文章页（/categories/foo/ 等 term 页必须参与种子）",
+                 not leak, f"{stats.get('pagination_seeds')} 个种子"
+                 if not leak else f"误入 {leak[:3]}")
         for name, pred in REQUIRED_COVERAGE:
             hit = [p for p in urls if pred(p)][:1]
             h.record(f"覆盖面：{name} 已纳入审计", bool(hit), hit[0] if hit else "未找到")

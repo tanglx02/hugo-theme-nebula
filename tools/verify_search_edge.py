@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""搜索边界测试（P5）：关键词类型 / 竞态 / 索引失败 / 延迟 / 大量结果。
+"""搜索边界测试（P5）：关键词类型 / 竞态 / 索引失败 / 延迟 / 大量结果 / 日期本地化。
+
+搜索结果日期本地化（v1.0.9 P1）：搜索索引新增 UI 字段 dateDisplay，由 Hugo 在
+构建期按站点语言生成；前端只负责原样输出。这里验证 DOM 里真的出现了本地化日期，
+而不是机器字段 YYYY-MM-DD——环境变量 SEARCH_DATE_LOCALE 指定期望语言。
 
 退出码约定（见 tools/_testlib.py）：断言失败 / 浏览器启动失败 / 脚本异常 -> exit 1。
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -13,6 +18,20 @@ from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
+
+DATE_LOCALE = os.environ.get("SEARCH_DATE_LOCALE", "zh-CN")
+EXPECTED_DATE = {
+    "zh-CN": re.compile(r"^\d{4}年\d{1,2}月\d{1,2}日"),
+    "zh-TW": re.compile(r"^\d{4}年\d{1,2}月\d{1,2}日"),
+    "en": re.compile(r"^[A-Z][a-z]{2} \d{1,2}, \d{4}"),
+}
+# 状态提示文案也随语言变（见 i18n/*.yaml 的 search.loading / search.failed）——
+# 之前这里写死中文，导致脚本拿到英文站点就误报。
+EXPECTED_STATUS = {
+    "zh-CN": {"loading": "加载", "failed": "失败"},
+    "zh-TW": {"loading": "載入", "failed": "失敗"},
+    "en": {"loading": "Loading", "failed": "Failed"},
+}
 
 H = Harness("search-edge")
 
@@ -70,6 +89,18 @@ def _run_all():
         n = search(page, "安全")
         rec("结果数上限 <= 20", n <= 20, f"{n} 条")
 
+        # 搜索结果日期本地化（构建期 i18n，前端不参与格式化）
+        pattern = EXPECTED_DATE.get(DATE_LOCALE)
+        if pattern is None:
+            rec(f"未知的 SEARCH_DATE_LOCALE: {DATE_LOCALE}", False, "配置错误")
+        else:
+            meta = (page.locator(".search-item .p").first.inner_text()
+                    if page.locator(".search-item .p").count() else "")
+            rec(f"[{DATE_LOCALE}] 搜索结果日期已本地化",
+                 bool(pattern.match(meta)), f"首条元信息「{meta[:40]}」")
+            rec(f"[{DATE_LOCALE}] 搜索结果不显示机器字段 YYYY-MM-DD",
+                 not re.match(r"^\d{4}-\d{2}-\d{2}", meta), f"首条元信息「{meta[:40]}」")
+
         # 无结果提示
         search(page, "zzz-not-exist-keyword")
         rec("无结果有明确提示", page.locator(".search-empty").count() > 0)
@@ -86,9 +117,10 @@ def _run_all():
         page2.fill("#search-input", "FOXTROT10000")   # 打开后立即输入
         page2.wait_for_timeout(900)
         txt_a = page2.locator(".search-empty").inner_text() if page2.locator(".search-empty").count() else ""
-        wrong_empty = "没有找到" in txt_a
+        wrong_empty = EXPECTED_STATUS[DATE_LOCALE]["failed"] in txt_a
         rec("竞态：索引未就绪时不误报“无结果”", not wrong_empty, f"提示=「{txt_a[:40]}」")
-        rec("竞态：索引未就绪时显示加载态", "加载" in txt_a, f"提示=「{txt_a[:40]}」")
+        rec("竞态：索引未就绪时显示加载态",
+             EXPECTED_STATUS[DATE_LOCALE]["loading"] in txt_a, f"提示=「{txt_a[:40]}」")
         ctx2.close()
 
         # ---------- 竞态 B：索引延迟后到达，应自动补渲染出结果 ----------
@@ -120,7 +152,8 @@ def _run_all():
         page3.fill("#search-input", "应急响应")
         page3.wait_for_timeout(1500)
         txt = page3.locator(".search-empty").inner_text() if page3.locator(".search-empty").count() else ""
-        rec("索引加载失败有明确提示", "失败" in txt, txt[:60])
+        rec("索引加载失败有明确提示",
+             EXPECTED_STATUS[DATE_LOCALE]["failed"] in txt, txt[:60])
         ctx3.close()
         b.close()
 

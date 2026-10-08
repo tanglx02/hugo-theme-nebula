@@ -434,29 +434,61 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 
 `.github/workflows/ci.yml` 在 GitHub Actions 上**真实运行**以下检查，任一失败即 CI 失败：
 
-| Job | 内容 |
+| Job | 内容 | 展开数量 |
+| --- | --- | --- |
+| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 | 4 |
+| Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
+| Static checks | 死链、索引完整性、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory**、**workflow 策略（权限/runner/Node24）**、auto 阈值分片 | 1 |
+| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
+| Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
+
+**job 数量不手写**：`tools/check_ci_jobs.py` 按 GitHub matrix 展开规则算出每个 job 的
+实际数量，再与 workflow 注释里登记的 `# CI-JOBS: <job>=<n>` 清单比对。改了 matrix
+（加浏览器 / 加 Hugo 版本）而没更新清单，CI 会直接变红。
+
+| 触发方式 | 预期 job 数 |
 | --- | --- |
-| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 |
-| Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 |
-| Static checks | 死链、索引完整性、功能断言、**i18n 静态硬编码扫描**、**i18n 三语言构建与文案校验**、**多 Section 完整回归**、auto 阈值分片 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、**复制语义专项**、灯箱 Focus Trap、搜索边界与竞态、**分片失败深层关键词语义**、三种 baseURL 部署 |
-| Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 扫描 sitemap 中**全部 HTML 页面**（320/375/768/1440），并断言覆盖了分类 term、标签 term、分页、归档等必需页面类型 |
+| tag 推送（`v*`）/ 手动触发 | **12**（含 3 个 Release） |
+| 普通 push / PR | **9**（Release job 被 `if` 跳过） |
+
+**Runner 与权限（有意固定）**
+
+- 生产门禁 runner = **`ubuntu-24.04`**：GitHub 已宣布 `ubuntu-latest` 将于 2026-10-19
+  起迁移 Ubuntu 26.04，长期基线不该在下一次平台迁移时悄悄改变底层 OS
+- 最新镜像兼容性由独立 workflow `compat-latest.yml`（`ubuntu-latest`，每周 + 手动）提前暴露，
+  **不计入生产门禁**
+- 顶层 `permissions: contents: read`；任何 job 不允许 `*: write`；
+  只需检出源码的 job 进一步设 `permissions: {}`
+- Actions 统一使用 Node 24 兼容版本（checkout v7 / setup-python v7 / cache v6 /
+  upload-artifact v7 / actions-hugo v3.2.1），由 `check_workflow_policy.py` 校验
 
 > PR 阶段用抽样页面保证时长可控；Release 阶段用全量页面。
-> 全站模式会打印 `SITEMAP HTML PAGES` / `EXTRA PAGINATION PAGES` / `AUDITED HTML PAGES`
-> 并断言三者一致 —— **抽样冒充全站会被直接判失败**。
->
-> Hugo 的 sitemap 不包含 `/page/N/`，这些分页页由审计脚本沿站点真实链接抓取并单独计数。
 
 ### 全站审计的覆盖保证
 
-`AUDIT_FULL=1` 不只是"跑得多"，还会主动证明没有漏：
+`AUDIT_FULL=1` 不只是"跑得多"，还会主动证明没有漏。三条独立证据链：
 
-- **数量一致**：`sitemap_html + extra_pagination == audited_html`，对不上即失败；
+1. **数量一致**：构建产物 inventory（`public/**/*.html`）100% 被加载审计，
+   硬断言 `EXPECTED == AUDITED`；审计了产物中不存在的 URL 同样判失败；
+2. **分页交叉验证**：所有"可爬取的分页页"都必须能被 crawler 从列表页走到
+   （`/page/1/` 这类**别名分页页**按设计不被任何页面链接，由 inventory 直接覆盖，
+   单独计数说明）；
+3. **alias 独立静态检查**：浏览器打开 alias 会被 meta-refresh 重定向到 canonical，
+   看到的是**目标页**而不是 alias 本身，因此 alias 的结构由
+   `tools/check_alias_pages.py` 单独验证（meta refresh / canonical / 目标存在 /
+   无额外 JS / 资源完好 / lang 一致）。
+
+其他硬断言：
+
 - **类型齐全**：`分类 term / 标签 term / page/2/ / page/3/ / 分类首页 / 标签首页 / 归档页 / 文章页`
   任一类型缺失即失败；
+- **crawl 种子齐全**：首页 / 内容 section 列表页 / 分类 term / 标签 term / 归档页都必须参与种子，
+  且种子里**不能出现文章页**（否则 `/categories/foo/` 这类 term 页会被误剔除）；
 - **白名单精确匹配**：故意缺失的测试资源按 **pathname 精确比对**豁免。
   绝不使用 `endswith` —— 否则 `/images/not-exist.png` 这类真实损坏资源会被误豁免成假绿灯。
+
+> Hugo 的 sitemap 不包含 `/page/N/`，且页面可经 `sitemap.disable` 完全不进 sitemap，
+> 所以 **sitemap 只能是独立 SEO 检查项，不是全站真值**。
 
 ### 复制行为的硬性约定
 
@@ -506,6 +538,51 @@ python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录
 ## 更新日志
 
 > 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+> 修改主题前请先阅读 [docs/稳定基线.md](docs/稳定基线.md)（CI 真实执行的契约清单）。
+
+### v1.0.9 — 最终封版（搜索日期 i18n / 分页判定 / CI 现代化）
+
+**搜索结果日期本地化（最后一个真实 UI i18n 缺陷）**
+
+- 索引新增 UI 字段 `dateDisplay`：由 Hugo **在构建期**按站点语言生成
+  （zh-CN `2026年9月28日` / en `Sep 28, 2026` / zh-TW `2026年9月28日`）
+- `date` 保留为机器字段 `YYYY-MM-DD` 供程序使用，前端不再直接显示它
+- 缺日期的文章两个字段均为空串，UI 省略日期片段（不会显示 `0001-01-01`）
+- 新增 `tools/check_search_date.py`（30 项：三语言 × 多文章 × 缺日期 × 向后兼容）
+
+**pagination crawler 判定修正**
+
+- 文章页判定改为基于 `params.content.sections`：`/categories/foo/`、`/tags/foo/`、
+  `/archives/`、`/page/N/` 都不再被误判成文章页（旧规则 `/[^/]+/[^/]+/` 会误判）
+- `pagination.path` **不再写死 `page`**：支持 Hugo `[pagination] path`（实测 "p" 与 "page"）
+- 种子排除分页页本身 —— 此前分页页也在种子里，`discovered` 恒为 0，交叉验证形同虚设；
+  现在实测"构建产物中 6 个可爬取分页页全部被爬虫发现"
+- 新增 `tools/check_article_classification.py`（39 项）
+
+**alias 页面独立静态检查**
+
+- 新增 `tools/check_alias_pages.py`：meta refresh / canonical / 目标存在 / 无自引用 /
+  无额外 JS / 资源完好 / lang 与站点一致 / title 非空
+- 覆盖 `layouts/alias.html`，修正"站点页面 `lang=zh` 而 alias 页 `lang=zh-CN`"的不一致
+
+**GitHub Actions 现代化**
+
+- Actions 升级到 Node 24 兼容稳定版（checkout v7.0.1 / setup-python v7.0.0 /
+  cache v6.1.0 / upload-artifact v7.0.2；actions-hugo v3.2.1 本身已是 node24）
+- 生产门禁 runner 固定 `ubuntu-24.04`；`ubuntu-latest` 兼容性另建 `compat-latest.yml`
+- 顶层 `permissions: contents: read`，无 write 权限，仅检出源码的 job 设 `permissions: {}`
+- **CI job 数量不再手写**：`tools/check_ci_jobs.py` 按 matrix 展开计算（tag 12 / push 9）
+
+**搜索高亮安全回归**
+
+- 新增 `tools/verify_search_highlight.py`（17 项）：`& < > " '` 与正则元字符、
+  `<mark>` 不嵌套、无双重实体破坏、注入内容不产生 `<img>`/`<script>`、不执行脚本
+
+**新增 `docs/稳定基线.md`**：修改主题前必读的契约清单（版本 / 浏览器 / runner /
+CI 结构 / 测试工具 / inventory / 分页 / 搜索 / Modal / i18n / 图片 / 安全）。
+
+搜索架构未改动（auto / single / shard、chunk、竞态、失败提示保持原样）；
+倒排索引、渐进加载、10000+ 基准仍列入下一阶段计划。
 
 ### v1.0.8 — 长期维护基线（无障碍 / 多语言 / 文档一致性收尾）
 
