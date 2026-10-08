@@ -4,7 +4,7 @@
 [![Hugo](https://img.shields.io/badge/Hugo-%E2%89%A5%200.128-blue)](https://gohugo.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖；默认配置下无外部 CDN 请求（启用可选评论/统计功能后会加载对应第三方服务资源，见下方说明）。
+面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖；零外部 CDN 请求（启用可选评论/统计功能后会加载对应第三方服务资源，见下方说明）。
 
 | 亮色 | 暗色 |
 | --- | --- |
