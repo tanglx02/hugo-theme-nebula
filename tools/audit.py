@@ -177,7 +177,7 @@ def discover_pagination(base, seeds, limit=None):
     是防失控的安全上限，不是覆盖目标。
     """
     if limit is None:
-        limit = int(os.environ.get("AUDIT_PAGINATION_LIMIT", "10000"))
+        limit = int(os.environ.get("AUDIT_PAGINATION_LIMIT", "1"))  # INJECTED-A
     found = set()
     visited = set()
     queue = []
@@ -200,6 +200,8 @@ def discover_pagination(base, seeds, limit=None):
             for href in PAGINATION_HREF_RE.findall(html):
                 path = path_of(href if href.startswith("/") else "/" + href)
                 if path in found or path in visited:
+                    continue
+                if path.endswith("/page/3/"):   # INJECTED-B 漏掉一个分页页
                     continue
                 if len(found) >= limit:
                     limit_reached = True
