@@ -507,6 +507,30 @@ python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录
 
 > 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v1.0.8 — 长期维护基线（无障碍 / 多语言 / 文档一致性收尾）
+
+**搜索弹窗完整 Modal 无障碍**
+
+- 抽取 `createModalA11y` 轻量工厂（零依赖），**灯箱与搜索共用同一份契约**：
+  焦点移入 / Tab 循环 / 背景 inert / Escape / 遮罩关闭 / 焦点恢复 / 幂等开关
+- 新增 `verify_search_modal.py`（14 类断言 19 项），含 zh-CN / en / zh-TW 可访问名称
+- 改进 `/` 快捷键：原先要求焦点恰为 body，关闭搜索后快捷键会失效
+
+**日期格式统一到 i18n**
+
+- 修复 4 处 UI 硬编码 `2006-01-02`（侧栏、最后修改、相关文章、日期比较）
+- RSS / JSON-LD / `<time datetime>` / 搜索索引为机器格式，显式标注保留
+- 新增 `check_date_format.py`；三语言实测：zh-CN `2026年9月28日` / en `Sep 28, 2026`
+
+**文档一致性 + inventory 保护**
+
+- 统一"全站"表述：真值是构建产物 inventory，sitemap 仅为独立 SEO 索引检查
+  （`check_docs.py` 有可执行断言防止回退）
+- inventory 检测 normalize URL 冲突并 `exit 1`；修复已编码目录名被二次编码的真实缺陷
+- 浮层 dialog 语义纳入安全基线（258 处合规）
+
+**搜索架构未改动**：auto / single / shard、chunk 策略、竞态保护、失败提示保持原样。
+
 ### v1.0.7 — Release 全站覆盖盲区修复（长期质量基线）
 
 **Release 审计真值改为构建产物 inventory**
