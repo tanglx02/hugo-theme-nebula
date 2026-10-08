@@ -281,7 +281,7 @@ def _loaded_expr():
 def settle_lazy_images(page, budget_ms=8000):
     """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默 -> 复查。
 
-    返回仍处于未完成状态的图片数量（用于 image-not-loaded 判定）。
+    返回未完成图片的**明细列表**（用于 image-not-loaded 判定与 CI 日志定位）。
 
     两个关键点：
       1. **必须先等网络静默，再采样 pending**。此前把 pending 采样放在 networkidle
@@ -293,11 +293,21 @@ def settle_lazy_images(page, budget_ms=8000):
     base = _loaded_expr()
 
     def pending_now():
+        """返回未完成图片的**明细**（而不只是数量），便于 CI 日志直接定位。"""
         try:
             return page.evaluate(
-                base + ".filter(i => !i.complete || i.naturalWidth === 0).length")
+                base + """
+                .filter(i => !i.complete || i.naturalWidth === 0)
+                .map(i => ({
+                    src: (i.currentSrc || i.getAttribute('src') || '').split('/').pop(),
+                    complete: i.complete,
+                    nw: i.naturalWidth,
+                    loading: i.getAttribute('loading') || '',
+                    w: Math.round(i.getBoundingClientRect().width),
+                    h: Math.round(i.getBoundingClientRect().height)
+                }))""")
         except Exception:
-            return 0
+            return []
 
     def wait_loaded():
         try:
@@ -406,8 +416,16 @@ def check_page(page, url, vp_name, is_mobile, ignored_log=None):
                 problems.append({"type": "image-distortion", "src": im["src"],
                                  "detail": f'natural={im["nw"]}x{im["nh"]} render={im["w"]}x{im["h"]}'})
     if pending_images:
+        # 打印明细而非仅数量：否则 CI 只能看到"1 张图片未完成"，
+        # 无法判断是哪张、是否偶发，必须靠猜。
+        detail_lines = "; ".join(
+            f'{p.get("src") or "(no-src)"}[loading={p.get("loading") or "-"},'
+            f'complete={p.get("complete")},nw={p.get("nw")},'
+            f'box={p.get("w")}x{p.get("h")}]'
+            for p in pending_images[:4])
         problems.append({"type": "image-not-loaded",
-                         "detail": f"{pending_images} 张图片在滚动触发懒加载后仍未完成"})
+                         "detail": f"{len(pending_images)} 张图片在滚动触发懒加载后仍未完成: {detail_lines}",
+                         "src": ", ".join((p.get("src") or "(no-src)") for p in pending_images[:4])})
 
     if is_mobile:
         taps = page.evaluate(TAP_JS)

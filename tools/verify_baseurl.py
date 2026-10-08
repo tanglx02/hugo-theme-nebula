@@ -83,8 +83,15 @@ def check(case, base):
             if not urls:
                 rec(case, f"{kind} 存在", False, "无")
                 continue
-            wrong = [u for u in urls if not u.startswith(base)]
-            rec(case, f"{kind} 路径在 basePath 内", not wrong, f"{len(urls)} 个，异常 {wrong[:2]}")
+            # 只校验真正的"路径"：data: / blob: / 锚点不是站内资源，
+            # 它们天然不存在 basePath 前缀问题（灯箱占位图就是 1x1 data URI）。
+            real = [u for u in urls
+                    if not u.startswith(("data:", "blob:", "about:", "#"))]
+            wrong = [u for u in real if not u.startswith(base)]
+            rec(case, f"{kind} 路径在 basePath 内", not wrong,
+                f"{len(real)} 个可校验"
+                + (f"，已跳过 {len(urls) - len(real)} 个 data/blob URL" if len(urls) != len(real) else "")
+                + (f"，异常 {wrong[:2]}" if wrong else ""))
 
         fav = page.evaluate("""async () => {
             const links = Array.from(document.querySelectorAll('link[rel*=icon]'));
