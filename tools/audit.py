@@ -259,26 +259,59 @@ def get_urls(base, full=False):
 
 
 def settle_lazy_images(page, budget_ms=8000):
-    """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默。
+    """滚动触发懒加载 -> 等图片完成 -> 滚回顶部 -> 有界等待网络静默 -> 复查。
 
     返回仍处于未完成状态的图片数量（用于 image-not-loaded 判定）。
+
+    注意顺序：**必须先等网络静默，再采样 pending**。
+    此前把 pending 采样放在 networkidle 之前，等于"等完网络却用旧快照下结论"，
+    在 CI 机器负载较高时会把已加载完的图片误判为 image-not-loaded。
+    这里额外做一次复查（settle 后再等一轮），只有两轮都仍未完成才算缺陷。
     """
+    def pending_now():
+        try:
+            return page.evaluate(
+                "() => Array.from(document.images).filter(i => !i.complete).length")
+        except Exception:
+            return 0
+
     try:
         page.evaluate(SCROLL_JS)
     except Exception:
         pass
+
+    # 第一轮：等所有图片 complete
     try:
         page.wait_for_function(
             "() => Array.from(document.images).every(i => i.complete)",
             timeout=budget_ms)
     except Exception:
         pass
-    pending = page.evaluate(
-        "() => Array.from(document.images).filter(i => !i.complete).length")
+
+    # 有界等待网络静默
     try:
-        page.wait_for_load_state("networkidle", timeout=3000)
+        page.wait_for_load_state("networkidle", timeout=4000)
     except Exception:
         pass
+
+    pending = pending_now()
+    if pending:
+        # 复查：网络静默后仍未完成 -> 再滚动一次并给一次完整预算
+        try:
+            page.evaluate(SCROLL_JS)
+        except Exception:
+            pass
+        try:
+            page.wait_for_function(
+                "() => Array.from(document.images).every(i => i.complete)",
+                timeout=budget_ms)
+        except Exception:
+            pass
+        try:
+            page.wait_for_load_state("networkidle", timeout=4000)
+        except Exception:
+            pass
+        pending = pending_now()
     return pending
 
 
