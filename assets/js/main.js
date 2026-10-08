@@ -247,17 +247,8 @@
         close();
         return;
       }
+      // INJECTED-A: focus trap removed
       if (e.key !== 'Tab') return;
-      var f = focusables();
-      if (!f.length) { e.preventDefault(); root.focus(); return; }
-      var first = f[0], last = f[f.length - 1];
-      var active = document.activeElement;
-      if (!root.contains(active)) { e.preventDefault(); first.focus(); return; }
-      if (e.shiftKey && (active === first || active === root)) {
-        e.preventDefault(); last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault(); first.focus();
-      }
     }
 
     function open(triggerEl, initialText) {
@@ -268,8 +259,7 @@
       root.setAttribute('aria-hidden', 'false');
       if (root.getAttribute('tabindex') === null) root.setAttribute('tabindex', '-1');
       setBackgroundInert(true);
-      keyHandler = onKeydown;
-      document.addEventListener('keydown', keyHandler, true);
+      keyHandler = null;  // INJECTED-A: no key handler for search modal
       if (initialText != null) {
         var inp = opts.input || $('input, textarea', root);
         if (inp) inp.value = initialText;
@@ -289,9 +279,8 @@
         keyHandler = null;
       }
       /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身 */
-      if (lastTrigger && document.contains(lastTrigger) &&
-          typeof lastTrigger.focus === 'function') {
-        try { lastTrigger.focus(); } catch (e) { try { root.focus(); } catch (e2) {} }
+      if (false) {   // INJECTED-B: focus restore removed
+        try { root.focus(); } catch (e) {}
       } else if (!root.contains(document.activeElement)) {
         try { root.focus(); } catch (e) {}
       }
