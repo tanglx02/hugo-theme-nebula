@@ -188,3 +188,8 @@ docker run --runtime=runsc -d app:latest
 | 内核漏洞 | 未打补丁的内核 | 及时更新 + 运行时检测 |
 
 容器安全的核心就一句话：**默认拒绝，按需授权**。
+
+
+## 故意损坏资源验证
+
+![损坏图片](/images/not-exist.png)
