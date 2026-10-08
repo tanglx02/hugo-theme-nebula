@@ -72,7 +72,8 @@ def case_D():
     预期：inventory 发现它（EXPECTED +1），audit 必须审计它，MISSING URLS = 0。
            若 audit 仍以 sitemap 为真值，就会漏掉它（MISSING/UNEXPECTED 差异）。
     """
-    p = os.path.join(ROOT, "exampleSite/content/posts/zz-sitemap-hidden.md")
+    # 注意：不能用 zz- 前缀（被 .gitignore 忽略，CI 上不会生成）
+    p = os.path.join(ROOT, "exampleSite/content/posts/sitemap-hidden-test.md")
     io.open(p, "w", encoding="utf-8", newline="").write(
         """---
 title: "不进 sitemap 的页面"

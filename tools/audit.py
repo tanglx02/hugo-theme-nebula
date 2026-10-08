@@ -164,13 +164,7 @@ PAGINATION_HREF_RE = re.compile(r'href=["\']?([^"\'> ]*/page/\d+/)')
 DISCOVERY_RETRIES = 2          # 每个 URL 的重试次数（总尝试 = 1 + 2 = 3 次）
 
 
-_INJECT_B = {"done": False}
-
-
 def _fetch_once(base, path):
-    if not _INJECT_B["done"] and path == "/":
-        _INJECT_B["done"] = True
-        return None, "URLError: INJECTED-B first failure (should be retried)"
     """单次抓取。返回 (html, failure_reason)，不做重试。
 
     重试由 _fetch_with_retry 负责 —— 这样注入的假 fetch 也能被重试覆盖，
