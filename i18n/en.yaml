@@ -27,6 +27,8 @@ common:
   tags: Tags
   minutes: '{{ .n }} min'
   dateFormat: 'Jan 2, 2006'
+  noDate: No date
+  noScript: Search and theme switching require JavaScript. Content, the table of contents and images remain usable without it.
   anchor: Anchor link
   licenseDefault: Please credit the source when reprinting.
   pagination: Pagination

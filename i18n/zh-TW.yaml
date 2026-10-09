@@ -27,6 +27,8 @@ common:
   tags: 標籤
   minutes: '{{ .n }} 分鐘'
   dateFormat: '2006年1月2日'
+  noDate: 未標註日期
+  noScript: 搜尋與主題切換需要啟用 JavaScript；正文、目錄與圖片在無指令碼時仍可正常閱讀。
   anchor: 錨點連結
   licenseDefault: 轉載請註明出處。
   pagination: 分頁導覽

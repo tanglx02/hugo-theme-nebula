@@ -1,15 +1,24 @@
 {{ define "main" }}
 {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
 {{- $posts := where site.RegularPages "Section" "in" $contentSections -}}
-{{- $groups := $posts.GroupByDate "2006" -}}
+{{- /* 区分"有日期"与"缺日期"两组：缺日期的文章若直接参与 GroupByDate "2006"，
+       Hugo 会按零值分到 "0001" 年，页面出现"0001 年"（BUG-P3-001）。
+       这里把无日期文章单独成组，年份标题用本地化的"未标注日期"。 */ -}}
+{{- $dated := slice -}}
+{{- $undated := slice -}}
+{{- range $posts -}}
+  {{- if .Date.IsZero -}}{{- $undated = $undated | append . -}}
+  {{- else -}}{{- $dated = $dated | append . -}}{{- end -}}
+{{- end -}}
+{{- $yearGroups := $dated.GroupByDate "2006" -}}
 
 <div class="card page-head">
   <nav class="breadcrumb"><a href="{{ site.Home.RelPermalink }}">{{ i18n "common.home" }}</a><span>/</span><span>{{ .Title }}</span></nav>
   <h1>{{ .Title }}</h1>
-  <p>{{ i18n "archive.count" (dict "posts" (len $posts) "years" (len $groups)) }}</p>
+  <p>{{ i18n "archive.count" (dict "posts" (len $posts) "years" (len $yearGroups)) }}</p>
 </div>
 
-{{ range $groups }}
+{{ range $yearGroups }}
   <h2 class="archive-year">{{ .Key }}</h2>
   <ul class="archive-list">
     {{ range .Pages.GroupByDate "2006-01" }}
@@ -20,6 +29,18 @@
           {{ with .Params.categories }}{{ range first 1 . }}<a class="chip chip-cat" href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>{{ end }}{{ end }}
         </li>
       {{ end }}
+    {{ end }}
+  </ul>
+{{ end }}
+
+{{ with $undated }}
+  <h2 class="archive-year">{{ i18n "common.noDate" }}</h2>
+  <ul class="archive-list">
+    {{ range . }}
+      <li>
+        <a href="{{ .RelPermalink }}">{{ .Title }}</a>
+        {{ with .Params.categories }}{{ range first 1 . }}<a class="chip chip-cat" href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>{{ end }}{{ end }}
+      </li>
     {{ end }}
   </ul>
 {{ end }}

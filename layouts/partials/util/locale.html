@@ -1,0 +1,22 @@
+{{- /* 返回语言的 locale 标识（如 zh-CN / en-US / zh-TW），供 og:locale 与 hreflang 使用。
+
+       兼容性：
+         - Hugo 0.158 起 `.Language.LanguageCode` 被弃用（并会打出 WARN），
+           替代品是 `.Language.Locale`；
+         - 但 `.Locale` 在旧版本上不存在，直接访问会报错，因此按版本能力选择。
+       本 partial 用"输出内容"而非 `return` 传值（与 util/rel-url.html 一致，
+       避免不同 Hugo 版本对 partial return 的差异）。
+
+       调用：{{ partial "util/locale.html" .Language }}  /  {{ partial "util/locale.html" site.Language }}
+  */ -}}
+{{- $lang := . -}}
+{{- $hv := split (index (split hugo.Version "-") 0) "." -}}
+{{- $major := int (index $hv 0) -}}
+{{- $minor := cond (gt (len $hv) 1) (int (index $hv 1)) 0 -}}
+{{- $out := $lang.Lang -}}
+{{- if or (gt $major 0) (ge $minor 158) -}}
+  {{- $out = $lang.Locale | default $lang.Lang -}}
+{{- else -}}
+  {{- $out = $lang.LanguageCode | default $lang.Lang -}}
+{{- end -}}
+{{- $out -}}

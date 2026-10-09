@@ -19,7 +19,18 @@
 {{- $alt := .Text | default (.Title | default "") -}}
 {{- $img := .Page.Resources.GetMatch $dest -}}
 {{- $page := .Page -}}
-{{- if and $img (reflect.IsImageResourceProcessable $img) -}}
+{{- /* 可处理性判断：**不能用 reflect.IsImageResourceProcessable** ——
+       该函数在 Hugo 0.128.0 上不存在（实测报
+       "can't evaluate field IsImageResourceProcessable"），
+       而 0.128.0 是 theme.toml 声明的最低版本。
+       这里改为按 MediaType 的 raster 白名单判断，所有支持版本行为一致。 */ -}}
+{{- $processable := false -}}
+{{- with $img -}}
+  {{- if eq .ResourceType "image" -}}
+    {{- $processable = in (slice "jpeg" "png" "webp" "gif" "bmp" "tiff") .MediaType.SubType -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $img $processable -}}
   {{- with $img -}}
   {{- $cfg := site.Params.images | default dict -}}
   {{- $widths := $cfg.widths | default (slice 480 768 1200) -}}

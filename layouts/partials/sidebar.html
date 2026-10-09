@@ -1,18 +1,27 @@
 {{- /* 站长名片 */ -}}
 <div class="widget profile">
-  {{ with site.Params.avatar }}
-    <img class="profile-avatar" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ site.Params.author }}">
-  {{ else }}
+  {{- /* 头像：URL 为空或含危险 scheme（被 util/rel-url.html 剔除）时退回到主题内置头像，
+       而不是渲染 <img src="">（SEC-03：配置被写坏也不产生破损/异常属性）。 */ -}}
+{{- $avatarURL := partial "util/rel-url.html" (site.Params.avatar | default "") -}}
+{{ if $avatarURL }}
+    <img class="profile-avatar" src="{{ $avatarURL | safeURL }}" alt="{{ site.Params.author }}">
+{{ else }}
     <img class="profile-avatar" src="{{ "img/avatar.svg" | relURL }}" alt="{{ site.Params.author }}">
-  {{ end }}
+{{ end }}
   <h2 class="profile-name">{{ site.Params.author }}</h2>
   <p class="profile-desc">{{ site.Params.profile.bio | default site.Params.description }}</p>
 
   <div class="profile-stats">
     {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+    {{- /* 站点未配置 taxonomies 时 site.Taxonomies.categories 是零值，
+           直接 len 会报 "reflect: call of reflect.Value.Type on zero Value"
+           并**终止整站构建**。这里统一用 default dict 兜底：
+           没有分类/标签的站点也应能正常构建。 */ -}}
+    {{- $cats := site.Taxonomies.categories | default dict -}}
+    {{- $tags := site.Taxonomies.tags | default dict -}}
     <div><span class="num">{{ len (where site.RegularPages "Section" "in" $contentSections) }}</span><span class="lbl">{{ i18n "common.posts" }}</span></div>
-    <div><span class="num">{{ len site.Taxonomies.categories }}</span><span class="lbl">{{ i18n "common.categories" }}</span></div>
-    <div><span class="num">{{ len site.Taxonomies.tags }}</span><span class="lbl">{{ i18n "common.tags" }}</span></div>
+    <div><span class="num">{{ len $cats }}</span><span class="lbl">{{ i18n "common.categories" }}</span></div>
+    <div><span class="num">{{ len $tags }}</span><span class="lbl">{{ i18n "common.tags" }}</span></div>
   </div>
 
   <div class="socials">
@@ -49,7 +58,7 @@
         <span class="mini-rank">{{ add $i 1 }}</span>
         <span>
           <a class="mini-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
-          <div class="mini-date">{{ .Date.Format (i18n "common.dateFormat") }}</div>
+          <div class="mini-date">{{ if .Date.IsZero }}{{ i18n "common.noDate" }}{{ else }}{{ .Date.Format (i18n "common.dateFormat") }}{{ end }}</div>
         </span>
       </li>
     {{ end }}
