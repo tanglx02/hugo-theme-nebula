@@ -9,6 +9,13 @@
   阈值（params.search.autoThreshold，默认 512000 字节 ≈ 500 KB）：
     正文总体积超过阈值时，auto 模式自动切换到分片。
 
+  Hugo 版本兼容（能力探测，见下方 $supportsPublish）：
+    - resources.Publish 自 **Hugo 0.167.0** 起提供，分片模式依赖它。
+    - Hugo < 0.167.0 + mode = auto（默认）超过阈值 -> **自动回退为单文件索引**
+      （全文搜索能力不变），保证默认配置在声明的最低版本 0.128.0 上也能构建。
+    - Hugo < 0.167.0 + mode = shard（显式）-> 显式报错并给出替代方案，
+      不静默降级（符合 "分片需要 0.167+" 的配置约定）。
+
   向后兼容：params.search.shard = true 等价于 mode = "shard"。
 
   体积控制：正文完整收录（不做 3000 字截断），仅压缩连续空白；
@@ -30,6 +37,16 @@
 {{- end -}}
 {{- $threshold := int (site.Params.search.autoThreshold | default 512000) -}}
 {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+
+{{- /* 能力探测：resources.Publish 自 Hugo 0.167.0 起提供（此前为 0.x）。
+       分片模式依赖它把 chunk 写入构建产物；低版本必须回退，
+       否则默认 auto 在大体量站点上会直接构建失败（can't evaluate field Publish）。
+       hugo.Version 形如 "0.128.0"（可能带 "-DEV" 后缀，先按 "-" 截断）。 */ -}}
+{{- $hugoVersion := hugo.Version -}}
+{{- $verParts := split (index (split $hugoVersion "-") 0) "." -}}
+{{- $verMajor := int (index $verParts 0) -}}
+{{- $verMinor := cond (gt (len $verParts) 1) (int (index $verParts 1)) 0 -}}
+{{- $supportsPublish := or (gt $verMajor 0) (ge $verMinor 167) -}}
 
 {{- /* 第一步：收集条目并统计正文总体积 */ -}}
 {{- $items := slice -}}
@@ -64,11 +81,26 @@
 
 {{- /* 第二步：计算总体积并决定模式 */ -}}
 {{- $totalBytes := len (delimit $allContent "") -}}
-{{- $useShard := false -}}
+{{- $wantShard := false -}}
 {{- if eq $mode "shard" -}}
-  {{- $useShard = true -}}
+  {{- $wantShard = true -}}
 {{- else if eq $mode "auto" -}}
-  {{- $useShard = gt $totalBytes $threshold -}}
+  {{- $wantShard = gt $totalBytes $threshold -}}
+{{- end -}}
+
+{{- /* 能力回退（关键：让**默认配置**在所有声明支持的版本上都能构建）：
+       - auto（默认）：低版本超过阈值时**安全回退**为单文件索引。全文搜索能力不变
+         —— 单文件同样收录完整正文，仅请求形态不同（一个大文件 vs 多个 chunk）。
+       - 显式 shard：低版本确实不支持，按**明确的配置约定显式报错**并给出可理解的
+         说明与替代方案，不静默降级（否则用户会误以为已启用分片）。 */ -}}
+{{- $useShard := $wantShard -}}
+{{- if and $wantShard (not $supportsPublish) -}}
+  {{- $useShard = false -}}
+  {{- if eq $mode "shard" -}}
+    {{- errorf "Nebula: params.search.mode = \"shard\" 需要 Hugo >= 0.167.0（依赖 resources.Publish），当前为 %s。请升级 Hugo，或改设 params.search.mode = \"single\"（留空则用默认 auto，低版本会自动回退为单文件索引）。" $hugoVersion -}}
+  {{- else -}}
+    {{- warnf "Nebula: 正文总量 %d 字节 > autoThreshold %d，但当前 Hugo %s 不支持分片（需 >= 0.167.0），已自动回退为单文件索引（params.search.mode = \"auto\"）。全文搜索不受影响。" $totalBytes $threshold $hugoVersion -}}
+  {{- end -}}
 {{- end -}}
 
 {{- /* 第三步：输出
