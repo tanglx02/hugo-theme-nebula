@@ -3,6 +3,89 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 独立第三方测试报告的集中修复轮
+
+针对 `Nebula-v1.0.9-独立第三方全面测试报告.md` 确认的问题做**有范围控制的修复**：
+不改技术栈、不加无关功能、不降低任何断言。**尚未发布**（未打 tag、未创建 Release）。
+
+### 已修复（P1，均已在三版本 / 三引擎实测复现后修复并回归）
+
+- **BUG-P1-001 搜索弹窗关闭后页面滚动锁死**：`body.overflow` 的锁定与恢复原先写在
+  搜索模块自己的 `open()/close()` 里，遮罩点击与 Escape 走的是 `createModalA11y`
+  内部的 `close()`，于是这两条路径关闭后 overflow 永久停在 `hidden`。
+  现在滚动锁由工厂用**引用计数**统一管理：恢复打开前的真实值、多模态互不干扰、
+  任何关闭路径都无法绕过。新增 `tools/verify_modal_scroll.py`（19 项，三引擎）。
+- **BUG-P1-002 默认 auto 在 Hugo 0.128–0.162 上构建失败**：分片分支调用
+  `resources.Publish`（0.167 起才提供）。现在做**版本能力探测**：旧版本 `auto`
+  超过阈值时自动回退为单文件索引（WARN，构建成功、全文能力不变）；显式
+  `mode = "shard"` 仍明确报错并给出替代方案。新增 `tools/check_search_modes.py`
+  按**真实索引字节数**验证 below/equal/above 边界与显式模式。
+- **BUG-P1-003 `slicestr` 越界终止整站构建**：空/单字符/单 CJK/单 emoji/纯空白标题、
+  空站点标题、无头像且 author 为空都会让构建失败。新增
+  `partial "util/slice-runes.html"`（用 `countrunes` 判断 rune 长度，而非 `len` 的字节数），
+  统一替换三处越界调用。
+
+### 已修复（P2）
+
+- **BUG-P2-002 英文站 769–869px 横向溢出**：头部导航断点由 768px 提升到 **900px**
+  （英文导航更长），新增 `tools/check_responsive_overflow.py`
+- **BUG-P2-003 浅色主题对比度不足 WCAG AA**：引入用途分离的颜色 token
+  （`--brand-solid` 承载白字 / `--brand-ink`·`--accent-ink` 作文字色 / 加深 `--text-muted`），
+  深浅两套主题全部达标；新增 `tools/verify_contrast.py`
+- **BUG-P2-004 JSON-LD 双重编码（785 页）**：改为整体 `dict` 序列化后一次
+  `jsonify | safeJS` 输出，从结构上杜绝二次编码
+- **BUG-P2-001** burger 增加 `aria-expanded` / `aria-controls`，Escape 可关闭菜单
+- **BUG-P2-005** 搜索 `score()` 纳入 `series` 字段
+
+### 已修复（P3 / 安全 / 文档）
+
+- **BUG-P3-001** 缺 `date` 的文章不再显示 `0001年1月1日`：页面显示本地化
+  "未标注日期"或省略，JSON-LD 不输出日期字段；新增 `zero-date` 门禁规则
+- **BUG-P3-002** 增加 `<noscript>` 提示（搜索与主题切换需要 JS）
+- **BUG-P3-003 / SEC-02** busuanzi 改用 `https://` 绝对地址；`integrity` 可选配置；
+  README 新增"供应链与 CSP 建议"
+- **BUG-P3-005** `.Language.LanguageCode`（0.158 起弃用）改走
+  `util/locale.html`，按版本用 `.Locale` 或回退，消除弃用 WARN
+- **BUG-P3-006** ≤900px 时图标按钮与主按钮提升到 44×44
+- **BUG-P3-007** 空正文不再显示"0 分钟 / 0 字"
+- **SEC-01** 搜索结果链接增加 scheme 白名单，非法项渲染为不可点击文本
+- **SEC-03** `util/rel-url.html` 在源头拒绝 `javascript:` / `vbscript:` / `data:`(非 image)
+- **DOC-01/02** README 与 `theme.toml` 说明 auto 回退行为与漏配 `outputs` 的后果
+- **DOC-03** 移除被跟踪的 `exampleSite/.hugo_build.lock`；截图 6.67MB → 3.84MB
+
+### 测试体系缺陷修复（TEST-DEFECT）
+
+- **001** JSON-LD 校验因 minify 去引号而恒真 → 正则容忍无引号属性 + **双重编码检测**
+  + og:title 交叉校验 + "全站 0 块即失败"兜底
+- **002** 安全门禁的 URL/事件属性正则只认双引号 → 兼容单引号 / 无引号；
+  同时补上"站点自身域名视为同源"避免误报
+- **003** job 级 `permissions: write-all` 被 `continue` 放过 → 现在判红
+- **004** 40 位 SHA 固定被当成"版本号解析失败"判红 → 现在接受并打印提示
+- **005** `verify_multisection` 源码扫描路径不存在导致恒真 → 路径修正 + 空转即硬失败
+- **006** 索引正文为空不判错、截断仅 WARN、分片模式不校验正文 → 全部改为判错
+  （空正文按 ≥25% 比例阈值判定，避免误伤"作者确实没写正文"）
+- **007** `check_seo` 无 posts 目录时真空通过 → 至少检查到 1 页否则硬失败
+- **008** 安全门禁 0 个 HTML 仍 PASS → 空产物硬失败
+- **009** `subdir_test.py` 无退出码 → 接入统一 Harness
+- **010** 多处恒真断言（空串 endswith、`n >= 0`、结果为空时 XSS 断言全空过等）→ 补非空断言
+- **011** `check_docs` 版本硬编码 1.0.7 → 按 git tag / CHANGELOG 推断并与基线文档交叉核对
+- **012** `audit.py` 采样硬编码分页 token `page` → 全部改用检测到的 token
+- **013** 测试数据未覆盖空标题 / 单字符标题 / 无 author / 空正文 / 非 ASCII slug / BOM → 已补齐夹具
+- **014** `gen_testdata.clean()` 遇 `zz-images-bundle/` 目录崩溃、多 section 数据不清理 → 已修复
+- **015** `check_ci_jobs` 只比数量、注释自指 → 增加 job 集合 / matrix 取值 / tag 门控结构校验
+- **016** 三个脚本默认路径基准不一致 → 统一为 `<repo>/public`
+- **019** `verify_search_modal` 语言覆盖不足只提示 → CI 设 `REQUIRE_SEARCH_LANGS=1` 后判失败
+- **020** chromium 专属步骤可能静默不执行 → 校验 `matrix.*` 条件取值真实存在
+
+### 额外发现（不在原报告内，修复过程中定位）
+
+- **Hugo 0.128 不支持 `reflect.IsImageResourceProcessable`**，而 `render-image.html`
+  直接使用它；CI 的 build job 未安装 Pillow，永远走不到图片处理分支，因此长期未被发现。
+  现改为 MediaType 白名单（全版本一致），并让 build job 安装 Pillow + 断言图片管线生效。
+- **未配置 `taxonomies` 的站点无法构建**：`sidebar.html` 对
+  `site.Taxonomies.categories` 直接 `len` 会报 `reflect.Value.Type on zero Value`。
+  已用 `default dict` 兜底。
+
 ## [1.0.9] — 2026-10-09
 
 最终封版：搜索日期 i18n、pagination crawler 判定、GitHub Actions 现代化。

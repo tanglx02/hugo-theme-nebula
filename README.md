@@ -50,14 +50,24 @@
 
 最低版本不是估计值：CI 用多个真实 Hugo 版本对 `exampleSite` 做生产构建。
 
-| Hugo 版本 | 构建结果 |
-| --- | --- |
-| 0.128.0 | ✅ 通过 |
-| 0.162.0 | ✅ 通过 |
-| 0.167.0 | ✅ 通过 |
-| latest | ✅ 通过 |
+| Hugo 版本 | 默认配置（auto） | 显式 `mode = "shard"` |
+| --- | --- | --- |
+| 0.128.0 | ✅ 通过 | ❌ 明确报错（不支持） |
+| 0.162.0 | ✅ 通过 | ❌ 明确报错（不支持） |
+| 0.167.0 | ✅ 通过 | ✅ 通过 |
+| latest | ✅ 通过 | ✅ 通过 |
 
-> 搜索分片（`mode = "shard"` / auto 触发分片）依赖较新的 `resources.Publish`，实测 **0.167+ 可用**；单文件索引模式在所有支持版本均可用。
+> **默认 `auto` 模式的兼容行为（重要）**
+> `auto` 会按正文总体积在 single / shard 之间自动选择。分片依赖 `resources.Publish`，
+> 该 API 从 **Hugo 0.167.0** 起提供。因此在 0.128–0.162 上：
+> - **默认 `auto`**：超过 `autoThreshold` 时**自动回退为单文件索引**（打一条 WARN），
+>   构建照常成功，**全文搜索能力不变**（单文件同样收录完整正文）；
+> - **显式 `mode = "shard"`**：仍然**明确报错**并给出升级 / 改用 single 的提示
+>   ——不静默降级，避免你以为已启用分片。
+>
+> 也就是说：**默认配置在声明的最低版本 0.128.0 上始终能构建**（v1.0.9 之前
+> 这里会直接构建失败，是独立测试发现的 P1 缺陷）。若你希望在大体量站点上真正启用
+> 分片，请使用 Hugo ≥ 0.167.0。
 
 ## 快速开始
 
@@ -93,6 +103,11 @@ hasCJKLanguage = true
   author = '你的名字'
   description = '博客描述'
 ```
+
+> ⚠️ **漏配 `outputs` 的后果（DOC-02）**：Hugo **不会**把主题自带的配置合并进你的站点配置。
+> 如果你的站点配置里没有写上面那段 `[outputs]`，`home` 就只输出 HTML，**不会生成 `index.json`**，
+> 搜索会表现为"加载失败"（界面上有明确报错与重试按钮，不会白屏）。
+> 排查方式：构建后检查站点根目录是否存在 `index.json`。
 
 写文章并预览：
 
@@ -189,6 +204,49 @@ hugo server -D      # 打开 http://localhost:1313
 评论组件语言映射：站点语言 `zh` / `zh-cn` / `zh-hans` → `zh-CN`；
 `zh-tw` / `zh-hant` / `zh-hk` → `zh-TW`；`en` / `en-us` / `en-gb` → `en`。
 未命中映射的语言会原样传给第三方组件，不会强造不存在的 locale。
+
+#### 供应链与 CSP 建议（SEC-02）
+
+以上第三方脚本**默认全部关闭**；一旦启用，脚本来自第三方 CDN，属于供应链风险面。
+本主题提供两项可选强化：
+
+1. **子资源完整性（SRI）**：可为你选择的版本提供 `integrity` 值，主题会连同
+   `crossorigin="anonymous"` 一起输出：
+
+   ```toml
+   [params.busuanzi]
+     enable = true
+     integrity = 'sha384-……'      # 取自你锁定的脚本版本
+
+   [params.comments.giscus]
+     integrity = 'sha384-……'
+
+   [params.comments.twikoo]
+     integrity = 'sha384-……'
+   ```
+
+   > 主题**不预置** integrity 值：这需要锁定具体版本并逐版本更新，硬编码过期哈希
+   > 会让脚本直接加载失败。Waline（ESM `import`）与 Disqus（运行时拼 `src`）
+   > 无法用 `<script integrity>` 覆盖，建议自托管或在上游加代理。
+
+2. **CSP**：主题不写死 CSP（不同站点启用/禁用的服务不同）。推荐在托管方以
+   **响应头**下发，示例（按需删减）：
+
+   ```text
+   Content-Security-Policy:
+     default-src 'self';
+     script-src  'self' https://giscus.app https://cdn.jsdelivr.net https://busuanzi.ibruce.info;
+     style-src   'self' https://unpkg.com;
+     frame-src   https://giscus.app;
+     img-src     'self' data: https:;
+   ```
+
+   > 注意：主题在 `<head>` 有一段防主题闪烁（FOUC）的内联脚本、以及注入 i18n
+   > 文案的内联脚本，因此 `script-src` 需要 `'unsafe-inline'` 或以 nonce/hash 放行，
+   > 否则主题切换与搜索会失效。
+
+不蒜子统计使用 **`https://` 绝对地址**（而非协议相对 `//host/...`），
+避免在 HTTP 环境下退化为明文加载。
 
 ### 多语言站点
 
@@ -436,10 +494,10 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 
 | Job | 内容 | 展开数量 |
 | --- | --- | --- |
-| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 | 4 |
+| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 4 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory**、**workflow 策略（权限/runner/Node24）**、auto 阈值分片 | 1 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）** | 1 |
+| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
 **job 数量不手写**：`tools/check_ci_jobs.py` 按 GitHub matrix 展开规则算出每个 job 的
@@ -768,9 +826,14 @@ handler/第三方域名/unsafe 配置），并修复搜索结果 `it.url` 未转
 
 - 未内置 KaTeX / MathJax（数学公式不渲染为公式排版；可在 `layouts/partials/extra-head.html` 自行引入）
 - 正文内联链接的点击区域 < 24px（WCAG 2.2 内联豁免，放大 padding 会破坏排版）
-- 搜索分片需要 Hugo 0.167+
+- 搜索分片需要 Hugo 0.167+（默认 `auto` 在低版本会自动回退为单文件索引，见上文版本兼容表）
 - 移动端仅在 WebKit 引擎下模拟验证，未做真机测试
 - 访问统计与评论为可选外部服务，默认关闭，未与真实服务联调
+- **静态目录 / 外链图片**（`/img/a.png`、`https://…`）不输出 `width`/`height`：
+  它们的尺寸在构建期不可知。实测 CLS = 0，慢速网络下仍有轻微布局抖动风险（BUG-P3-004）
+- 触控目标：图标按钮与主按钮已在 ≤900px 提升到 44×44（WCAG 2.5.5 AAA 目标）；
+  chip 类标签高度 24px，满足 WCAG 2.5.8(AA) 但未达 AAA 44×44
+- 第三方脚本不预置 SRI 哈希、不写死 CSP（见上文"供应链与 CSP 建议"）
 
 ## 许可证
 

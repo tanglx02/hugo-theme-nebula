@@ -18,8 +18,11 @@ features = [
 ]
 # 最低版本经真实构建验证（CI 矩阵同时验证 0.128.0 / 0.162.0 / 0.167.0 / latest）：
 #   theme.toml 与 README「版本兼容」表保持一致
-# 注意：搜索分片索引（params.search.shard）依赖新版 resources.Publish，
-#       实测 0.162 及以下不可用，需要 0.167+；默认单文件索引在所有支持版本可用。
+# 关于搜索索引：
+#   - 分片模式（params.search.mode = "shard"）依赖 resources.Publish，需要 Hugo 0.167+；
+#     在更低版本上**显式报错**并给出替代方案（不静默降级）。
+#   - 默认的 auto 模式在低版本超过阈值时会**自动回退为单文件索引**（打 WARN），
+#     因此默认配置在 0.128.0 起即可正常构建，全文搜索能力不变。
 min_version = "0.128.0"
 
 [author]
