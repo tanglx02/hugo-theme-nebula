@@ -1,0 +1,24 @@
+{{- /* 首页"最新文章"区块（功能一·共享）。
+       入参：restPages（已排除焦点区后的文章切片）。
+       四个布局共用本区块 —— 保证列表、卡片、分页链接在任何布局下行为一致。
+       列表链接指向第一个内容 section（默认 posts），不再写死，兼容多 section 站点。 */ -}}
+{{- $restPages := . -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{- $listURL := (index $contentSections 0) | relURL -}}
+{{- $count := site.Params.homePostCount | default 8 -}}
+<div class="section-head">
+  <h2>{{ i18n "home.latest" }}</h2>
+  <a class="more" href="{{ $listURL }}">{{ i18n "home.viewAll" }}</a>
+</div>
+
+<div class="post-list">
+  {{ range $p := first $count $restPages }}
+    {{ partial "post-card.html" $p }}
+  {{ end }}
+</div>
+
+{{ if gt (len $restPages) $count }}
+  <div style="text-align:center;margin-top:26px">
+    <a class="btn" href="{{ $listURL }}">{{ i18n "home.browseMore" }}</a>
+  </div>
+{{ end }}

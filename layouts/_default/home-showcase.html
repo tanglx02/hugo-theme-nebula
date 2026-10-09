@@ -1,0 +1,9 @@
+{{- /* 首页布局展示页（exampleSite 演示用）。
+       任意内容页设置 layout: home-showcase + homeLayout: <name>，
+       即可在正常 URL 下渲染对应的首页布局（复用同一批 partial，零重复实现）。
+       这不是"截图示例"，而是真实构建产物里可访问的页面。 */ -}}
+{{- define "main" }}
+{{- $layout := .Params.homeLayout | default "cards" -}}
+{{- if not (in (slice "cards" "profile" "hero" "landing") $layout) -}}{{- $layout = "cards" -}}{{- end -}}
+{{- partial (printf "home/%s.html" $layout) . -}}
+{{ end }}

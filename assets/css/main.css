@@ -1388,3 +1388,29 @@ img.zoomable { cursor: zoom-in; }
 /* 复制失败态（与成功态区分；超时/被拒时不再伪装成功） */
 .code-copy.copy-failed { color: #ff7b7b; border-color: #ff7b7b; }
 .share-btn.copy-failed { color: #d9534f; border-color: #d9534f; }
+
+/* ---------- 21. Home layouts（功能一：多首页布局） ----------
+   配置 params.home.layout = cards（默认）| profile | hero | landing。
+   仅新增布局的排版规则；cards 完全复用既有样式，外观不变。 */
+.home-full { padding: 26px 0 40px; }
+
+/* hero 布局：无侧栏，焦点区更高、列表全宽 */
+.hero-lg .hero-main { min-height: 380px; }
+
+/* profile 布局：顶部以站长名片为主体 */
+.home-profile { padding: 26px 0 4px; }
+.home-profile-inner { display: flex; justify-content: center; }
+.home-profile .widget.profile { margin: 0; max-width: 460px; width: 100%; }
+
+/* landing 布局：介绍型居中排版 */
+.home-landing-hero { text-align: center; padding: 40px 20px 8px; }
+.landing-title { margin: 0 0 10px; font-size: 34px; line-height: 1.25; color: var(--text-strong); }
+.landing-sub { margin: 0 0 8px; font-size: 17px; color: var(--text-muted); }
+.landing-desc { margin: 0 auto 24px; max-width: 640px; color: var(--text-muted); }
+.home-landing-hero .widget.profile { margin: 0 auto; max-width: 460px; }
+.landing-cta { text-align: center; margin-top: 28px; }
+
+@media (max-width: 768px) {
+  .landing-title { font-size: 26px; }
+  .hero-lg .hero-main { min-height: 260px; }
+}

@@ -1,0 +1,23 @@
+{{- /* 首页布局：landing（落地页）。
+       基于**已有模块**组合：站长名片 + 最新文章列表 + 指向内容 section 的收尾 CTA，
+       不新增任何新模块；与 profile 的差别在于以"介绍型"排版呈现（居中、无侧栏）。 */ -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{- $posts := where site.RegularPages "Section" "in" $contentSections -}}
+{{- $ordered := sort $posts "Date" "desc" -}}
+{{- $pinned := where $posts "Params.sticky" true -}}
+{{- $allPages := union $pinned $ordered -}}
+{{- $listURL := (index $contentSections 0) | relURL -}}
+
+<section class="home-landing-hero">
+  <h1 class="landing-title">{{ site.Title }}</h1>
+  {{ with site.Params.subtitle }}<p class="landing-sub">{{ . }}</p>{{ end }}
+  {{ with site.Params.description }}<p class="landing-desc">{{ . }}</p>{{ end }}
+  {{ partial "widget/profile.html" . }}
+</section>
+
+<div class="home-full">
+  {{ partial "home/latest.html" $allPages }}
+  <div class="landing-cta">
+    <a class="btn" href="{{ $listURL }}">{{ i18n "home.browseMore" }}</a>
+  </div>
+</div>
