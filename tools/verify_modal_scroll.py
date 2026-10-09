@@ -59,18 +59,30 @@ def user_can_scroll(pg):
     """真实用户输入滚动判定：先回顶，再用滚轮 + PageDown，看 scrollY 是否真的变化。
 
     不能用 window.scrollTo 判定：overflow:hidden 依然允许程序化滚动。
+
+    ⚠️ 回顶必须用 `behavior:'instant'`（不能只写 `scrollTo(0,0)`）：
+      本站 CSS 设了 `html { scroll-behavior: smooth }`，`scrollTo(0, 0)` 会变成
+      平滑动画，在无头浏览器（尤其 CI 的 Firefox/WebKit）里动画被节流，
+      固定等待 60ms 后页面往往**还没滚回顶部**，残留的大 scrollY 会被下面的
+      绝对阈值误判成"仍能滚动" → 断言 1 假红（TEST-DEFECT-R2-009）。
+      `behavior:'instant'` 绕过 CSS 平滑滚动，立即归零，判定才可靠。
     """
-    pg.evaluate("() => window.scrollTo(0, 0)")
-    pg.wait_for_timeout(60)
+    pg.evaluate("() => { try { window.scrollTo({top:0,left:0,behavior:'instant'}); }"
+                " catch (e) { window.scrollTo(0, 0); } }")
+    pg.wait_for_timeout(120)
+    y0 = pg.evaluate("() => window.scrollY")
     pg.mouse.move(400, 400)
     pg.mouse.wheel(0, 900)
-    pg.wait_for_timeout(220)
-    y = pg.evaluate("() => window.scrollY")
-    if y <= 50:
+    pg.wait_for_timeout(260)
+    y1 = pg.evaluate("() => window.scrollY")
+    moved = y1 > y0 + 50          # 相对位移：不再假设起点一定为 0
+    if not moved:
         pg.keyboard.press("PageDown")
-        pg.wait_for_timeout(220)
-        y = pg.evaluate("() => window.scrollY")
-    return {"scrollY": y, "moved": y > 50}
+        pg.wait_for_timeout(260)
+        y2 = pg.evaluate("() => window.scrollY")
+        moved = y2 > y0 + 50
+        y1 = y2
+    return {"scrollY": y1, "base": y0, "moved": moved}
 
 
 def overlay_open(pg):
@@ -175,6 +187,16 @@ def run(h):
             ctx.add_init_script(
                 "(() => { const f = HTMLElement.prototype.focus;"
                 " HTMLElement.prototype.focus = function(){ return f.call(this); }; })();")
+        # SCROLL_LOCK_BUG=1：注入一条 `overflow:visible !important` 样式，覆盖
+        # JS 写入的 inline `overflow:hidden`，等价于复现 BUG-P1-001 的历史症状
+        # （打开弹窗后页面并未真正被锁）。用于自证"断言 1（打开即锁定）"确实会
+        # 在锁失效时变红 —— 即加固后的判定没有变松到永远 PASS。
+        if os.environ.get("SCROLL_LOCK_BUG", "").strip() in ("1", "true", "True"):
+            ctx.add_init_script(
+                "document.addEventListener('DOMContentLoaded', function(){"
+                " var s = document.createElement('style');"
+                " s.textContent = 'html,body{overflow:visible !important}';"
+                " (document.head || document.documentElement).appendChild(s); });")
         pg = ctx.new_page()
         errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)[:140]))
@@ -219,7 +241,9 @@ def run(h):
         # 触发按钮的静态位置，用户在长文中开关搜索后页面位置被拉走。
         # 判据：关闭后的 scrollY 与打开后（同一锁定位置）相比漂移不得超过容差。
         # 实测：修复前 Chromium −358px / WebKit −65px；修复后三引擎漂移 = 0px。
-        pg.evaluate("() => window.scrollTo(0, 1600)")
+        # 注：定位滚动用 behavior:'instant'，避免 CSS 平滑滚动动画污染 y_open/y_close。
+        pg.evaluate("() => { try { window.scrollTo({top:1600,left:0,behavior:'instant'}); }"
+                    " catch (e) { window.scrollTo(0, 1600); } }")
         pg.wait_for_timeout(150)
         pg.click("#searchTrigger")
         pg.wait_for_timeout(280)
