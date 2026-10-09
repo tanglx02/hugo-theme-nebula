@@ -25,7 +25,7 @@ env:
 # CI JOB INVENTORY —— 由 tools/check_ci_jobs.py 自动校验，**禁止手工改数字**
 #
 #   job                    matrix 维度            展开数量   备注
-#   build                  hugo-version x4        4
+#   build                  hugo-version x6        6
 #   subdir                 -                      1
 #   static-checks          -                      1
 #   browser-tests          browser x3             3
@@ -34,13 +34,13 @@ env:
 # 改动 matrix（加/删浏览器、加 Hugo 版本等）必须同步更新下面两行，
 # 否则 tools/check_ci_jobs.py 判定失败，CI 变红。
 #
-# CI-JOBS: build=4
+# CI-JOBS: build=6
 # CI-JOBS: subdir=1
 # CI-JOBS: static-checks=1
 # CI-JOBS: browser-tests=3
 # CI-JOBS: release-full-audit=3
-# CI-JOBS-TOTAL: 12
-# CI-JOBS-PUSH-TOTAL: 9        （非 tag 推送：Release job 被 if 跳过）
+# CI-JOBS-TOTAL: 14
+# CI-JOBS-PUSH-TOTAL: 11       （非 tag 推送：Release job 被 if 跳过）
 # ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------- 构建矩阵
@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
+        hugo-version: ['0.128.0', '0.148.0', '0.162.0', '0.166.0', '0.167.0', 'latest']
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -63,11 +63,37 @@ jobs:
           hugo-version: ${{ matrix.hugo-version }}
           extended: true
 
+      - name: Setup Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Pillow (生成 page bundle 图片资源)
+        # 没有 Pillow 时 gen_testdata 会跳过 zz-images-bundle，
+        # 于是 render-image 的图片处理分支**永远不会被构建到**——
+        # 这正是 Hugo 0.128 上 reflect.IsImageResourceProcessable 不兼容
+        # 长期未被发现的原因（只在装了 Pillow 的浏览器 job 才会触发）。
+        run: pip install "Pillow>=10.0"
+
       - name: Generate stress test data
         run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
 
       - name: Build exampleSite (production)
         run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+
+      - name: Check boundary fixtures are present (edge content + page bundle)
+        run: |
+          set -e
+          for d in public/posts/zz-21-empty-title public/posts/zz-22-one-char \
+                   public/posts/zz-23-one-cjk public/posts/zz-24-one-emoji \
+                   public/posts/zz-25-blank-title public/posts/zz-26-empty-body \
+                   public/posts/zz-27-no-author public/posts/zz-28-mixed-title \
+                   public/posts/zz-30-bom public/posts/zz-images-bundle; do
+            test -d "$d" || { echo "缺少边界测试产物: $d"; exit 1; }
+          done
+          grep -q 'srcset=' public/posts/zz-images-bundle/index.html \
+            || { echo "图片管线未生效（render-image 处理分支未被覆盖）"; exit 1; }
+          echo "边界内容与图片管线均已覆盖"
 
       - name: Check required artifacts
         run: |
@@ -79,7 +105,12 @@ jobs:
           echo "产物齐全"
 
       - name: Check search index integrity (full-text, no truncation)
-        run: python3 tools/check_index.py public/index.json
+        run: python3 tools/check_index.py public/index.json public
+
+      - name: Search index modes & auto-threshold boundary (BUG-P1-002 regression)
+        # 按**真实索引字节数**验证 auto 的 below/equal/above 边界、显式 single/shard、
+        # 旧版本回退与旧版本显式 shard 的明确报错。逐 Hugo 版本运行（在矩阵内）。
+        run: python3 tools/check_search_modes.py
 
       - name: Check draft/future pages are excluded
         run: |
@@ -367,34 +398,46 @@ jobs:
       - name: Search modal accessibility — 14 checks (focus trap / inert / restore / deep link / i18n)
         env:
           SEARCH_MODAL_URLS: 'http://127.0.0.1:8081,http://127.0.0.1:8082'
+          # 覆盖不足时判失败，而不是只打印提示（TEST-DEFECT-019）
+          REQUIRE_SEARCH_LANGS: '1'
         run: python3 tools/verify_search_modal.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search edge cases & race conditions
-        if: matrix.browser == 'chromium'
+        # 三引擎执行（TEST-DEFECT-R2-002）：搜索交互与竞态存在真实浏览器差异。
         env:
           SEARCH_DATE_LOCALE: 'zh-CN'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search date i18n in rendered results (en build must show "Sep 28, 2026")
-        if: matrix.browser == 'chromium'
         env:
           SEARCH_DATE_LOCALE: 'en'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081 ${{ matrix.browser }}
 
       - name: Search highlight - HTML entities & regex/XSS safety on & < > " '
-        if: matrix.browser == 'chromium'
-        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 chromium
+        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search shard failure handling + deep-keyword semantics
-        if: matrix.browser == 'chromium'
         run: python3 tools/verify_search_shard.py http://127.0.0.1:8090 ${{ matrix.browser }}
 
       - name: Three baseURL deployments (/, /blog/, /blog/sub/)
-        if: matrix.browser == 'chromium'
         env:
           SITE_DIR: exampleSite
           HUGO_ARGS: '--source . --themesDir ../..'
+          PW_BROWSERS: ${{ matrix.browser }}
         run: python3 tools/verify_baseurl.py
+
+      - name: Modal scroll lock & restore (BUG-P1-001 regression) — all engines
+        # 三引擎都跑：这是"关闭弹窗后页面滚不动"的 P1 回归，
+        # 报告实测 Chromium / Firefox / WebKit 全部复现。
+        run: python3 tools/verify_modal_scroll.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Text contrast WCAG AA (light + dark) (BUG-P2-003 regression)
+        run: python3 tools/verify_contrast.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Responsive overflow & header breakpoint incl. English build (BUG-P2-002)
+        env:
+          OVERFLOW_EXTRA_URLS: 'http://127.0.0.1:8081'
+        run: python3 tools/check_responsive_overflow.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Upload audit report
         if: always()
@@ -467,6 +510,9 @@ jobs:
           AUDIT_FULL: '1'
           AUDIT_BROWSERS: ${{ matrix.browser }}
           AUDIT_VIEWPORTS: '320,375,768,1440'
+          # TEST-DEFECT-R2-007：缺失 inventory 必须硬失败（不得静默跳过交叉验证），
+          # 且 inventory 必须绑定本次构建指纹
+          AUDIT_REQUIRE_INVENTORY: '1'
         run: python3 tools/audit.py http://127.0.0.1:8080
       - name: Release copy semantics (copy must never fake success)
         run: python3 tools/verify_copy.py http://127.0.0.1:8080 ${{ matrix.browser }}

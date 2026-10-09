@@ -8,7 +8,7 @@
     {{ if $cover }}
       <img src="{{ partial "util/rel-url.html" $cover | safeURL }}" alt="{{ $p.Title }}" loading="lazy" decoding="async">
     {{ else }}
-      <div class="thumb-fallback">{{ slicestr $p.Title 0 2 }}</div>
+      <div class="thumb-fallback">{{ partial "util/slice-runes.html" (dict "text" $p.Title "n" 2) }}</div>
     {{ end }}
   </a>
 
@@ -33,20 +33,32 @@
 
     <div class="post-foot">
       <span class="post-author">
-        {{ with site.Params.avatar }}
-          <img class="avatar" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ $author }}">
+        {{- /* 头像 URL 为空 / 纯空白 / 危险 scheme / 解析成站点根时，
+             退回到作者首字母占位，而不是渲染 <img src="/">（SEC-03 + BUG-R2-003）。
+             util/avatar-url.html 负责把"空串被 relURL 成站点根"这类情况归一为无效。 */ -}}
+        {{- $avatarURL := partial "util/avatar-url.html" (site.Params.avatar | default "") -}}
+        {{ if $avatarURL }}
+          <img class="avatar" src="{{ $avatarURL | safeURL }}" alt="{{ $author }}">
         {{ else }}
-          <span class="avatar-fallback">{{ slicestr $author 0 1 }}</span>
+          <span class="avatar-fallback">{{ partial "util/slice-runes.html" (dict "text" $author "n" 1) }}</span>
         {{ end }}
         <span>{{ $author }}</span>
       </span>
       <span class="dot">·</span>
-      <time datetime="{{ $p.Date.Format "2006-01-02" }}">{{ $p.Date.Format (i18n "common.dateFormat") }}</time>
+      {{/* 缺日期时显示本地化的"未标注日期"，绝不显示 0001年1月1日（BUG-P3-001） */}}
+      {{ if $p.Date.IsZero }}
+        <span class="post-date-unknown">{{ i18n "common.noDate" }}</span>
+      {{ else }}
+        <time datetime="{{ $p.Date.Format "2006-01-02" }}">{{ $p.Date.Format (i18n "common.dateFormat") }}</time>
+      {{ end }}
       <span class="dot">·</span>
+      {{/* 空正文不显示"0 分钟"这种无意义统计（BUG-P3-007） */}}
+      {{ if ne (trim ($p.Plain | default "") " \n\r\t") "" }}
       <span class="stat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         {{ i18n "common.minutes" (dict "n" $p.ReadingTime) }}
       </span>
+      {{ end }}
       {{ if site.Params.views.enable | default false }}
       <span class="stat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>

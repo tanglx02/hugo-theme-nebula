@@ -33,10 +33,11 @@
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
-<meta property="og:locale" content="{{ replace (site.Language.LanguageCode | default site.Language.Lang) "-" "_" }}">
+<meta property="og:locale" content="{{ replace (partial "util/locale.html" site.Language) "-" "_" }}">
 {{- /* 多语言时附加其它语言的 og:locale:alternate */ -}}
-{{- range .AllTranslations }}{{ if ne .Language.LanguageCode (site.Language.LanguageCode) }}
-<meta property="og:locale:alternate" content="{{ replace .Language.LanguageCode "-" "_" }}">
+{{- $selfLocale := partial "util/locale.html" site.Language -}}
+{{- range .AllTranslations }}{{ if ne (partial "util/locale.html" .Language) $selfLocale }}
+<meta property="og:locale:alternate" content="{{ replace (partial "util/locale.html" .Language) "-" "_" }}">
 {{- end }}{{ end -}}
 {{ with .Params.cover }}
 <meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">
@@ -52,11 +53,13 @@
 {{ with .Params.cover }}<meta name="twitter:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 
 {{- /* hreflang：多语言站点输出各语言版本（单语言无输出）。
-     用 LanguageCode（如 zh-CN / en-US）而非 Lang（Hugo 会输出小写 zh-cn），
-     保证 hreflang 值与配置里的 languageCode 大小写一致。 */ -}}
+     用 locale（zh-CN / en-US）而非 Lang（Hugo 会输出小写 zh-cn），
+     保证 hreflang 值与配置里的 languageCode 大小写一致。
+     取值走 util/locale.html：0.158+ 用 .Language.Locale（.LanguageCode 已弃用），
+     旧版本回退 LanguageCode —— 不再触发弃用 WARN（BUG-P3-005）。 */ -}}
 {{- if gt (len .AllTranslations) 1 }}
 {{- range .AllTranslations }}
-<link rel="alternate" hreflang="{{ .Language.LanguageCode | default .Language.Lang }}" href="{{ .Permalink }}">
+<link rel="alternate" hreflang="{{ partial "util/locale.html" .Language }}" href="{{ .Permalink }}">
 {{- end }}
 {{- end }}
 
@@ -69,42 +72,57 @@
 <link rel="alternate icon" type="image/x-icon" href="{{ "favicon.ico" | relURL }}">
 <link rel="apple-touch-icon" href="{{ "img/favicon.svg" | relURL }}">
 
-{{- /* 首页 WebSite + SearchAction（搜索框支持 ?q= 参数） */ -}}
+{{- /* 首页 WebSite + SearchAction（搜索框支持 ?q= 参数）。
+
+     为什么整体构建为 dict 再一次性 jsonify + safeJS，而不是在 <script> 里逐个
+     jsonify 片段：html/template 会把 <script> 内容当作 JS 上下文，对 jsonify 出来
+     的字符串**再做一次 JS 字符串转义**，于是值被再包一层引号
+     （"name": "\"站点名\""）—— 即 BUG-P2-004 的全站 JSON-LD 双重编码。
+     整体序列化 + safeJS 既避免二次转义，也从结构上保证输出一定是合法 JSON。
+     安全性：jsonify 会把 < > & 转义成 \u003c 等，无法 break out </script>。 */ -}}
 {{ if .IsHome }}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "name": {{ site.Title | jsonify }},
-  "url": {{ site.Home.Permalink | jsonify }},
-  "potentialAction": {
-    "@type": "SearchAction",
-    "target": {
-      "@type": "EntryPoint",
-      "urlTemplate": {{ printf "%s?q={search_term_string}" site.Home.Permalink | jsonify }}
-    },
-    "query-input": "required name=search_term_string"
-  }
-}
-</script>
+{{- $ldSite := dict
+    "@context" "https://schema.org"
+    "@type" "WebSite"
+    "name" site.Title
+    "url" site.Home.Permalink
+    "potentialAction" (dict
+      "@type" "SearchAction"
+      "target" (dict
+        "@type" "EntryPoint"
+        "urlTemplate" (printf "%s?q={search_term_string}" site.Home.Permalink))
+      "query-input" "required name=search_term_string") -}}
+<script type="application/ld+json">{{ $ldSite | jsonify | safeJS }}</script>
 {{ end }}
 
-{{- /* JSON-LD */ -}}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "{{ if .IsPage }}BlogPosting{{ else }}WebSite{{ end }}",
-  "headline": {{ if .IsHome }}{{ .Site.Title | jsonify }}{{ else }}{{ .Title | jsonify }}{{ end }},
-  {{ with $desc }}"description": {{ . | jsonify }},{{ end }}
-  {{ if .IsPage }}
-  {{/* 使用日期对象自身的时区偏移（RFC3339），不硬编码 +08:00 */}}
-  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}",
-  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}",
-  {{ end }}
-  "author": { "@type": "Person", "name": {{ with .Params.author }}{{ . | jsonify }}{{ else }}{{ .Site.Params.author | jsonify }}{{ end }} },
-  "url": "{{ .Permalink }}"
-}
-</script>
+{{- /* JSON-LD（BlogPosting / WebSite） —— 同上，整体序列化一次 */ -}}
+{{- $ldType := cond .IsPage "BlogPosting" "WebSite" -}}
+{{- $ldHeadline := cond .IsHome site.Title .Title -}}
+{{- $ld := dict
+    "@context" "https://schema.org"
+    "@type" $ldType
+    "headline" $ldHeadline
+    "url" .Permalink -}}
+{{- /* author：**无作者时省略 author 字段**，而不是输出 "name": null
+       （schema.org 要求 Person.name 为字符串；null 会被结构化数据校验器判为无效）。
+       有作者（站点级或文章级）时输出正常字符串姓名。绝不生成虚假姓名（BUG-R2-005）。 */ -}}
+{{- $ldAuthor := .Params.author | default site.Params.author | default "" -}}
+{{- if (trim $ldAuthor " \t\r\n") -}}
+  {{- $ld = merge $ld (dict "author" (dict "@type" "Person" "name" (trim $ldAuthor " \t\r\n"))) -}}
+{{- end -}}
+{{- with $desc }}{{ $ld = merge $ld (dict "description" .) }}{{ end -}}
+{{- if .IsPage -}}
+  {{- /* 缺日期（零值）时**不输出** datePublished/dateModified ——
+       否则结构化数据里会出现 "0001-01-01T00:00:00Z"（BUG-P3-001 的同类零值泄漏）。
+       使用日期对象自身的时区偏移（RFC3339），不硬编码 +08:00。 */ -}}
+  {{- if not .Date.IsZero -}}
+    {{- $ld = merge $ld (dict "datePublished" (.Date.Format "2006-01-02T15:04:05Z07:00")) -}}
+    {{- if not .Lastmod.IsZero -}}
+      {{- $ld = merge $ld (dict "dateModified" (.Lastmod.Format "2006-01-02T15:04:05Z07:00")) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+<script type="application/ld+json">{{ $ld | jsonify | safeJS }}</script>
 
 {{- /* Styles */ -}}
 {{ $css := resources.Get "css/main.css" | minify | fingerprint }}

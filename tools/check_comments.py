@@ -36,14 +36,46 @@ THEMES_DIR = os.path.dirname(REPO)
 TOOLS = os.path.join(REPO, "tools")
 HUGO = os.environ.get("HUGO_BIN", "hugo")
 
+# 本次运行产生的输出目录（供失败/异常路径统一清理，TEST-DEFECT-R2-004）
+_OUTDIRS = []
+
+
+def _remove_with_retry(path, tries=6):
+    """删除临时配置；Windows 偶发文件锁（杀软 / 索引器）会瞬时占用。
+
+    旧实现 `except OSError: pass` 会静默吞掉失败并留下残骸
+    （TEST-DEFECT-R2-005 的现象）。短重试后仍失败则**显式告警**，不静默。
+    """
+    import time as _t
+    for i in range(tries):
+        try:
+            os.remove(path)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            try:
+                os.chmod(path, 0o666)
+            except OSError:
+                pass
+            _t.sleep(0.15 * (i + 1))
+    print(f"[WARN] 临时文件未能清理，可能残留 {path}")
+    return False
+
 THIRD_PARTY_MARKS = (
     "giscus.app", "unpkg.com", "cdn.jsdelivr.net", "disqus.com",
 )
 
 
 def build(extra_config=None, out="public-check"):
-    """构建 exampleSite（可叠加配置 overlay），返回输出目录。"""
+    """构建 exampleSite（可叠加配置 overlay），返回输出目录。
+
+    TEST-DEFECT-R2-004：输出目录 `public-check` 与复制进 SITE 的 overlay 都必须
+    在**失败/异常路径**也清理。overlay 已用 try/finally；输出目录登记到
+    `_OUTDIRS`，由 main() 的 finally 统一兜底删除。
+    """
     outdir = os.path.join(REPO, out)
+    _OUTDIRS.append(outdir)
     shutil.rmtree(outdir, ignore_errors=True)
     args = [HUGO, "--source", SITE, "--themesDir", THEMES_DIR, "--gc", "-d", outdir]
     if extra_config:
@@ -54,7 +86,7 @@ def build(extra_config=None, out="public-check"):
             args += ["--config", f"hugo.toml,{name}"]
             r = subprocess.run(args, capture_output=True, text=True, timeout=300)
         finally:
-            os.remove(os.path.join(SITE, name))
+            _remove_with_retry(os.path.join(SITE, name))
     else:
         r = subprocess.run(args, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
@@ -101,29 +133,35 @@ def run(h):
     shutil.rmtree(out, ignore_errors=True)
 
     # multilingual：zh 根路径 + en 子路径
-    # 需要同时叠加 multilingual 与 giscus 两个 overlay
+    # 需要同时叠加 multilingual 与 giscus 两个 overlay。
+    # TEST-DEFECT-R2-005：旧实现把 `tools/_ml-giscus.toml` 写在成功路径末尾才删，
+    # 一旦中间任何断言/构建失败就直接泄漏（而且它**未被 .gitignore 覆盖** ——
+    # 证伪了交接报告"临时产物均已登记"的说法）。
+    # 现在：文件生成与删除包在 try/finally 里，异常也必清理。
     merged = os.path.join(TOOLS, "_ml-giscus.toml")
-    with open(merged, "w", encoding="utf-8") as f:
-        for fn in ("multilingual.toml", "comments-giscus.toml"):
-            with open(os.path.join(TOOLS, fn), encoding="utf-8") as src:
-                f.write(src.read() + "\n")
-    out = build(merged)
-    zh_post = read_html(out, "/posts/01-home-lab-proxmox/index.html")
-    en_post = read_html(out, "/en/posts/01-home-lab-proxmox/index.html")
-    h.record("multilingual + giscus：zh 页 data-lang=zh-CN",
-             'data-lang="zh-CN"' in zh_post, "zh 页")
-    h.record("multilingual + giscus：en 页 data-lang=en",
-             'data-lang="en"' in en_post, "en 页")
-    h.record("multilingual：zh 页 html lang=zh-CN",
-             'lang="zh-CN"' in zh_post, "html lang")
-    h.record("multilingual：en 页 html lang=en",
-             'lang="en"' in en_post, "html lang")
-    h.record("multilingual：hreflang 双向输出",
-             'hreflang="zh-CN"' in zh_post and 'hreflang="en-US"' in zh_post
-             and 'hreflang="zh-CN"' in en_post and 'hreflang="en-US"' in en_post,
-             "AllTranslations（zh-CN / en-US）")
-    shutil.rmtree(out, ignore_errors=True)
-    os.remove(merged)
+    try:
+        with open(merged, "w", encoding="utf-8") as f:
+            for fn in ("multilingual.toml", "comments-giscus.toml"):
+                with open(os.path.join(TOOLS, fn), encoding="utf-8") as src:
+                    f.write(src.read() + "\n")
+        out = build(merged)
+        zh_post = read_html(out, "/posts/01-home-lab-proxmox/index.html")
+        en_post = read_html(out, "/en/posts/01-home-lab-proxmox/index.html")
+        h.record("multilingual + giscus：zh 页 data-lang=zh-CN",
+                 'data-lang="zh-CN"' in zh_post, "zh 页")
+        h.record("multilingual + giscus：en 页 data-lang=en",
+                 'data-lang="en"' in en_post, "en 页")
+        h.record("multilingual：zh 页 html lang=zh-CN",
+                 'lang="zh-CN"' in zh_post, "html lang")
+        h.record("multilingual：en 页 html lang=en",
+                 'lang="en"' in en_post, "html lang")
+        h.record("multilingual：hreflang 双向输出",
+                 'hreflang="zh-CN"' in zh_post and 'hreflang="en-US"' in zh_post
+                 and 'hreflang="zh-CN"' in en_post and 'hreflang="en-US"' in en_post,
+                 "AllTranslations（zh-CN / en-US）")
+        shutil.rmtree(out, ignore_errors=True)
+    finally:
+        _remove_with_retry(merged)
 
     # ---------- 3/4. waline / twikoo / disqus ----------
     out = build(os.path.join(TOOLS, "comments-waline.toml"))
@@ -161,7 +199,16 @@ def run(h):
     h.record("comments.html 映射表之外无硬编码 locale", not bad, f"{len(bad)} 处" if bad else "干净")
 
 
+def main():
+    h = Harness("comments")
+    try:
+        guard(h, run, h)
+    finally:
+        # 失败/异常/中断都兜底清理输出目录（成功路径已在各自分支清过）
+        for d in _OUTDIRS:
+            shutil.rmtree(d, ignore_errors=True)
+    h.finish()
+
+
 if __name__ == "__main__":
-    main_h = Harness("comments")
-    guard(main_h, run, main_h)
-    main_h.finish()
+    main()

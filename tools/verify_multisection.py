@@ -9,24 +9,30 @@
     SITE_DIR   站点目录（默认 ../myblog）
     HUGO_ARGS  传给 hugo 的额外参数（CI 用 '--source . --themesDir ../..'）
     HUGO_BIN   hugo 可执行文件（默认 PATH 中的 hugo）
+    KEEP_TMP=1 保留本次临时目录以便排查（默认不保留）
 
 退出码约定（见 tools/_testlib.py）：任一断言失败 / 构建失败 -> exit 1。
+
+临时产物（TEST-DEFECT-R2-004）：
+    旧实现在**成功路径末尾**才删 `exampleSite/ms-verify.toml` 与 `tmp/multisec`，
+    异常/中断路径全部残留，`tmp/multisec` 还会持续累积 `multi-<runid>` 目录。
+    现在：配置覆盖文件与输出目录都放进 TempWorkspace 的唯一目录，并用
+    try/finally 保证成功、失败、异常、中断都清理。
 """
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _testlib import Harness, guard  # noqa: E402
+from _testlib import Harness, guard, TempWorkspace, fresh_dir  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SITE = os.path.abspath(os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog"))
 HUGO = os.environ.get("HUGO_BIN", "hugo")
 HUGO_ARGS = os.environ.get("HUGO_ARGS", "").split() if os.environ.get("HUGO_ARGS") else []
-WORK = os.path.join(ROOT, "tmp", "multisec")
 CONFIG_NAME = "ms-verify.toml"
 
 SECTIONS = ["posts", "tutorials", "notes", "projects"]
@@ -49,6 +55,10 @@ def build(out_dir, extra_config=None):
                        encoding="utf-8", errors="ignore")
     errs = [l for l in (p.stderr + p.stdout).splitlines()
             if l.strip().upper().startswith("ERROR")]
+    # 真实退出码优先（与 TEST-DEFECT-R2-008 同类）：非零即构建失败
+    if p.returncode != 0:
+        tail = (p.stderr or p.stdout or "").strip().splitlines()[-3:]
+        errs = [f"hugo 退出码 {p.returncode}"] + errs + tail
     return errs
 
 
@@ -71,19 +81,57 @@ def index_blob(base):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _remove_with_retry(path, tries=6):
+    """删除临时覆盖配置；Windows 上偶发文件锁（杀软 / 索引器）会瞬时占用。
+
+    实测清理逻辑本身正确，但并发/连续运行时 `os.remove` 偶发被占用而抛 OSError。
+    旧实现 `except OSError: pass` 会**静默**吞掉它并留下残骸（正是 TEST-DEFECT-R2-004
+    "失败路径残留"要消除的现象）。这里短重试+`os.chmod` 兜底，仍失败则**显式告警**
+    （不静默），便于发现真实的环境问题。
+    """
+    last = None
+    for i in range(tries):
+        try:
+            os.remove(path)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            last = e
+            try:
+                os.chmod(path, 0o666)
+            except OSError:
+                pass
+            time.sleep(0.15 * (i + 1))
+    print(f"[WARN] 临时配置未能清理，可能残留 {path}: {last}")
+    return False
+
+
 def _run_all():
-    # 写入多 section 配置（放在 SITE 内：--config 路径相对 --source）
-    cfg_path = os.path.join(SITE, CONFIG_NAME)
-    with open(cfg_path, "w", encoding="utf-8") as f:
-        f.write('[params.content]\n  sections = ["posts", "tutorials", "notes", "projects"]\n')
+    # 唯一临时工作区：输出目录都在这里，成功/失败/异常/中断都清理。
+    # 配置覆盖必须放在 SITE 内（--config 路径相对 --source），而且**扩展名必须是
+    # .toml** —— Hugo 按扩展名推断配置格式，`x.toml.<id>` 会直接报
+    # "not a valid configuration format"。因此这里用带唯一 id 的 `_ms-verify-<id>.toml`，
+    # 并在 finally 中删除（`.gitignore` 只作兜底，运行期清理才是关键）。
+    with TempWorkspace("multisec") as ws:
+        ws_id = ws.path_root.rsplit(os.sep, 1)[-1]
+        cfg_name = f"_ms-verify-{ws_id}.toml"
+        cfg_path = os.path.join(SITE, cfg_name)
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.write('[params.content]\n'
+                        '  sections = ["posts", "tutorials", "notes", "projects"]\n')
+            _checks(ws, cfg_name)
+        finally:
+            _remove_with_retry(cfg_path)
 
-    # 每次使用全新输出目录，避免任何删除操作（批量删除会被安全策略拦截）
-    import time
-    run_id = os.environ.get("MULTISEC_RUN_ID") or time.strftime("%H%M%S")
-    multi = os.path.join(WORK, f"multi-{run_id}")
-    default = os.path.join(WORK, f"default-{run_id}")
 
-    errs = build(multi, extra_config=CONFIG_NAME)
+def _checks(ws, cfg_name):
+    # 每次从空目录开始，绝不复用上一次的构建产物
+    multi = fresh_dir(ws.path("multi"), boundary=ws.path_root)
+    default = fresh_dir(ws.path("default"), boundary=ws.path_root)
+
+    errs = build(multi, extra_config=cfg_name)
     if errs:
         H.fatal_error("多 section 构建失败", errs[0][:160]); return
     errs = build(default)
@@ -98,7 +146,11 @@ def _run_all():
     # 因此这里验证：首页卡片数量符合配置、存在进入全量列表的入口、区块列表页分页可用。
     cards = len(re.findall(r'class=["\']?post-card', home))
     H.record("首页卡片数量符合 homePostCount(8)", cards == 8, f"{cards} 张")
-    H.record("首页有「浏览更多」入口", 'class="btn"' in home or "btn" in home)
+    # TEST-DEFECT-010：旧断言 `'class="btn"' in home or "btn" in home` 里
+    # 第二个条件几乎恒真（页面随便一处出现 "btn" 子串即通过）。改为匹配按钮元素本身。
+    more_btn = re.search(r'class=["\']?[^"\'>]*\bbtn\b', home) is not None
+    H.record("首页有「浏览更多」入口（匹配按钮元素本身）", more_btn,
+             "匹配 class 含 btn 的元素" if more_btn else "未找到 .btn 元素")
     H.record("区块列表页分页第 2 页存在",
              os.path.exists(os.path.join(multi, "posts", "page", "2", "index.html")))
 
@@ -139,14 +191,21 @@ def _run_all():
         H.record("tutorials 文章页存在", False, "tutorials/zz-tutorials-1")
     else:
         H.record("tutorials 文章页存在", True)
+        # TEST-DEFECT-010：旧实现在找不到 related 容器时把 rel_html 退化为**整页**，
+        # 于是"相关文章链接都在配置的 sections 内"变成对全页链接的检查，失去意义。
+        # 现在容器不存在直接判失败。
         rel = re.search(r'class=["\']?related["\']?[^>]*>(.*?)</div>\s*</div>', tut, re.S)
-        rel_html = rel.group(1) if rel else tut
-        hrefs = re.findall(r'href=["\']?(/[^"\'> ]+)', rel_html)
-        internal = [h for h in hrefs if not h.startswith("/img")]
-        H.record("相关文章有内容", len(internal) > 0, f"{len(internal)} 条")
-        outside = [h for h in internal
-                   if not any(h.startswith(f"/{s}/") for s in SECTIONS)]
-        H.record("相关文章链接都在配置的 sections 内", not outside, f"越界 {outside[:3]}")
+        if not rel:
+            H.record("相关文章容器存在（.related）", False, "未找到 .related 容器，无法验证其链接范围")
+        else:
+            H.record("相关文章容器存在（.related）", True)
+            rel_html = rel.group(1)
+            hrefs = re.findall(r'href=["\']?(/[^"\'> ]+)', rel_html)
+            internal = [h for h in hrefs if not h.startswith("/img")]
+            H.record("相关文章有内容", len(internal) > 0, f"{len(internal)} 条")
+            outside = [h for h in internal
+                       if not any(h.startswith(f"/{s}/") for s in SECTIONS)]
+            H.record("相关文章链接都在配置的 sections 内", not outside, f"越界 {outside[:3]}")
 
     # ---------------- 8. 默认配置必须排除其它 section ----------------
     dhome = read(default, "index.html") or ""
@@ -163,26 +222,37 @@ def _run_all():
         H.record(f"[默认配置] RSS 不含 /{sec}/", f"/{sec}/zz-" not in drss)
 
     # ---------------- 9. 源码不得硬编码 Section "posts" ----------------
-    theme_layouts = os.path.join(SITE, "themes", "hugo-theme-nebula", "layouts")
-    if not os.path.isdir(theme_layouts):
-        theme_layouts = os.path.join(ROOT, "hugo-theme-nebula", "layouts")
-    hits = []
-    for dirpath, _, files in os.walk(theme_layouts):
-        for f in files:
-            if not f.endswith((".html", ".xml", ".json")):
-                continue
-            p = os.path.join(dirpath, f)
-            for i, ln in enumerate(open(p, encoding="utf-8", errors="ignore").read().split("\n"), 1):
-                if re.search(r'\(\s*where[^\n]*"Section"\s+"posts"\s*\)', ln) or \
-                   re.search(r'"Section"\s+"posts"', ln):
-                    hits.append(f"{os.path.relpath(p, theme_layouts)}:{i}")
-    H.record("模板中无硬编码 Section \"posts\"（仅允许 default 回退）", not hits, f"{hits[:4]}")
-
-    # 清理临时配置
-    try:
-        os.remove(cfg_path)
-    except OSError:
-        pass
+    # TEST-DEFECT-005：旧实现的两个候选路径（SITE/themes/... 与 ROOT/hugo-theme-nebula/layouts）
+    # 在仓库与 CI 里都不存在，os.walk 空转 -> hits 恒为空 -> 断言恒真。
+    # 现在必须真的扫到布局文件，否则判致命错误（不允许空转）。
+    candidates = [
+        os.path.join(SITE, "themes", "hugo-theme-nebula", "layouts"),  # myblog 站点
+        os.path.join(ROOT, "layouts"),                                # 主题仓库自身
+        os.path.join(os.path.dirname(ROOT), "hugo-theme-nebula", "layouts"),  # exampleSite/themesDir
+    ]
+    theme_layouts = next((c for c in candidates if os.path.isdir(c)), None)
+    if not theme_layouts:
+        H.fatal_error("找不到主题 layouts 目录（源码扫描会空转，断言将恒真）",
+                      "; ".join(candidates))
+    else:
+        hits = []
+        scanned = 0
+        for dirpath, _, files in os.walk(theme_layouts):
+            for f in files:
+                if not f.endswith((".html", ".xml", ".json")):
+                    continue
+                scanned += 1
+                p = os.path.join(dirpath, f)
+                for i, ln in enumerate(open(p, encoding="utf-8", errors="ignore").read().split("\n"), 1):
+                    if re.search(r'\(\s*where[^\n]*"Section"\s+"posts"\s*\)', ln) or \
+                       re.search(r'"Section"\s+"posts"', ln):
+                        hits.append(f"{os.path.relpath(p, theme_layouts)}:{i}")
+        if scanned == 0:
+            H.fatal_error("layouts 目录下没有可扫描的模板文件", theme_layouts)
+        else:
+            H.record(f"模板中无硬编码 Section \"posts\"（仅允许 default 回退）",
+                     not hits, f"{hits[:4]}" if hits else
+                     f"扫描 {scanned} 个模板文件，无硬编码")
 
 
 def main():

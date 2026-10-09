@@ -37,13 +37,15 @@
         <h1 class="article-title">{{ .Title }}</h1>
 
         <div class="article-meta">
-          {{ if $showDate }}
+          {{/* 缺日期时不显示日期（更不显示 0001年1月1日）——与搜索索引的空日期保持一致
+               （BUG-P3-001：同一份数据此前在索引侧与页面侧表现不同）。 */}}
+          {{ if and $showDate (not .Date.IsZero) }}
           <span class="stat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
             {{ .Date.Format (i18n "common.dateFormat") }}
           </span>
           {{ end }}
-          {{ if $showLastmod }}
+          {{ if and $showLastmod (not .Lastmod.IsZero) (not .Date.IsZero) }}
             {{ if ne (.Lastmod.Format (i18n "common.dateFormat")) (.Date.Format (i18n "common.dateFormat")) }}
             <span class="stat">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
@@ -51,13 +53,15 @@
             </span>
             {{ end }}
           {{ end }}
-          {{ if $showReadingTime }}
+          {{/* 空正文不显示"0 分钟 / 0 字"这类无意义统计（BUG-P3-007） */}}
+          {{ $hasBody := ne (trim (.Plain | default "") " \n\r\t") "" }}
+          {{ if and $showReadingTime $hasBody }}
           <span class="stat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             {{ i18n "post.readingTime" (dict "n" .ReadingTime) }}
           </span>
           {{ end }}
-          {{ if $showWordCount }}
+          {{ if and $showWordCount $hasBody }}
           <span class="stat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
             {{ i18n "post.wordCount" (dict "n" .WordCount) }}
@@ -128,7 +132,7 @@
           {{ range . }}
             <a class="related-card" href="{{ .RelPermalink }}">
               <div class="t">{{ .Title }}</div>
-              <div class="d">{{ .Date.Format (i18n "common.dateFormat") }} · {{ .ReadingTime }} min</div>
+              <div class="d">{{ if .Date.IsZero }}{{ i18n "common.noDate" }}{{ else }}{{ .Date.Format (i18n "common.dateFormat") }}{{ end }}{{ if ne (trim (.Plain | default "") " \n\r\t") "" }} · {{ .ReadingTime }} min{{ end }}</div>
             </a>
           {{ end }}
         </div>

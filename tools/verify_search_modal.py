@@ -240,8 +240,15 @@ def run(h):
                      f"aria-label={name!r} @ {url}")
             c2.close()
         if len(targets) < 3:
-            print(f"提示: 仅验证了 {len(targets)} 种语言"
-                  f"（提供 SEARCH_MODAL_URLS 可覆盖 en / zh-TW）")
+            msg = (f"仅验证了 {len(targets)} 种语言"
+                   f"（提供 SEARCH_MODAL_URLS 可覆盖 en / zh-TW）")
+            # TEST-DEFECT-019：旧实现只 print 提示，覆盖不足时静默降级为"通过"。
+            # CI 里设 REQUIRE_SEARCH_LANGS=1，覆盖不足直接判失败。
+            if os.environ.get("REQUIRE_SEARCH_LANGS", "").strip() not in ("", "0", "false"):
+                h.record("多语言可访问名称覆盖完整（要求 zh-CN / en / zh-TW 三种）",
+                         False, msg)
+            else:
+                print("提示: " + msg)
 
         browser.close()
 

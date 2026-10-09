@@ -2,12 +2,22 @@
    Nebula — A clean & modern Hugo blog theme
    ========================================================================== */
 
-/* ---------- 1. Tokens ---------- */
+/* ---------- 1. Tokens ----------
+   颜色分两类用途，务必区分：
+     --brand / --accent          用于**背景 / 边框 / 装饰**（可保持鲜亮）
+     --brand-solid               用于**承载白字的实心背景**（须让 #fff 达到 4.5:1）
+     --brand-ink / --accent-ink  用于**文字**（必须满足 WCAG AA 4.5:1）
+   浅色主题下鲜亮的 --brand(#409eff) 作为文字只有 2.78:1，因此所有文字一律走 *-ink；
+   白字压在 --brand 上也只有 2.78:1，所以按钮/当前页/徽标改用 --brand-solid(#2b6cb0，白字 5.42:1)。
+   （BUG-P2-003：此前 chip / muted / 链接 / 按钮文字都未达 AA。） */
 :root {
   --brand: #409eff;
   --brand-dark: #337ecc;
+  --brand-solid: #2b6cb0;        /* 实心按钮背景：#fff 文字 5.42:1 */
+  --brand-ink: #2b6cb0;          /* 文字用蓝：白底 4.83:1、--bg-soft 4.60:1 */
   --brand-soft: rgba(64, 158, 255, .12);
   --accent: #f56c6c;
+  --accent-ink: #b32e2e;         /* 文字用红：白底 5.43:1、浅红 tint 5.18:1 */
 
   --bg: #f4f6f9;
   --bg-elev: #ffffff;
@@ -15,7 +25,7 @@
   --bg-code: #f6f8fa;
   --text: #2c3e50;
   --text-strong: #1f2d3d;
-  --text-muted: #7b8794;
+  --text-muted: #667080;         /* 白底 5.01:1、--bg-soft 4.75:1、--bg 4.62:1（原 #7b8794 仅 3.66） */
   --border: #e6eaf0;
   --border-soft: #eef1f6;
   --shadow-sm: 0 1px 3px rgba(20, 30, 50, .06);
@@ -35,6 +45,8 @@
 html[data-theme="dark"] {
   --brand: #4fa3ff;
   --brand-dark: #66b1ff;
+  --brand-solid: #2b6cb0;        /* 深色主题同样用较深的实心蓝，保证白字 5.42:1 */
+  --brand-ink: #4fa3ff;          /* 深色主题：鲜亮蓝在深底上本就达标（chip-cat 4.89:1） */
   --brand-soft: rgba(79, 163, 255, .16);
   --bg: #14161b;
   --bg-elev: #1b1e25;
@@ -43,6 +55,7 @@ html[data-theme="dark"] {
   --text: #c3ccd8;
   --text-strong: #e8eef7;
   --text-muted: #8b96a5;
+  --accent-ink: #ff9a9a;         /* 深色主题红字 tint 上 6.72:1（原 #f56c6c 仅 4.4） */
   --border: #2a2f38;
   --border-soft: #23272f;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .4);
@@ -70,7 +83,7 @@ body {
   transition: background-color .3s ease, color .3s ease;
 }
 
-a { color: var(--brand); text-decoration: none; transition: color .2s ease; }
+a { color: var(--brand-ink); text-decoration: none; transition: color .2s ease; }
 a:hover { color: var(--brand-dark); }
 
 /* height:auto 是配合 <img width height> 属性（防 CLS）的必要条件：
@@ -110,7 +123,7 @@ input:focus-visible,
   }
 }
 
-::selection { background: var(--brand); color: #fff; }
+::selection { background: var(--brand-solid); color: #fff; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -182,7 +195,7 @@ input:focus-visible,
   letter-spacing: .3px;
   white-space: nowrap;
 }
-.brand:hover { color: var(--brand); }
+.brand:hover { color: var(--brand-ink); }
 .brand-logo {
   width: 32px; height: 32px;
   border-radius: 9px;
@@ -214,8 +227,8 @@ input:focus-visible,
   font-size: 14.5px;
   font-weight: 500;
 }
-.nav a:hover { color: var(--brand); background: var(--brand-soft); }
-.nav a.active { color: var(--brand); background: var(--brand-soft); }
+.nav a:hover { color: var(--brand-ink); background: var(--brand-soft); }
+.nav a.active { color: var(--brand-ink); background: var(--brand-soft); }
 
 .header-actions { display: flex; align-items: center; gap: 6px; }
 
@@ -230,7 +243,7 @@ input:focus-visible,
 }
 .icon-btn:hover {
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-ink);
   border-color: var(--brand-soft);
 }
 .icon-btn svg { width: 19px; height: 19px; }
@@ -250,7 +263,7 @@ input:focus-visible,
 }
 .search-trigger:hover {
   border-color: var(--brand);
-  color: var(--brand);
+  color: var(--brand-ink);
   background: var(--brand-soft);
 }
 .search-trigger svg { width: 15px; height: 15px; }
@@ -443,14 +456,14 @@ input:focus-visible,
   font-weight: 600;
   line-height: 1.7;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-ink);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chip-cat { background: var(--brand-soft); color: var(--brand); }
-.chip-sticky { background: rgba(245, 108, 108, .14); color: var(--accent); }
+.chip-cat { background: var(--brand-soft); color: var(--brand-ink); }
+.chip-sticky { background: rgba(245, 108, 108, .14); color: var(--accent-ink); }
 .chip-tag { background: var(--bg-soft); color: var(--text-muted); border: 1px solid var(--border); }
 
 .post-title {
@@ -473,7 +486,7 @@ input:focus-visible,
   min-height: 24px;
   padding: 2px 0;
 }
-.post-card:hover .post-title a { color: var(--brand); }
+.post-card:hover .post-title a { color: var(--brand-ink); }
 
 .post-summary {
   margin: 0;
@@ -548,7 +561,7 @@ input:focus-visible,
   gap: 8px;
   color: var(--text-strong);
 }
-.widget-title svg { width: 16px; height: 16px; color: var(--brand); }
+.widget-title svg { width: 16px; height: 16px; color: var(--brand-ink); }
 
 .profile { text-align: center; }
 .profile-avatar {
@@ -581,7 +594,7 @@ input:focus-visible,
   border: 1px solid var(--border);
   transition: all .2s ease;
 }
-.socials a:hover { background: var(--brand); color: #fff; border-color: var(--brand); transform: translateY(-2px); }
+.socials a:hover { background: var(--brand-solid); color: #fff; border-color: var(--brand); transform: translateY(-2px); }
 .socials svg { width: 16px; height: 16px; }
 
 .mini-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -609,7 +622,7 @@ input:focus-visible,
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.mini-title:hover { color: var(--brand); }
+.mini-title:hover { color: var(--brand-ink); }
 .mini-date { font-size: 12px; color: var(--text-muted); }
 
 .cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -623,7 +636,7 @@ input:focus-visible,
   font-size: 14px;
   transition: all .2s ease;
 }
-.cat-list a:hover { background: var(--brand-soft); color: var(--brand); }
+.cat-list a:hover { background: var(--brand-soft); color: var(--brand-ink); }
 .cat-list .count {
   font-size: 12px;
   color: var(--text-muted);
@@ -642,7 +655,7 @@ input:focus-visible,
   border: 1px solid var(--border);
   transition: all .2s ease;
 }
-.tag-cloud a:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+.tag-cloud a:hover { background: var(--brand-solid); color: #fff; border-color: var(--brand); }
 
 /* ---------- 9. Article ---------- */
 .article { padding: 30px 34px 34px; }
@@ -657,7 +670,7 @@ input:focus-visible,
   flex-wrap: wrap;
 }
 .breadcrumb a { color: var(--text-muted); }
-.breadcrumb a:hover { color: var(--brand); }
+.breadcrumb a:hover { color: var(--brand-ink); }
 .article-title { margin: 0 0 14px; font-size: 28px; line-height: 1.35; }
 .article-meta {
   display: flex;
@@ -696,7 +709,7 @@ input:focus-visible,
   opacity: 0;
   margin-left: 8px;
   font-weight: 400;
-  color: var(--brand);
+  color: var(--brand-ink);
   transition: opacity .2s ease;
   display: inline-block;
   min-width: 24px;               /* 触屏可达的最小点击区域 */
@@ -723,7 +736,7 @@ h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity
 .post-content p { margin: 1em 0; }
 .post-content ul, .post-content ol { padding-left: 1.5em; }
 .post-content li { margin: .35em 0; }
-.post-content li::marker { color: var(--brand); }
+.post-content li::marker { color: var(--brand-ink); }
 .post-content blockquote {
   margin: 1.4em 0;
   padding: 14px 18px;
@@ -818,7 +831,7 @@ h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity
   font-size: 12px;
   transition: all .2s ease;
 }
-.code-copy:hover { color: var(--brand); border-color: var(--brand); }
+.code-copy:hover { color: var(--brand-ink); border-color: var(--brand); }
 .code-copy.copied { color: #28c840; border-color: #28c840; }
 .code-block pre {
   margin: 0;
@@ -846,7 +859,7 @@ h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity
 .chroma .p { color: var(--text-muted); }
 .chroma .gd { color: #b30000; background: rgba(179, 0, 0, .08); }
 .chroma .gi { color: #0a7d3c; background: rgba(10, 125, 60, .08); }
-.chroma .gh, .chroma .gu { color: var(--brand); font-weight: 700; }
+.chroma .gh, .chroma .gu { color: var(--brand-ink); font-weight: 700; }
 .chroma .err { color: #b30000; }
 .chroma .lntd { vertical-align: top; padding: 0; }
 .chroma .lntable { border: 0; margin: 0; padding: 0; border-spacing: 0; }
@@ -886,7 +899,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
 /* Article footer */
 .article-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0 0; padding-top: 20px; border-top: 1px solid var(--border-soft); }
 .article-tags a { padding: 4px 12px; border-radius: 999px; font-size: 13px; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text-muted); }
-.article-tags a:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+.article-tags a:hover { background: var(--brand-solid); color: #fff; border-color: var(--brand); }
 
 .license {
   margin-top: 20px;
@@ -957,9 +970,9 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.toc a:hover { color: var(--brand); background: var(--brand-soft); }
+.toc a:hover { color: var(--brand-ink); background: var(--brand-soft); }
 .toc a.active {
-  color: var(--brand);
+  color: var(--brand-ink);
   background: var(--brand-soft);
   border-left-color: var(--brand);
   font-weight: 600;
@@ -989,9 +1002,9 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   font-size: 14px;
   transition: all .2s ease;
 }
-.pagination a:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.pagination a:hover { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); }
 .pagination .current {
-  background: var(--brand);
+  background: var(--brand-solid);
   border-color: var(--brand);
   color: #fff;
   font-weight: 700;
@@ -1025,7 +1038,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
 }
 .archive-date { flex: none; width: 92px; font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .archive-list a { font-size: 15px; color: var(--text-strong); font-weight: 500; }
-.archive-list a:hover { color: var(--brand); }
+.archive-list a:hover { color: var(--brand-ink); }
 .archive-list .chip { margin-left: auto; }
 
 .term-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
@@ -1104,7 +1117,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   background: rgba(245, 108, 108, .10);
   border-bottom: 1px solid var(--border);
   font-size: 12.5px;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .search-status[hidden] { display: none; }
 .search-status-text { line-height: 1.5; }
@@ -1153,7 +1166,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   display: inline-flex;
   align-items: center;
 }
-.footer-inner a:hover { color: var(--brand); }
+.footer-inner a:hover { color: var(--brand-ink); }
 
 /* ---------- 15. Back to top ---------- */
 .to-top {
@@ -1175,7 +1188,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   transition: all .3s ease;
 }
 .to-top.show { opacity: 1; visibility: visible; transform: none; }
-.to-top:hover { color: #fff; background: var(--brand); border-color: var(--brand); }
+.to-top:hover { color: #fff; background: var(--brand-solid); border-color: var(--brand); }
 .to-top svg { width: 18px; height: 18px; }
 
 /* ---------- 16. 404 ---------- */
@@ -1205,7 +1218,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   gap: 8px;
   padding: 9px 20px;
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-solid);
   color: #fff;
   font-size: 14.5px;
   font-weight: 600;
@@ -1236,7 +1249,7 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   color: #fff;
   transition: all .2s ease;
 }
-.lightbox-close:hover { background: var(--brand); border-color: var(--brand); }
+.lightbox-close:hover { background: var(--brand-solid); border-color: var(--brand); }
 .lightbox-close svg { width: 18px; height: 18px; }
 /* 可放大的图片给出提示光标（JS 增强，无 JS 时不影响） */
 img.zoomable { cursor: zoom-in; }
@@ -1250,15 +1263,38 @@ img.zoomable { cursor: zoom-in; }
   .toc-card { display: none; }
 }
 
-@media (max-width: 768px) {
-  /* 触屏设备上把行内小链接的点击区域补足到 24px 以上 */
-  .footer-links a { padding: 3px 0; }
-  .breadcrumb a { padding: 3px 0; }
-  .article-tags a { padding: 5px 12px; }
-  .mini-title { padding: 2px 0; }
-  .anchor { padding: 0 6px; }
-  .section-head .more { padding: 3px 0; }
+/* 无 JS 提示条（BUG-P3-002） */
+.noscript-hint {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
 
+@media (max-width: 900px) {
+  /* 触控目标（BUG-P3-006）：≥24×24 已是 WCAG 2.5.8(AA) 要求，
+     这里在窄屏/触屏常见的布局下把图标按钮与主按钮提升到 44×44（2.5.5 AAA 目标）。
+     仅在 ≤900px（行内导航已隐藏、横向空间充裕）生效，桌面布局不受影响。 */
+  .icon-btn { width: 44px; height: 44px; }
+  .btn { min-height: 44px; }
+  /* BUG-P3-006：搜索按钮与品牌入口此前仍是 36px / 32px，未达 44×44。
+     用 min-* 而非固定 width，避免在更窄视口下把头部撑出横向溢出
+     （响应式溢出由 check_responsive_overflow.py 在边界宽度守护）。 */
+  .search-trigger { min-height: 44px; height: 44px; min-width: 44px; }
+  .brand { min-height: 44px; }
+  .brand-logo, .brand-mark { width: 40px; height: 40px; }
+}
+
+/* 头部导航断点（900px）—— 有意高于内容断点 768px。
+   英文 / 其它语言的导航文案明显更长（实测英文站 nav 433px + header-actions 217px），
+   在 769–869px 视口下整页会横向溢出（scrollWidth 恒为 870，Chromium/WebKit 复现）。
+   因此头部单独用更高的断点：空间不足时改用汉堡菜单，而不是让正文出现横向滚动条。
+   （BUG-P2-002） */
+@media (max-width: 900px) {
   .nav { display: none; }
   .nav.mobile-open {
     display: flex;
@@ -1277,6 +1313,21 @@ img.zoomable { cursor: zoom-in; }
   .burger { display: grid; }
   .search-trigger kbd, .search-trigger .label { display: none; }
   .search-trigger { width: 36px; padding: 0; justify-content: center; }
+}
+
+@media (max-width: 768px) {
+  /* 触屏设备上把行内小链接的点击区域补足到 24px 以上 */
+  .footer-links a { padding: 3px 0; }
+  .breadcrumb a { padding: 3px 0; }
+  .article-tags a { padding: 5px 12px; }
+  .mini-title { padding: 2px 0; }
+  .anchor { padding: 0 6px; }
+  .section-head .more { padding: 3px 0; }
+  /* 归档列表的标题链接是 flex 项，宽度等于文字宽度 —— 单字符标题（如 "A"/"中"/emoji）
+     只有 10~21px 宽，达不到 WCAG 2.5.8 的 24×24。补足最小点击宽度。
+     （只影响极短标题，长标题不受影响。） */
+  .archive-list li > a:not(.chip) { min-width: 24px; }
+
   .post-card { grid-template-columns: 1fr; }
   .post-thumb { min-height: 0; aspect-ratio: 16 / 9; }
   .hero-mini { min-height: 120px; }
@@ -1301,16 +1352,16 @@ img.zoomable { cursor: zoom-in; }
 .series-card { margin-top: 22px; padding: 20px 22px; }
 .series-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .series-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-strong); }
-.series-title svg { width: 16px; height: 16px; color: var(--brand); }
+.series-title svg { width: 16px; height: 16px; color: var(--brand-ink); }
 .series-progress { font-size: 12.5px; color: var(--text-muted); background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
 .series-list { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .series-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .series-idx { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; background: var(--bg-soft); color: var(--text-muted); font-size: 12px; font-weight: 700; }
-.series-list li.current .series-idx { background: var(--brand); color: #fff; }
-.series-list li.current a { color: var(--brand); font-weight: 600; }
-.series-now { font-size: 11.5px; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 1px 8px; font-style: normal; }
+.series-list li.current .series-idx { background: var(--brand-solid); color: #fff; }
+.series-list li.current a { color: var(--brand-ink); font-weight: 600; }
+.series-now { font-size: 11.5px; color: var(--brand-ink); background: var(--brand-soft); border-radius: 999px; padding: 1px 8px; font-style: normal; }
 .series-list a { color: var(--text); }
-.series-list a:hover { color: var(--brand); }
+.series-list a:hover { color: var(--brand-ink); }
 .series-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .series-nav a { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); }
 .series-nav a:hover { border-color: var(--brand); }
@@ -1324,7 +1375,7 @@ img.zoomable { cursor: zoom-in; }
 .share-label svg { width: 16px; height: 16px; }
 .share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .share-btn { padding: 5px 12px; min-height: 28px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-soft); color: var(--text); font-size: 13px; display: inline-flex; align-items: center; }
-.share-btn:hover { border-color: var(--brand); color: var(--brand); }
+.share-btn:hover { border-color: var(--brand); color: var(--brand-ink); }
 
 /* 代码块文件名（fence 参数 filename） */
 .code-lang.has-filename { text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 600; }

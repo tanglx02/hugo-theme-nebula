@@ -1,9 +1,13 @@
 {{- /* 扩展点：用户可在站点内 layouts/partials/extra-footer.html 覆盖 */ -}}
 {{ partial "extra-footer.html" . }}
 
-{{- /* 浏览量统计（不蒜子，可选） */ -}}
+{{- /* 浏览量统计（不蒜子，可选）。
+     使用 https:// 绝对 URL 而非协议相对 `//host/...`：
+     协议相对在 HTTP 页面下会退化为明文加载（SEC-02），显式 https 更明确。
+     需要 SRI 时可设 params.busuanzi.integrity（见 README 第三方脚本章节）。 */ -}}
 {{ if site.Params.busuanzi.enable }}
-  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+    {{- with site.Params.busuanzi.integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }}></script>
 {{ end }}
 
 {{- /* 把 i18n 文案注入给前端脚本，避免 JS 中硬编码文案 */ -}}

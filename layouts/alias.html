@@ -16,7 +16,7 @@ lang 声明——浏览器/朗读器/翻译器看到的语言不一致。
 
 可用变量（Hugo 文档）：`.Permalink`（目标 URL）、`.Page`（目标 Page 对象）。
 */ -}}
-{{- $lang := site.Language.Lang | default site.Language.LanguageCode -}}
+{{- $lang := site.Language.Lang | default "zh-CN" -}}
 {{- $title := .Page.Title | default .Permalink -}}
 <!DOCTYPE html>
 <html lang="{{ $lang }}">

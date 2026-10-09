@@ -95,7 +95,14 @@ def check_permissions(problems, wf_name, doc, text):
             problems.append((wf_name, "permissions-empty", "顶层 permissions 为空映射"))
     for jid, job in (doc.get("jobs") or {}).items():
         jp = job.get("permissions")
-        if jp is None or jp == "read-all" or jp == "write-all":
+        if jp is None or jp == "read-all":
+            continue
+        # job 级 write-all 必须判红。
+        # （TEST-DEFECT-003：旧实现把 write-all 与 read-all 一起 continue 掉了，
+        #   docstring 却声称"包括 job 级"——一行 write-all 就能绕过最小权限门禁。）
+        if jp == "write-all":
+            problems.append((wf_name, "permissions-write",
+                             f"job {jid} 的 permissions: write-all（不允许 write 权限）"))
             continue
         if isinstance(jp, dict):
             for k, v in jp.items():
@@ -115,6 +122,9 @@ def check_runner(problems, wf_name, doc):
                              f"生产门禁必须固定 {PRODUCTION_RUNNER}"))
 
 
+SHA_PINS = []
+
+
 def check_actions(problems, wf_name, doc):
     for jid, job in (doc.get("jobs") or {}).items():
         for uses in collect_steps(job):
@@ -126,9 +136,19 @@ def check_actions(problems, wf_name, doc):
                                  f"job {jid} 使用了未登记的 action: {uses} —— "
                                  f"新增 action 必须先登记 Node24 最低版本"))
                 continue
+            # 40 位 SHA 固定是供应链最佳实践。无法从 SHA 反推 Node 版本，因此
+            # **接受并打印提示**，而不是像旧实现那样判红（TEST-DEFECT-004：
+            # 旧逻辑把 SHA 当"版本号解析失败 -> Node20"，形成反向激励）。
+            if re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+                SHA_PINS.append(f"{wf_name}/{jid}: {name}@<sha>")
+                continue
             min_ref, why = ACTION_MIN_NODE24[name]
             got, want = parse_ver(ref), parse_ver(min_ref)
-            if got is None or got < want:
+            if got is None:
+                problems.append((wf_name, "action-version-unparsable",
+                                 f"job {jid}: {uses} 版本号无法解析（请用 vX.Y.Z 或 40 位 SHA）"))
+                continue
+            if got < want:
                 problems.append((wf_name, "action-node20",
                                  f"job {jid}: {uses} 低于 Node24 兼容版本 {min_ref}"
                                  f"（{why}）"))
@@ -175,9 +195,15 @@ def run(h):
              "runner-not-pinned" not in by_rule,
              "；".join(by_rule.get("runner-not-pinned", [])[:3]) or "已固定")
     h.record("所有 action 均为 Node24 兼容版本（>= 登记的最低版本）",
-             not {"action-node20", "action-unregistered"} & set(by_rule),
+             not {"action-node20", "action-unregistered",
+                  "action-version-unparsable"} & set(by_rule),
              "；".join((by_rule.get("action-node20", [])
-                       + by_rule.get("action-unregistered", []))[:3]) or "全部合规")
+                       + by_rule.get("action-unregistered", [])
+                       + by_rule.get("action-version-unparsable", []))[:3]) or "全部合规")
+    if SHA_PINS:
+        print(f"\nSHA 固定的 action（供应链最佳实践，接受）：{len(SHA_PINS)} 处")
+        for s in SHA_PINS[:6]:
+            print("   ", s)
     print("\n登记的最低 Node24 兼容版本:")
     for name, (ver, why) in sorted(ACTION_MIN_NODE24.items()):
         print(f"  - {name:28s} >= {ver:8s} {why}")

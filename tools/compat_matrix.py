@@ -94,6 +94,20 @@ def main():
     if passed:
         print("  建议 min_version =", min(passed))
 
+    # TEST-DEFECT-018：本脚本此前**没有任何退出码**，任何失败都会 exit 0，
+    # 看起来"跑过了"却什么都没保证。作为诊断矩阵，这里约定：
+    #   1) 一个版本都没测到（本地缺二进制）-> exit 1，避免把"跳过"当成"通过"
+    #   2) 有版本构建失败 -> exit 1
+    #   3) 版本数量 < 声明的最低版本所在矩阵（即全部通过）-> exit 0
+    if not summary:
+        print("  PROBLEM: 没有可测的 Hugo 版本（请检查 VERSIONS 中的可执行文件路径）")
+        sys.exit(1)
+    print("TEST-RESULT: " + json.dumps(
+        {"suite": "compat-matrix", "status": "FAIL" if failed else "PASS",
+         "passed": len(passed), "failed": len(failed), "total": len(summary),
+         "failed_versions": failed}, ensure_ascii=False))
+    sys.exit(1 if failed else 0)
+
 
 if __name__ == "__main__":
     main()

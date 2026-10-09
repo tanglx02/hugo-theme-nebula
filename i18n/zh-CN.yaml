@@ -28,6 +28,8 @@ common:
   tags: 标签
   minutes: '{{ .n }} 分钟'
   dateFormat: '2006年1月2日'
+  noDate: 未标注日期
+  noScript: 搜索与主题切换需要启用 JavaScript；正文、目录与图片在无脚本时仍可正常阅读。
   anchor: 锚点链接
   licenseDefault: 转载请注明出处。
   pagination: 分页导航

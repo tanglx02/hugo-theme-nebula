@@ -31,12 +31,14 @@ import json
 import os
 import re
 import sys
+from html import unescape
 from html.parser import HTMLParser
 
-from _testlib import Harness, guard
+from _testlib import Harness, guard, default_build_dir
 from html_inventory import scan as scan_inventory
 
-DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
+# 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）；-h/--help 正确解析
+DIR = default_build_dir()
 
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}
@@ -50,6 +52,103 @@ WHITELIST = {
     # 例：404 页面无正文标题，heading 跳级规则不适用
     # "404.html": {"heading-jump"},
 }
+
+# JSON-LD <script> 提取。
+# ⚠ 必须容忍**无引号属性**：CI 一律 --minify，Hugo 会输出
+#   <script type=application/ld+json>（去掉引号）。旧正则写死 type="application/ld+json"，
+#   minify 后一个都匹配不到 -> JSON-LD 校验恒真（TEST-DEFECT-001），
+#   这正是 JSON-LD 双重编码（BUG-P2-004）能长期绿灯的原因。
+JSONLD_RE = re.compile(
+    r"<script\b(?=[^>]*\btype\s*=\s*[\"']?application/ld\+json[\"']?)[^>]*>(.*?)</script>",
+    re.S | re.I)
+JSONLD_MARKER = "application/ld+json"
+
+META_RE = re.compile(r"<meta\b[^>]*>", re.I)
+ATTR_RE = re.compile(
+    r"""([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""")
+
+
+def _meta_map(html):
+    """把页面所有 <meta> 解析成 {name/property: content}（容忍无引号属性）。"""
+    out = {}
+    for tag in META_RE.findall(html):
+        attrs = {}
+        for m in ATTR_RE.finditer(tag):
+            key = m.group(1).lower()
+            val = m.group(2) if m.group(2) is not None else (
+                m.group(3) if m.group(3) is not None else m.group(4))
+            attrs[key] = val or ""
+        key = attrs.get("property") or attrs.get("name")
+        if key:
+            out[key.lower()] = attrs.get("content", "")
+    return out
+
+
+def _iter_string_values(obj, path=""):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _iter_string_values(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _iter_string_values(v, f"{path}[{i}]")
+    elif isinstance(obj, str):
+        yield path, obj
+
+
+def _looks_double_encoded(s):
+    """值自身是不是"被再编码一次的 JSON 字符串"（双重编码的典型形态）。
+
+    双重编码后值形如 "\\"标题\\""，即字符串本身以引号开头结尾，且能再 json.loads
+    出一个字符串。合法的 JSON-LD 值不会长这样。
+    """
+    t = (s or "").strip()
+    if len(t) < 4 or not (t.startswith('"') and t.endswith('"')):
+        return False
+    try:
+        inner = json.loads(t)
+    except Exception:
+        return False
+    return isinstance(inner, str) and inner != ""
+
+
+def _check_jsonld(html, problems, stats):
+    """JSON-LD：解析合法性 + 双重编码 + 与 og:title / og:site_name 的交叉校验。
+
+    返回本页检测到的 JSON-LD 块数（供全站"0 块即失败"的保护）。
+    """
+    blocks = JSONLD_RE.findall(html)
+    # 自检：页面明明写了 ld+json，却一块都没匹配到 -> 正则/产物形态漂移，必须失败
+    if JSONLD_MARKER in html and not blocks:
+        problems.append(("jsonld-unmatched",
+                         f"页面含 {JSONLD_MARKER} 但未匹配到任何块（校验会漏检）"))
+    meta = _meta_map(html)
+    og_title = meta.get("og:title", "")
+    og_site = meta.get("og:site_name", "")
+    for raw in blocks:
+        stats["blocks"] += 1
+        try:
+            doc = json.loads(raw)
+        except Exception as e:
+            problems.append(("jsonld", f"JSON-LD 非法: {str(e)[:60]}"))
+            continue
+        # 双重编码检测（递归所有字符串值）
+        for path, val in _iter_string_values(doc):
+            if _looks_double_encoded(val):
+                problems.append(("jsonld-double-encoded",
+                                 f"{path} 值被再编码一次: {val[:50]}"))
+        # 语义交叉校验：headline / name 必须等于页面 og:title / 站点名
+        if isinstance(doc, dict):
+            if og_title and isinstance(doc.get("headline"), str):
+                if unescape(doc["headline"]) != unescape(og_title):
+                    problems.append(
+                        ("jsonld-value",
+                         f'headline={doc["headline"][:40]!r} != og:title={og_title[:40]!r}'))
+            if og_site and isinstance(doc.get("name"), str) and doc.get("@type") == "WebSite":
+                if unescape(doc["name"]) != unescape(og_site):
+                    problems.append(
+                        ("jsonld-value",
+                         f'name={doc["name"][:40]!r} != og:site_name={og_site[:40]!r}'))
+    return len(blocks)
 
 
 class PageParser(HTMLParser):
@@ -180,7 +279,7 @@ class PageParser(HTMLParser):
         pass
 
 
-def parse_page(rel, html):
+def parse_page(rel, html, stats):
     p = PageParser()
     # 逐字符喂给 parser；同时单独抽取 JSON-LD 与 title（parser 的 script data 处理复杂）
     p.feed(html)
@@ -204,13 +303,14 @@ def parse_page(rel, html):
             problems.append(("heading-jump", f"第 {line} 行 h{lvl} 跳过 h{prev + 1}"))
         prev = lvl
 
-    # JSON-LD 合法性
-    for raw in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
-                          html, re.S):
-        try:
-            json.loads(raw)
-        except Exception as e:
-            problems.append(("jsonld", f"JSON-LD 非法: {str(e)[:60]}"))
+    # JSON-LD：合法性 + 双重编码 + 语义交叉校验（见 _check_jsonld 说明）
+    _check_jsonld(html, problems, stats)
+
+    # 零值日期泄漏（BUG-P3-001）：缺少 date 的文章不应让内部零值
+    # 0001-01-01 出现在 <time datetime> 或 JSON-LD 里（应显示"未标注日期"或省略）。
+    if "0001-01-01" in html or "0001年1月1日" in html:
+        problems.append(("zero-date",
+                         "页面出现 0001-01-01 / 0001年1月1日（缺日期文章泄漏内部零值）"))
 
     # canonical / og:url 一致性
     if len(p.canonicals) > 1:
@@ -262,6 +362,7 @@ def run(h):
     total = 0
     wl_hits = []
     md_figures = 0
+    stats = {"blocks": 0}
     for f in sorted(files):
         rel = os.path.relpath(f, DIR).replace("\\", "/")
         try:
@@ -270,7 +371,7 @@ def run(h):
             h.record(f"{rel} 可用 UTF-8 解码", False, "编码错误")
             continue
         wl = WHITELIST.get(rel, set())
-        probs, n_fig = parse_page(rel, html)
+        probs, n_fig = parse_page(rel, html, stats)
         md_figures += n_fig
         for rule, detail in probs:
             if rule in wl:
@@ -285,6 +386,12 @@ def run(h):
             print("   ", s)
 
     h.record("HTML 质量：全部页面通过", total == 0, f"{len(files)} 个文件，{total} 个违规")
+
+    # JSON-LD 有效性保护：全站一个块都没解析到 => 校验实际上什么都没查（恒真），必须失败。
+    # 这是防止"正则/产物形态漂移导致 JSON-LD 校验静默失效"（TEST-DEFECT-001）的兜底。
+    print(f"\nJSON-LD 块总数 = {stats['blocks']}")
+    h.record("JSON-LD 校验非空转（全站至少解析到 1 个 JSON-LD 块）",
+             stats["blocks"] > 0, f"blocks={stats['blocks']}")
     if md_figures:
         print("\n已知豁免模式: Markdown 独立图片段落 <p><figure> 共 %d 处"
               "（浏览器解析时自动闭合 p，实际 DOM 无非法嵌套）" % md_figures)

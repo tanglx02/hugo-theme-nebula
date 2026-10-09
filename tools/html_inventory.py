@@ -81,6 +81,26 @@ class InventoryCollision(Exception):
         super().__init__(f"{len(collisions)} 组 URL 冲突")
 
 
+def build_fingerprint(files):
+    """构建产物的指纹：由 (相对路径, 字节数) 列表推导。
+
+    TEST-DEFECT-R2-007：inventory JSON 会被 audit.py 读取做交叉验证，
+    但它此前**没有任何"属于哪次构建"的标识** —— 一旦两次构建互相覆盖
+    （或复用了上一次留下的 inventory），交叉验证就在比较两份不同构建的
+    结果，却仍然判定"一致"。把指纹写进 inventory 并在读取端校验，
+    才能保证比较的是**同一份构建产物**。
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for rel, full in sorted(files):
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            size = -1
+        h.update(f"{rel}\0{size}\n".encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
 def scan(build_dir, read_content=True):
     """扫描构建目录，返回 inventory dict。"""
     if not os.path.isdir(build_dir):
@@ -121,6 +141,7 @@ def scan(build_dir, read_content=True):
         raise InventoryCollision(collisions, build_dir)
     return {
         "build_dir": os.path.abspath(build_dir),
+        "build_id": build_fingerprint(files),
         "public_html_files": len(files),
         "expected_html_urls": urls,
         "expected_count": len(urls),
@@ -138,6 +159,7 @@ def scan(build_dir, read_content=True):
 def report(inv):
     print(f"PUBLIC HTML FILES = {inv['public_html_files']}")
     print(f"EXPECTED HTML URLS = {inv['expected_count']}")
+    print(f"BUILD ID = {inv.get('build_id')}  （构建指纹；audit 交叉验证会比对）")
     print("分类明细（仅用于报告，不排除任何页面）:")
     for k, v in inv["by_class"].items():
         samples = inv["class_samples"].get(k, [])
@@ -156,7 +178,9 @@ def report(inv):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("build_dir", nargs="?", default="public")
+    # 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）
+    _repo = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    ap.add_argument("build_dir", nargs="?", default=os.path.join(_repo, "public"))
     ap.add_argument("--json", help="把 inventory 写入该 json 文件")
     args = ap.parse_args()
     try:
