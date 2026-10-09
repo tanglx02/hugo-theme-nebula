@@ -35,3 +35,8 @@ __pycache__/
 
 # inventory 交叉验证产物（由 tools/html_inventory.py 生成）
 tools/html_inventory.json
+
+# Hugo 构建锁（不应入库）
+.hugo_build.lock
+exampleSite/.hugo_build.lock
+exampleSite/_verify-multilingual.toml
