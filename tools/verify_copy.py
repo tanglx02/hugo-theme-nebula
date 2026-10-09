@@ -87,11 +87,25 @@ def set_mode(page, mode, exec_ok):
 
 
 def click_and_read(page, sel, wait_ms):
-    """点击后等待 wait_ms，返回 (文案, 是否命中成功文案, 是否命中失败文案)。"""
+    """点击后**轮询到文案发生变化**（或到达上界），返回最终文案。
+
+    为什么不是固定 sleep(wait_ms)：固定窗口在高负载 / Firefox 上会偶发失效
+    （实测同一份产物时而 13/13、时而 12/13，失败用例正是"400ms 内没等到成功文案"）。
+    断言本身不变（仍然要求出现 success / failure 文案），只是把"等多久"从
+    猜测改成"等到变化为止，最多 max(wait_ms, 3000)ms"。
+    """
+    before = read_text(page, sel)
     page.evaluate("(sel) => document.querySelector(sel).click()", sel)
-    page.wait_for_timeout(wait_ms)
-    txt = read_text(page, sel) or ""
-    return txt
+    deadline = max(wait_ms, 3000)
+    waited = 0
+    txt = before
+    while waited < deadline:
+        page.wait_for_timeout(50)
+        waited += 50
+        txt = read_text(page, sel)
+        if txt != before:
+            break
+    return txt or ""
 
 
 def _run_all():

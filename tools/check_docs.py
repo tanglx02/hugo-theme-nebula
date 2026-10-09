@@ -138,14 +138,49 @@ def run(h):
     check_truth_wording(h)
 
     # ⑤ CHANGELOG 存在且有当前版本
+    # TEST-DEFECT-011：旧实现把默认版本硬编码为 1.0.7，不设 DOC_VERSION 时
+    # 校验的是"两个版本之前"的条目 -> 本地/其它调用方必然假绿。
+    # 现在按 DOC_VERSION -> git tag -> CHANGELOG 首个版本 依次推断，
+    # 并额外与 docs/稳定基线.md 交叉核对，防止"漏更新文档"。
     chg = os.path.join(ROOT, "CHANGELOG.md")
+    version, source = _resolve_version(chg)
     if os.path.isfile(chg):
         text = open(chg, encoding="utf-8").read()
-        version = os.environ.get("DOC_VERSION", "1.0.7")
-        h.record(f"CHANGELOG 存在且含 v{version} 条目",
+        h.record(f"CHANGELOG 存在且含 v{version} 条目（版本来源：{source}）",
                  version in text, f"CHANGELOG.md 中查找 {version}")
+        baseline = os.path.join(ROOT, "docs", "稳定基线.md")
+        if os.path.isfile(baseline):
+            btxt = open(baseline, encoding="utf-8").read()
+            h.record(f"稳定基线文档记录的版本与 CHANGELOG 一致（v{version}）",
+                     version in btxt,
+                     f"{os.path.relpath(baseline, ROOT)} 中查找 {version}")
     else:
         h.record("CHANGELOG.md 存在", False, chg)
+
+
+def _resolve_version(changelog_path):
+    """推断"当前版本"：DOC_VERSION 环境变量 -> git tag -> CHANGELOG 首个版本号。
+
+    返回 (version, source)。避免硬编码（TEST-DEFECT-011）。
+    """
+    env = os.environ.get("DOC_VERSION")
+    if env:
+        return env, "DOC_VERSION 环境变量"
+    try:
+        import subprocess
+        r = subprocess.run(["git", "describe", "--tags", "--abbrev=0"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        tag = (r.stdout or "").strip().lstrip("v")
+        if r.returncode == 0 and re.fullmatch(r"\d+\.\d+\.\d+", tag or ""):
+            return tag, f"git tag v{tag}"
+    except Exception:
+        pass
+    if os.path.isfile(changelog_path):
+        text = open(changelog_path, encoding="utf-8").read()
+        m = re.search(r"^##\s*\[?(\d+\.\d+\.\d+)", text, re.M)
+        if m:
+            return m.group(1), "CHANGELOG 首个版本条目"
+    return "0.0.0", "无法推断（将判失败）"
 
 
 if __name__ == "__main__":

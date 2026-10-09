@@ -216,6 +216,14 @@ def _run_all():
         return   # 构建失败时后续浏览器检查无意义
 
     # 启动两个静态服务器
+    # 先探一次端口：被残留进程占用时，子进程会静默 bind 失败，表现为
+    # "30s 后仍未就绪"这类难以定位的 FATAL。这里提前给出明确原因。
+    for _port in (8101, 8102):
+        if reachable(f"http://127.0.0.1:{_port}/"):
+            H.fatal_error(
+                f"端口 {_port} 已被占用",
+                f"请先关闭残留在 {_port} 上的静态服务器（重复运行本工具可能留下 serve.py）")
+            return
     srv1 = subprocess.Popen([PY, os.path.join(ROOT, "tools", "serve.py"), os.path.join(DEPLOY, "root"), "8101"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     srv2 = subprocess.Popen([PY, os.path.join(ROOT, "tools", "serve.py"), DEPLOY, "8102"],

@@ -48,6 +48,9 @@ ALLOWED_LINK_HOSTS = {
     "reddit.com", "weibo.com", "space.bilibili.com", "giscus.app",
     "unpkg.com", "cdn.jsdelivr.net", "busuanzi.ibruce.info",
     "waline.example.com", "twikoo.example.com", "disqus.com",
+    # IANA 保留的示例域名：tools/gen_testdata.py 用它构造"链接包裹的图片"等
+    # 刻意外链样本（修好 minify 漏检后（TEST-DEFECT-002）该真实外链才被看见）
+    "example.com", "example.org", "example.net",
 }
 
 
@@ -76,12 +79,75 @@ DANGEROUS_JS = [
 ]
 
 # 恶意 URL 出现在属性中（href/src/action/formaction/xlink:href）
-URL_ATTR_RE = re.compile(r'(href|src|action|formaction|xlink:href)\s*=\s*"([^"]*)"',
-                         re.I)
-SCRIPT_SRC_RE = re.compile(r'<script[^>]+src\s*=\s*"?([^"\s>]+)', re.I)
-IFRAME_RE = re.compile(r'<iframe[^>]*>', re.I)
-ANY_URL_RE = re.compile(r'https?://([a-z0-9.-]+)', re.I)
-HANDLER_RE = re.compile(r'\son([a-z]+)\s*=\s*"', re.I)
+# ⚠ 必须容忍 **无引号 / 单引号** 属性：CI 一律 --minify，Hugo 会把
+#   href="javascript:..." 输出成 href=javascript:...，旧正则只认双引号 -> 漏检。
+#   （TEST-DEFECT-002）
+URL_ATTR_RE = re.compile(
+    r"(href|src|action|formaction|xlink:href)\s*=\s*"
+    r"(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'=<>`]+))", re.I)
+SCRIPT_SRC_RE = re.compile(
+    r"<script[^>]+src\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\"'\s>]+))", re.I)
+IFRAME_RE = re.compile(r"<iframe[^>]*>", re.I)
+ANY_URL_RE = re.compile(r"https?://([a-z0-9.-]+)", re.I)
+# inline handler：同样容忍无引号（onclick=alert(1)）
+HANDLER_RE = re.compile(r"\son([a-z]+)\s*=\s*[\"']?", re.I)
+
+
+def _attr_val(m):
+    """取 (attr, url[, ...]) 匹配中第一个非 None 的取值组。"""
+    for i in range(2, 5):
+        if m.lastindex is not None and i <= m.lastindex and m.group(i) is not None:
+            return m.group(i)
+    return ""
+
+
+def url_attrs(html):
+    """产出 (属性名, 取值)，兼容双引号 / 单引号 / 无引号三种写法。"""
+    for m in URL_ATTR_RE.finditer(html):
+        yield m.group(1), _attr_val(m)
+
+
+def script_srcs(html):
+    for m in SCRIPT_SRC_RE.finditer(html):
+        yield _attr_val(m)
+
+
+A_TAG_RE = re.compile(r"<a\b[^>]*>", re.I)
+LINK_TAG_RE = re.compile(r"<link\b[^>]*>", re.I)
+META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.I)
+CANONICAL_IN_TAG_RE = re.compile(r"rel\s*=\s*[\"']?canonical[\"']?", re.I)
+OGURL_IN_TAG_RE = re.compile(r"property\s*=\s*[\"']?og:url[\"']?", re.I)
+HREF_IN_TAG_RE = re.compile(
+    r"href\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'=<>`]+))", re.I)
+CONTENT_IN_TAG_RE = re.compile(
+    r"content\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'=<>`]+))", re.I)
+
+
+def _first_group(m):
+    if m is None:
+        return ""
+    return m.group(1) if m.group(1) is not None else (
+        m.group(2) if m.group(2) is not None else (m.group(3) or ""))
+
+
+def site_hosts(html):
+    """本页声明的"自己"的主机名（canonical / og:url），用于区分同源与外链。
+
+    没有这一步，修复 minify 漏检后（TEST-DEFECT-002）会立刻把站点自身的绝对 URL
+    （canonical、og:url）当成"第三方域名"误报。
+    """
+    hosts = set()
+    for tag in LINK_TAG_RE.findall(html):
+        if CANONICAL_IN_TAG_RE.search(tag):
+            hm = ANY_URL_RE.match(_first_group(HREF_IN_TAG_RE.search(tag)))
+            if hm:
+                hosts.add(hm.group(1).lower())
+    for tag in META_TAG_RE.findall(html):
+        if OGURL_IN_TAG_RE.search(tag):
+            hm = ANY_URL_RE.match(_first_group(CONTENT_IN_TAG_RE.search(tag)))
+            if hm:
+                hosts.add(hm.group(1).lower())
+    return hosts
 
 
 def check_html(path, rel, hits):
@@ -92,7 +158,7 @@ def check_html(path, rel, hits):
     low = html.lower()
 
     # 1 危险 URL scheme
-    for attr, url in URL_ATTR_RE.findall(html):
+    for attr, url in url_attrs(html):
         u = url.strip().lower().replace("\t", "").replace("\n", "")
         for scheme in DANGEROUS_URL_SCHEMES:
             if u.startswith(scheme):
@@ -115,7 +181,7 @@ def check_html(path, rel, hits):
             hits.append(("inline-handler", rel, name))
 
     # 4 非预期外部 script
-    for src in SCRIPT_SRC_RE.findall(html):
+    for src in script_srcs(html):
         if src.startswith("data:"):
             hits.append(("data-url-script", rel, src[:60]))
             continue
@@ -130,12 +196,19 @@ def check_html(path, rel, hits):
         if "giscus" not in tag and "twitter" not in tag:
             hits.append(("unexpected-iframe", rel, tag[:80]))
 
-    # 6 非预期第三方域名（仅 a href 里的外链）
-    for attr, url in URL_ATTR_RE.findall(html):
-        if attr.lower() != "href" or not url.startswith("http"):
+    # 6 非预期第三方域名（**仅 <a> 外链**，且放行本页声明的同源主机）
+    own = site_hosts(html)
+    for tag in A_TAG_RE.findall(html):
+        m = HREF_IN_TAG_RE.search(tag)
+        if not m:
             continue
-        m = ANY_URL_RE.match(url)
-        if m and not host_allowed(m.group(1)):
+        url = _first_group(m)
+        if not url.lower().startswith("http"):
+            continue
+        hm = ANY_URL_RE.match(url)
+        if hm and hm.group(1).lower() in own:
+            continue                       # 同源（canonical/og:url 声明的主机）
+        if hm and not host_allowed(hm.group(1)):
             hits.append(("unexpected-third-party-domain", rel, url[:80]))
 
 
@@ -206,8 +279,9 @@ def check_source(root, hits, wl_hits):
                                    f"{ALLOWED_JS_LINES[key]}")
                     continue
                 hits.append(("dangerous-js-api", rel, label))
-        if re.search(r'(href|src)\s*=\s*"javascript:', src, re.I):
-            hits.append(("dangerous-url-scheme", rel, "模板中写死 javascript:"))
+        if re.search(r"""(href|src|action)\s*=\s*["']?\s*(javascript|vbscript):""",
+                     src, re.I):
+            hits.append(("dangerous-url-scheme", rel, "模板中写死 javascript:/vbscript:"))
 
     # unsafe 配置：exampleSite 默认必须 false
     for cfg in (os.path.join(root, "exampleSite", "hugo.toml"),):
@@ -238,6 +312,12 @@ def run(h):
     check_overlays(BUILD_DIR, hits)
     check_source(THEME, hits, wl_hits)
     print(f"扫描 HTML 文件: {n} 个；主题源码: {THEME}")
+
+    # 空扫描保护：构建产物一个 HTML 都没有时，"0 违规"毫无意义。
+    # （TEST-DEFECT-008：旧实现会把"产物缺失"当成"安全"而 PASS。）
+    if n == 0:
+        h.fatal_error("未扫描到任何 HTML 文件（构建产物缺失或路径错误）", BUILD_DIR)
+        return
 
     # 浮层 dialog 语义（role / aria-modal / 可访问名称）
     if OVERLAY_A11Y_HITS:

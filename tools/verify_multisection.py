@@ -98,7 +98,11 @@ def _run_all():
     # 因此这里验证：首页卡片数量符合配置、存在进入全量列表的入口、区块列表页分页可用。
     cards = len(re.findall(r'class=["\']?post-card', home))
     H.record("首页卡片数量符合 homePostCount(8)", cards == 8, f"{cards} 张")
-    H.record("首页有「浏览更多」入口", 'class="btn"' in home or "btn" in home)
+    # TEST-DEFECT-010：旧断言 `'class="btn"' in home or "btn" in home` 里
+    # 第二个条件几乎恒真（页面随便一处出现 "btn" 子串即通过）。改为匹配按钮元素本身。
+    more_btn = re.search(r'class=["\']?[^"\'>]*\bbtn\b', home) is not None
+    H.record("首页有「浏览更多」入口（匹配按钮元素本身）", more_btn,
+             "匹配 class 含 btn 的元素" if more_btn else "未找到 .btn 元素")
     H.record("区块列表页分页第 2 页存在",
              os.path.exists(os.path.join(multi, "posts", "page", "2", "index.html")))
 
@@ -139,14 +143,21 @@ def _run_all():
         H.record("tutorials 文章页存在", False, "tutorials/zz-tutorials-1")
     else:
         H.record("tutorials 文章页存在", True)
+        # TEST-DEFECT-010：旧实现在找不到 related 容器时把 rel_html 退化为**整页**，
+        # 于是"相关文章链接都在配置的 sections 内"变成对全页链接的检查，失去意义。
+        # 现在容器不存在直接判失败。
         rel = re.search(r'class=["\']?related["\']?[^>]*>(.*?)</div>\s*</div>', tut, re.S)
-        rel_html = rel.group(1) if rel else tut
-        hrefs = re.findall(r'href=["\']?(/[^"\'> ]+)', rel_html)
-        internal = [h for h in hrefs if not h.startswith("/img")]
-        H.record("相关文章有内容", len(internal) > 0, f"{len(internal)} 条")
-        outside = [h for h in internal
-                   if not any(h.startswith(f"/{s}/") for s in SECTIONS)]
-        H.record("相关文章链接都在配置的 sections 内", not outside, f"越界 {outside[:3]}")
+        if not rel:
+            H.record("相关文章容器存在（.related）", False, "未找到 .related 容器，无法验证其链接范围")
+        else:
+            H.record("相关文章容器存在（.related）", True)
+            rel_html = rel.group(1)
+            hrefs = re.findall(r'href=["\']?(/[^"\'> ]+)', rel_html)
+            internal = [h for h in hrefs if not h.startswith("/img")]
+            H.record("相关文章有内容", len(internal) > 0, f"{len(internal)} 条")
+            outside = [h for h in internal
+                       if not any(h.startswith(f"/{s}/") for s in SECTIONS)]
+            H.record("相关文章链接都在配置的 sections 内", not outside, f"越界 {outside[:3]}")
 
     # ---------------- 8. 默认配置必须排除其它 section ----------------
     dhome = read(default, "index.html") or ""
@@ -163,20 +174,37 @@ def _run_all():
         H.record(f"[默认配置] RSS 不含 /{sec}/", f"/{sec}/zz-" not in drss)
 
     # ---------------- 9. 源码不得硬编码 Section "posts" ----------------
-    theme_layouts = os.path.join(SITE, "themes", "hugo-theme-nebula", "layouts")
-    if not os.path.isdir(theme_layouts):
-        theme_layouts = os.path.join(ROOT, "hugo-theme-nebula", "layouts")
-    hits = []
-    for dirpath, _, files in os.walk(theme_layouts):
-        for f in files:
-            if not f.endswith((".html", ".xml", ".json")):
-                continue
-            p = os.path.join(dirpath, f)
-            for i, ln in enumerate(open(p, encoding="utf-8", errors="ignore").read().split("\n"), 1):
-                if re.search(r'\(\s*where[^\n]*"Section"\s+"posts"\s*\)', ln) or \
-                   re.search(r'"Section"\s+"posts"', ln):
-                    hits.append(f"{os.path.relpath(p, theme_layouts)}:{i}")
-    H.record("模板中无硬编码 Section \"posts\"（仅允许 default 回退）", not hits, f"{hits[:4]}")
+    # TEST-DEFECT-005：旧实现的两个候选路径（SITE/themes/... 与 ROOT/hugo-theme-nebula/layouts）
+    # 在仓库与 CI 里都不存在，os.walk 空转 -> hits 恒为空 -> 断言恒真。
+    # 现在必须真的扫到布局文件，否则判致命错误（不允许空转）。
+    candidates = [
+        os.path.join(SITE, "themes", "hugo-theme-nebula", "layouts"),  # myblog 站点
+        os.path.join(ROOT, "layouts"),                                # 主题仓库自身
+        os.path.join(os.path.dirname(ROOT), "hugo-theme-nebula", "layouts"),  # exampleSite/themesDir
+    ]
+    theme_layouts = next((c for c in candidates if os.path.isdir(c)), None)
+    if not theme_layouts:
+        H.fatal_error("找不到主题 layouts 目录（源码扫描会空转，断言将恒真）",
+                      "; ".join(candidates))
+    else:
+        hits = []
+        scanned = 0
+        for dirpath, _, files in os.walk(theme_layouts):
+            for f in files:
+                if not f.endswith((".html", ".xml", ".json")):
+                    continue
+                scanned += 1
+                p = os.path.join(dirpath, f)
+                for i, ln in enumerate(open(p, encoding="utf-8", errors="ignore").read().split("\n"), 1):
+                    if re.search(r'\(\s*where[^\n]*"Section"\s+"posts"\s*\)', ln) or \
+                       re.search(r'"Section"\s+"posts"', ln):
+                        hits.append(f"{os.path.relpath(p, theme_layouts)}:{i}")
+        if scanned == 0:
+            H.fatal_error("layouts 目录下没有可扫描的模板文件", theme_layouts)
+        else:
+            H.record(f"模板中无硬编码 Section \"posts\"（仅允许 default 回退）",
+                     not hits, f"{hits[:4]}" if hits else
+                     f"扫描 {scanned} 个模板文件，无硬编码")
 
     # 清理临时配置
     try:

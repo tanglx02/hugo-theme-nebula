@@ -54,6 +54,21 @@ except Exception as e:      # 依赖缺失必须是硬失败
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 WORKFLOW = os.path.join(ROOT, ".github", "workflows", "ci.yml")
 
+# ---- 结构契约（TEST-DEFECT-015）----
+# 只比数量的门禁有两个漏洞：① 注释与 workflow 同文件，自指（改数量+改注释即通过）；
+# ② job 改名 / 删掉某个门禁、或 matrix 取值被换掉（chromium -> edge）时数量不变，检测不到。
+# 因此这里把"必须存在的 job"与"必须出现的 matrix 取值"也固定下来。
+# 改动这些结构时，必须**同时**改这里与 workflow 注释 —— 这是有意的双向登记。
+REQUIRED_JOBS = ("build", "subdir", "static-checks", "browser-tests", "release-full-audit")
+REQUIRED_MATRIX = {
+    "build": {"hugo-version": {"0.128.0", "0.162.0", "0.167.0", "latest"}},
+    "browser-tests": {"browser": {"chromium", "firefox", "webkit"}},
+    "release-full-audit": {"browser": {"chromium", "firefox", "webkit"}},
+}
+# 仅 tag 推送才执行的 job（Release 门禁）：if 必须显式以 refs/tags/v 为条件
+TAG_GATED_JOBS = ("release-full-audit",)
+TAG_COND_RE = re.compile(r"startsWith\s*\(\s*github\.ref\s*,\s*['\"]refs/tags/v['\"]\s*\)")
+
 # 注释行后面允许跟说明文字（如 "9  （非 tag 推送）"），只取第一个整数
 DECL_RE = re.compile(r"^\s*#\s*CI-JOBS:\s*([A-Za-z0-9_-]+)\s*=\s*(\d+)")
 TOTAL_RE = re.compile(r"^\s*#\s*CI-JOBS-TOTAL:\s*(\d+)")
@@ -95,9 +110,13 @@ def expand_job(job):
 
 
 def is_tag_only(job):
-    """job 是否仅 tag 推送时执行（非 tag 推送会被 skip）。"""
+    """job 是否仅 tag 推送时执行（非 tag 推送会被 skip）。
+
+    TEST-DEFECT-015：旧实现用 `"refs/tags/v" in cond` 子串判断，条件被改写或删掉
+    也可能命中/漏判。这里改为严格匹配 startsWith(github.ref, 'refs/tags/v')。
+    """
     cond = str(job.get("if") or "")
-    return "refs/tags/v" in cond
+    return TAG_COND_RE.search(cond) is not None
 
 
 def read_declarations(text):
@@ -173,6 +192,54 @@ def run(h):
              total == H_total, f"注释 {total} / 实际 {H_total}")
     h.record("CI-JOBS-PUSH-TOTAL 与非 tag 推送的 job 数一致",
              push_total == H_push, f"注释 {push_total} / 实际 {H_push}")
+
+    # ---- 结构契约：job 集合 / matrix 取值 / tag 门控（TEST-DEFECT-015）----
+    absent = [j for j in REQUIRED_JOBS if j not in jobs]
+    h.record("必需 job 全部存在（防止改名或删除门禁后数量不变而漏检）",
+             not absent, f"缺失: {absent}" if absent else f"{list(REQUIRED_JOBS)} 均在")
+
+    matrix_bad = []
+    for jid, spec in REQUIRED_MATRIX.items():
+        job = jobs.get(jid) or {}
+        matrix = ((job.get("strategy") or {}).get("matrix") or {})
+        for key, want in spec.items():
+            got = set(matrix.get(key) or [])
+            if got != want:
+                matrix_bad.append(f"{jid}.{key}: 实际 {sorted(got)} != 期望 {sorted(want)}")
+    h.record("关键 matrix 取值未被替换（如浏览器/ Hugo 版本）",
+             not matrix_bad, "；".join(matrix_bad) if matrix_bad else "全部匹配")
+
+    gate_bad = []
+    for jid in TAG_GATED_JOBS:
+        job = jobs.get(jid) or {}
+        if not TAG_COND_RE.search(str(job.get("if") or "")):
+            gate_bad.append(f"{jid} 未以 refs/tags/v 为执行条件")
+    h.record("Release 门禁仍然只在 tag 推送时执行（未被静默关闭）",
+             not gate_bad, "；".join(gate_bad) if gate_bad else f"{list(TAG_GATED_JOBS)} 均可疑条件通过")
+
+    # ---- matrix 条件步骤：`if: matrix.<key> == '<value>'` 的取值必须在 matrix 里真实存在 ----
+    # TEST-DEFECT-020：chromium 专属步骤若改成不存在的取值，会**永远不执行**且无任何报错。
+    cond_re = re.compile(r"matrix\.([A-Za-z0-9_]+)\s*==\s*['\"]([^'\"]+)['\"]")
+    cond_bad, cond_ok = [], 0
+    for jid, job in jobs.items():
+        matrix = ((job.get("strategy") or {}).get("matrix") or {})
+        for st in (job.get("steps") or []):
+            if not isinstance(st, dict):
+                continue
+            for m in cond_re.finditer(str(st.get("if") or "")):
+                key, val = m.group(1), m.group(2)
+                allowed = set(matrix.get(key) or [])
+                if not allowed:
+                    continue        # 不是 matrix 条件（如 env 变量），跳过
+                if val in allowed:
+                    cond_ok += 1
+                else:
+                    cond_bad.append(f"job {jid}: step 条件 matrix.{key}=='{val}' "
+                                    f"不在 {sorted(allowed)} 中（该步骤永远不会执行）")
+    if cond_ok or cond_bad:
+        h.record("matrix 条件步骤的取值真实存在（不会静默不执行）",
+                 not cond_bad, "；".join(cond_bad[:3]) if cond_bad
+                 else f"{cond_ok} 个 matrix 条件步骤取值均有效")
 
     if os.environ.get("CI_REPORT") == "1":
         print("CI-JOB-SUMMARY: " + json.dumps({
