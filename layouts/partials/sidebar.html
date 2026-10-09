@@ -1,8 +1,8 @@
 {{- /* 站长名片 */ -}}
 <div class="widget profile">
-  {{- /* 头像：URL 为空或含危险 scheme（被 util/rel-url.html 剔除）时退回到主题内置头像，
-       而不是渲染 <img src="">（SEC-03：配置被写坏也不产生破损/异常属性）。 */ -}}
-{{- $avatarURL := partial "util/rel-url.html" (site.Params.avatar | default "") -}}
+  {{- /* 头像：URL 为空 / 纯空白 / 危险 scheme / 解析成站点根时退回到主题内置头像，
+       而不是渲染 <img src="/">（SEC-03 + BUG-R2-003）。 */ -}}
+{{- $avatarURL := partial "util/avatar-url.html" (site.Params.avatar | default "") -}}
 {{ if $avatarURL }}
     <img class="profile-avatar" src="{{ $avatarURL | safeURL }}" alt="{{ site.Params.author }}">
 {{ else }}

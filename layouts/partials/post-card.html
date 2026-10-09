@@ -33,9 +33,10 @@
 
     <div class="post-foot">
       <span class="post-author">
-        {{- /* 头像 URL 为空或含危险 scheme（被 util/rel-url.html 剔除）时，
-             退回到作者首字母占位，而不是渲染 <img src="">（SEC-03）。 */ -}}
-        {{- $avatarURL := partial "util/rel-url.html" (site.Params.avatar | default "") -}}
+        {{- /* 头像 URL 为空 / 纯空白 / 危险 scheme / 解析成站点根时，
+             退回到作者首字母占位，而不是渲染 <img src="/">（SEC-03 + BUG-R2-003）。
+             util/avatar-url.html 负责把"空串被 relURL 成站点根"这类情况归一为无效。 */ -}}
+        {{- $avatarURL := partial "util/avatar-url.html" (site.Params.avatar | default "") -}}
         {{ if $avatarURL }}
           <img class="avatar" src="{{ $avatarURL | safeURL }}" alt="{{ $author }}">
         {{ else }}

@@ -34,10 +34,11 @@ import sys
 from html import unescape
 from html.parser import HTMLParser
 
-from _testlib import Harness, guard
+from _testlib import Harness, guard, default_build_dir
 from html_inventory import scan as scan_inventory
 
-DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
+# 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）；-h/--help 正确解析
+DIR = default_build_dir()
 
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}

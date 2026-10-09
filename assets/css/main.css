@@ -1281,6 +1281,12 @@ img.zoomable { cursor: zoom-in; }
      仅在 ≤900px（行内导航已隐藏、横向空间充裕）生效，桌面布局不受影响。 */
   .icon-btn { width: 44px; height: 44px; }
   .btn { min-height: 44px; }
+  /* BUG-P3-006：搜索按钮与品牌入口此前仍是 36px / 32px，未达 44×44。
+     用 min-* 而非固定 width，避免在更窄视口下把头部撑出横向溢出
+     （响应式溢出由 check_responsive_overflow.py 在边界宽度守护）。 */
+  .search-trigger { min-height: 44px; height: 44px; min-width: 44px; }
+  .brand { min-height: 44px; }
+  .brand-logo, .brand-mark { width: 40px; height: 40px; }
 }
 
 /* 头部导航断点（900px）—— 有意高于内容断点 768px。

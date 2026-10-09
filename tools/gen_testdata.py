@@ -67,6 +67,14 @@ MARKERS_50K = {
     48000: "GOLF48000",
 }
 
+# **正文最末尾**的唯一标记（TEST-DEFECT-R2-001）。
+# 与上面的"位置埋点"不同：它们的价值在于——
+#   只要正文被任何程度的截断（哪怕是截到 10 字符），末尾标记必然消失。
+#   旧版 check_index 只在 `max_len > 30000` 时才检查深处关键词，
+#   于是"全部条目被截断成 10 字"时 max_len 只有 10，检查根本不触发 → 假绿 rc=0。
+TAILMARK = "TAILMARKER_9Z8Y7X"
+TAILMARK_50K = "TAILMARKER_50K_END"
+
 
 def filler(target_len, markers):
     """生成长度 >= target_len 的正文，并在指定字符位置插入唯一关键词。"""
@@ -99,6 +107,15 @@ def filler(target_len, markers):
     return "".join(buf)
 
 
+def tailmark_filler(target_len, markers, tailmark):
+    """同 filler，但在**正文最末尾**追加唯一标记（用于截断检测）。
+
+    标记前放一句普通中文：这样"按字符截断"与"按字节截断"都会把它切掉，
+    检测对两种截断方式都敏感。
+    """
+    return filler(target_len, markers) + f"\n\n末尾完整性标记：{tailmark}\n"
+
+
 def write(name, front, body):
     path = os.path.join(POSTS, PREFIX + name)
     with open(path, "w", encoding="utf-8") as f:
@@ -120,7 +137,7 @@ categories: ["压力测试"]
 """, "只有一句话。"))
 
     # 2. 1 万字文章（含 6 个定位埋点）
-    body10k = filler(10200, MARKERS_10K)
+    body10k = tailmark_filler(10200, MARKERS_10K, TAILMARK)
     created.append(write("02-10k.md", """
 title: "一万字长文与搜索埋点"
 date: 2026-05-04
@@ -131,7 +148,7 @@ cover: "/img/cover/lab.svg"
 """, "本篇在不同字符位置埋入唯一关键词，用于验证全文搜索覆盖范围。\n\n" + body10k))
 
     # 3. 5 万字文章（含 3 个定位埋点）
-    body50k = filler(50000, MARKERS_50K)
+    body50k = tailmark_filler(50000, MARKERS_50K, TAILMARK_50K)
     created.append(write("03-50k.md", """
 title: "五万字超长文章"
 date: 2026-05-06

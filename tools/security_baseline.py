@@ -29,9 +29,10 @@ import os
 import re
 import sys
 
-from _testlib import Harness, guard
+from _testlib import Harness, guard, default_build_dir
 
-BUILD_DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
+# 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）；-h/--help 正确解析
+BUILD_DIR = default_build_dir()
 THEME = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

@@ -5,7 +5,7 @@
 背景（v1.0.9 独立测试报告的 P1-002）
 ------------------------------------
 默认 `mode = "auto"` 在正文总量超过 `autoThreshold`（默认 512000 字节）时会自动
-切到分片，而分片分支调用 `resources.Publish`（Hugo 0.167 起才提供）。
+切到分片，而分片分支调用 `resources.Publish`（Hugo **0.166** 起才提供）。
 Hugo 0.128–0.162 上因此**整站构建失败**；CI 矩阵虽跑了这些版本，但 exampleSite
 内容量太小，永远走不到分片分支 —— 门禁"绿"了，缺陷还在。
 
@@ -14,7 +14,7 @@ Hugo 0.128–0.162 上因此**整站构建失败**；CI 矩阵虽跑了这些版
   2. 恰好等于阈值 -> auto 走单文件（判定是严格 `>`）
   3. 高于阈值 -> auto 走分片（支持 Publish 的版本）/ 回退单文件并在旧版本仍能构建
   4. 显式 single -> 始终单文件（所有版本）
-  5. 显式 shard -> >=0.167 分片；旧版本**明确报错**（不静默降级）
+  5. 显式 shard -> >=0.166 分片；旧版本**明确报错**（不静默降级）
   6. 索引 URL / chunk 文件真实存在、可解析
   7. 全文搜索能力未被削减：长文后半部分的埋点关键词必须出现在索引（或其 chunk）中
 
@@ -64,7 +64,8 @@ def hugo_version():
 
 
 def supports_publish(ver):
-    return ver[0] > 0 or ver[1] >= 167
+    # resources.Publish 自 Hugo 0.166.0 起提供（BUG-R2-002 修正：原写 0.167，保守一个小版本）
+    return ver[0] > 0 or ver[1] >= 166
 
 
 def make_site(name, posts, with_search=True):
@@ -233,7 +234,7 @@ def run_all(h):
         out = os.path.join(WORK, "out-mode-" + mode)
         rc, err, log = build(site, out)
         if mode == "shard" and not supports_publish(ver):
-            ok = rc != 0 and "需要 Hugo >= 0.167.0" in log
+            ok = rc != 0 and "需要 Hugo >= 0.166.0" in log
             h.record("显式 shard 在旧 Hugo 上明确报错并给出替代方案（不静默降级）", ok,
                      f"rc={rc} 提示={(err or '')[:90]}")
             continue

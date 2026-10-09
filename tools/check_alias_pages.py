@@ -35,10 +35,11 @@ import sys
 from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _testlib import Harness, guard  # noqa: E402
+from _testlib import Harness, guard, default_build_dir  # noqa: E402
 from html_inventory import scan as scan_inventory, normalize_url  # noqa: E402
 
-DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
+# 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）；-h/--help 正确解析
+DIR = default_build_dir()
 
 REFRESH_RE = [
     re.compile(r'<meta[^>]*http-equiv=["\']?refresh["\']?[^>]*content=["\']([^"\']+)["\']', re.I),

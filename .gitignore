@@ -23,7 +23,13 @@ exampleSite/_datecheck-*.toml
 exampleSite/shard-override.toml
 exampleSite/shard-auto.toml
 exampleSite/ms-verify.toml
+exampleSite/_ms-verify-*.toml
+exampleSite/_verify-multilingual.toml
+exampleSite/_idx-*.toml
 myblog-test.toml
+# 测试脚本运行时生成的配置覆盖（运行期也会清理，这里只作兜底）：
+# TEST-DEFECT-R2-005 —— 该文件此前**未被忽略**，失败残留时会直接脏工作区
+tools/_ml-giscus.toml
 
 # 测试输出
 tools/audit_report.json

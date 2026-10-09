@@ -9,24 +9,30 @@
     SITE_DIR   站点目录（默认 ../myblog）
     HUGO_ARGS  传给 hugo 的额外参数（CI 用 '--source . --themesDir ../..'）
     HUGO_BIN   hugo 可执行文件（默认 PATH 中的 hugo）
+    KEEP_TMP=1 保留本次临时目录以便排查（默认不保留）
 
 退出码约定（见 tools/_testlib.py）：任一断言失败 / 构建失败 -> exit 1。
+
+临时产物（TEST-DEFECT-R2-004）：
+    旧实现在**成功路径末尾**才删 `exampleSite/ms-verify.toml` 与 `tmp/multisec`，
+    异常/中断路径全部残留，`tmp/multisec` 还会持续累积 `multi-<runid>` 目录。
+    现在：配置覆盖文件与输出目录都放进 TempWorkspace 的唯一目录，并用
+    try/finally 保证成功、失败、异常、中断都清理。
 """
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _testlib import Harness, guard  # noqa: E402
+from _testlib import Harness, guard, TempWorkspace, fresh_dir  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SITE = os.path.abspath(os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog"))
 HUGO = os.environ.get("HUGO_BIN", "hugo")
 HUGO_ARGS = os.environ.get("HUGO_ARGS", "").split() if os.environ.get("HUGO_ARGS") else []
-WORK = os.path.join(ROOT, "tmp", "multisec")
 CONFIG_NAME = "ms-verify.toml"
 
 SECTIONS = ["posts", "tutorials", "notes", "projects"]
@@ -49,6 +55,10 @@ def build(out_dir, extra_config=None):
                        encoding="utf-8", errors="ignore")
     errs = [l for l in (p.stderr + p.stdout).splitlines()
             if l.strip().upper().startswith("ERROR")]
+    # 真实退出码优先（与 TEST-DEFECT-R2-008 同类）：非零即构建失败
+    if p.returncode != 0:
+        tail = (p.stderr or p.stdout or "").strip().splitlines()[-3:]
+        errs = [f"hugo 退出码 {p.returncode}"] + errs + tail
     return errs
 
 
@@ -71,19 +81,57 @@ def index_blob(base):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _remove_with_retry(path, tries=6):
+    """删除临时覆盖配置；Windows 上偶发文件锁（杀软 / 索引器）会瞬时占用。
+
+    实测清理逻辑本身正确，但并发/连续运行时 `os.remove` 偶发被占用而抛 OSError。
+    旧实现 `except OSError: pass` 会**静默**吞掉它并留下残骸（正是 TEST-DEFECT-R2-004
+    "失败路径残留"要消除的现象）。这里短重试+`os.chmod` 兜底，仍失败则**显式告警**
+    （不静默），便于发现真实的环境问题。
+    """
+    last = None
+    for i in range(tries):
+        try:
+            os.remove(path)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            last = e
+            try:
+                os.chmod(path, 0o666)
+            except OSError:
+                pass
+            time.sleep(0.15 * (i + 1))
+    print(f"[WARN] 临时配置未能清理，可能残留 {path}: {last}")
+    return False
+
+
 def _run_all():
-    # 写入多 section 配置（放在 SITE 内：--config 路径相对 --source）
-    cfg_path = os.path.join(SITE, CONFIG_NAME)
-    with open(cfg_path, "w", encoding="utf-8") as f:
-        f.write('[params.content]\n  sections = ["posts", "tutorials", "notes", "projects"]\n')
+    # 唯一临时工作区：输出目录都在这里，成功/失败/异常/中断都清理。
+    # 配置覆盖必须放在 SITE 内（--config 路径相对 --source），而且**扩展名必须是
+    # .toml** —— Hugo 按扩展名推断配置格式，`x.toml.<id>` 会直接报
+    # "not a valid configuration format"。因此这里用带唯一 id 的 `_ms-verify-<id>.toml`，
+    # 并在 finally 中删除（`.gitignore` 只作兜底，运行期清理才是关键）。
+    with TempWorkspace("multisec") as ws:
+        ws_id = ws.path_root.rsplit(os.sep, 1)[-1]
+        cfg_name = f"_ms-verify-{ws_id}.toml"
+        cfg_path = os.path.join(SITE, cfg_name)
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.write('[params.content]\n'
+                        '  sections = ["posts", "tutorials", "notes", "projects"]\n')
+            _checks(ws, cfg_name)
+        finally:
+            _remove_with_retry(cfg_path)
 
-    # 每次使用全新输出目录，避免任何删除操作（批量删除会被安全策略拦截）
-    import time
-    run_id = os.environ.get("MULTISEC_RUN_ID") or time.strftime("%H%M%S")
-    multi = os.path.join(WORK, f"multi-{run_id}")
-    default = os.path.join(WORK, f"default-{run_id}")
 
-    errs = build(multi, extra_config=CONFIG_NAME)
+def _checks(ws, cfg_name):
+    # 每次从空目录开始，绝不复用上一次的构建产物
+    multi = fresh_dir(ws.path("multi"), boundary=ws.path_root)
+    default = fresh_dir(ws.path("default"), boundary=ws.path_root)
+
+    errs = build(multi, extra_config=cfg_name)
     if errs:
         H.fatal_error("多 section 构建失败", errs[0][:160]); return
     errs = build(default)
@@ -205,12 +253,6 @@ def _run_all():
             H.record(f"模板中无硬编码 Section \"posts\"（仅允许 default 回退）",
                      not hits, f"{hits[:4]}" if hits else
                      f"扫描 {scanned} 个模板文件，无硬编码")
-
-    # 清理临时配置
-    try:
-        os.remove(cfg_path)
-    except OSError:
-        pass
 
 
 def main():

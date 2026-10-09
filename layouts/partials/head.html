@@ -98,13 +98,18 @@
 {{- /* JSON-LD（BlogPosting / WebSite） —— 同上，整体序列化一次 */ -}}
 {{- $ldType := cond .IsPage "BlogPosting" "WebSite" -}}
 {{- $ldHeadline := cond .IsHome site.Title .Title -}}
-{{- $ldAuthor := .Params.author | default site.Params.author -}}
 {{- $ld := dict
     "@context" "https://schema.org"
     "@type" $ldType
     "headline" $ldHeadline
-    "author" (dict "@type" "Person" "name" $ldAuthor)
     "url" .Permalink -}}
+{{- /* author：**无作者时省略 author 字段**，而不是输出 "name": null
+       （schema.org 要求 Person.name 为字符串；null 会被结构化数据校验器判为无效）。
+       有作者（站点级或文章级）时输出正常字符串姓名。绝不生成虚假姓名（BUG-R2-005）。 */ -}}
+{{- $ldAuthor := .Params.author | default site.Params.author | default "" -}}
+{{- if (trim $ldAuthor " \t\r\n") -}}
+  {{- $ld = merge $ld (dict "author" (dict "@type" "Person" "name" (trim $ldAuthor " \t\r\n"))) -}}
+{{- end -}}
 {{- with $desc }}{{ $ld = merge $ld (dict "description" .) }}{{ end -}}
 {{- if .IsPage -}}
   {{- /* 缺日期（零值）时**不输出** datePublished/dateModified ——

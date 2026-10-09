@@ -1,0 +1,31 @@
+{{- /* 头像 URL 解析（BUG-R2-003）。
+
+       为什么单独一个 helper：
+         util/rel-url.html 是**通用路径规范化器**，它把空串 / "/" 视为"站点根"
+         （对菜单 URL 而言这是正确语义：href="/" 就是首页）。但头像不是页面：
+         一个"指向站点根"的头像 URL 是无效的 —— 会让 <img src="/"> 变成破损图，
+         并让字母头像 / 内置头像回退成为死代码。
+
+       传入：原始头像配置值（site.Params.avatar 等）
+       输出：可用的头像 URL；下列情况一律输出**空串**，调用方据此回退：
+         - 未配置（空串）
+         - 纯空白
+         - 危险 scheme（javascript: / vbscript: / data: 非图片）—— 由 rel-url 剔除
+         - 解析结果等于站点根（如 "/"、空串在子目录部署下被 relURL 成 "/blog/"）
+
+       站点根判定用 site.Home.RelPermalink（baseURL=/ -> "/"，baseURL=/blog/ -> "/blog/"），
+       因此子目录部署同样正确。
+
+       调用：{{ $u := partial "util/avatar-url.html" (site.Params.avatar | default "") }}
+             {{ with $u }}<img src="{{ . | safeURL }}">{{ else }}<span class="avatar-fallback">…</span>{{ end }}
+  */ -}}
+{{- $raw := . | default "" -}}
+{{- $out := "" -}}
+{{- if (trim $raw " \t\r\n") -}}
+  {{- $resolved := partial "util/rel-url.html" $raw -}}
+  {{- $home := site.Home.RelPermalink | default "/" -}}
+  {{- if and $resolved (ne $resolved $home) -}}
+    {{- $out = $resolved -}}
+  {{- end -}}
+{{- end -}}
+{{- $out -}}

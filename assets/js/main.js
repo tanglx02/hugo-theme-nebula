@@ -53,7 +53,9 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && nav.classList.contains('mobile-open')) {
         setMenu(false);
-        try { burger.focus(); } catch (err) {}
+        /* preventScroll：焦点归还汉堡按钮，但**不得**改变页面滚动位置
+           （BUG-R2-004：Chromium/WebKit 会因 focus() 把文档滚到触发元素处）。 */
+        try { burger.focus({ preventScroll: true }); } catch (err) { try { burger.focus(); } catch (e2) {} }
       }
     });
   }
@@ -342,12 +344,17 @@
         document.removeEventListener('keydown', keyHandler, true);
         keyHandler = null;
       }
-      /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身 */
+      /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身。
+         **preventScroll:true** —— 只归还焦点，绝不改变页面滚动位置。
+         历史缺陷（BUG-R2-004）：触发按钮（如 .search-trigger）在文档流中位于页面顶部，
+         Chromium/WebKit 会因 focus() 把文档滚回其静态位置，用户读完长文开关搜索后
+         页面位置被拉走。preventScroll 在不牺牲焦点可访问性的前提下消除该副作用。 */
       if (lastTrigger && document.contains(lastTrigger) &&
           typeof lastTrigger.focus === 'function') {
-        try { lastTrigger.focus(); } catch (e) { try { root.focus(); } catch (e2) {} }
+        try { lastTrigger.focus({ preventScroll: true }); }
+        catch (e) { try { lastTrigger.focus(); } catch (e2) { try { root.focus({ preventScroll: true }); } catch (e3) {} } }
       } else if (!root.contains(document.activeElement)) {
-        try { root.focus(); } catch (e) {}
+        try { root.focus({ preventScroll: true }); } catch (e) {}
       }
       lastTrigger = null;
     }

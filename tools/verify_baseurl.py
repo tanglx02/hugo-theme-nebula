@@ -18,7 +18,10 @@ import urllib.request
 import shlex
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
+from _testlib import (  # noqa: E402
+    EXIT_FAIL, EXIT_PASS, Harness, TempWorkspace, fresh_dir, safe_rmtree,
+    launch as _launch, reachable, guard,
+)
 
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -27,8 +30,17 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 SITE = os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog")
 HUGO_ARGS = shlex.split(os.environ.get("HUGO_ARGS", ""))
 HUGO = os.environ.get("HUGO_BIN", "hugo")   # CI 中 hugo 已在 PATH；本地可用 HUGO_BIN 指定
+# 引擎参数（TEST-DEFECT-R2-002）：baseURL 路径解析在不同引擎下有差异，
+# 支持在 chromium / firefox / webkit 上运行（默认 chromium 保持向后兼容）。
+BROWSER = os.environ.get("PW_BROWSERS") or (sys.argv[1] if len(sys.argv) > 1 else "chromium")
 import time as _time
-DEPLOY = os.path.join(ROOT, "tmp", "deploy-" + (os.environ.get("BASEURL_RUN_ID") or _time.strftime("%H%M%S")))
+# TEST-DEFECT-R2-004：deploy 目录必须**并发安全**。
+# 旧实现只用 %H%M%S，同一秒内并行跑多个引擎（chromium/firefox/webkit）会撞同一目录，
+# 互相删除/覆盖对方正在构建的产物 -> 误报"构建失败"。加入 PID 保证唯一。
+DEPLOY = os.path.join(
+    ROOT, "tmp",
+    "deploy-" + (os.environ.get("BASEURL_RUN_ID")
+                 or f"{_time.strftime('%H%M%S')}-{os.getpid()}"))
 PY = sys.executable
 
 CASES = [
@@ -46,12 +58,29 @@ def rec(case, name, ok, detail=""):
 
 
 def build(base_url, out_dir):
-    # 每次使用全新目录，避免任何递归删除（批量删除会被安全策略拦截）
+    # 每次构建前清空目标目录（边界约束在 DEPLOY 内），绝不复用上次残留产物。
+    # TEST-DEFECT-R2-004/R2-008：旧实现只 makedirs(exist_ok=True)，残留 HTML 会被
+    # 当作本次有效产物 —— 正是"读旧产物得 PASS"的假绿来源。
     dest = os.path.join(DEPLOY, out_dir)
-    os.makedirs(dest, exist_ok=True)
-    cmd = [HUGO] + HUGO_ARGS + ["--gc", "--minify", "--baseURL", base_url, "-d", dest]
+    fresh_dir(dest, boundary=DEPLOY)
+    # Hugo 构建锁：异常中断/外部干扰后会残留，导致后续构建 "Access is denied"。
+    # --noBuildLock 从根上避免该文件产生（测试构建不需要锁语义）。
+    try:
+        lk = os.path.join(SITE, ".hugo_build.lock")
+        if os.path.exists(lk):
+            os.remove(lk)
+    except OSError:
+        pass
+    cmd = [HUGO] + HUGO_ARGS + ["--noBuildLock", "--gc", "--minify",
+                                "--baseURL", base_url, "-d", dest]
     p = subprocess.run(cmd, cwd=SITE, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+    # TEST-DEFECT-R2-008：必须看**真实退出码**，不能只匹配 stdout 里以 ERROR 开头的行。
+    # Hugo 可能以非零码失败却不打印 "ERROR" 前缀（或在被截断的日志里被漏掉），
+    # 旧实现会把这种失败当成功，进而把上一次残留的 HTML 当有效产物。
     errs = [l for l in (p.stderr + p.stdout).splitlines() if l.strip().upper().startswith("ERROR")]
+    if p.returncode != 0:
+        tail = (p.stderr or p.stdout or "").strip().splitlines()
+        errs = [f"hugo 退出码 {p.returncode}"] + errs + tail[-3:]
     return dest, errs
 
 
@@ -61,7 +90,9 @@ def check(case, base):
     print(f"\n=== [{case}] base={base} (basePath={path}) ===")
 
     with sync_playwright() as p:
-        b = _launch(p.chromium)
+        launcher = {"chromium": p.chromium, "firefox": p.firefox,
+                    "webkit": p.webkit}.get(BROWSER, p.chromium)
+        b = _launch(launcher)
         ctx = b.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = ctx.new_page()
         bad = []
@@ -202,7 +233,28 @@ def check(case, base):
 
 def _run_all():
     os.makedirs(DEPLOY, exist_ok=True)
+    # TEST-DEFECT-R2-004：Hugo 构建锁（<site>/.hugo_build.lock）在异常中断后会残留，
+    # 后续构建报 "failed to acquire a build lock ... Access is denied"。
+    # 这是**运行期清理**问题（.gitignore 只影响 git 上报，无法阻止残留）。
+    # 前置清理本工具可能留下的锁，保证"失败不污染下次运行"。
+    lock = os.path.join(SITE, ".hugo_build.lock")
+    try:
+        if os.path.exists(lock):
+            os.remove(lock)
+    except OSError:
+        pass
+    try:
+        _run_all_inner()
+    finally:
+        # TEST-DEFECT-R2-003/004：本次运行的 deploy 目录必须清理，
+        # 既不污染下次运行，也不在仓库留下构建产物。
+        try:
+            safe_rmtree(DEPLOY)
+        except Exception as e:      # pragma: no cover
+            print(f"[WARN] 清理 deploy 目录失败 {DEPLOY}: {e}")
 
+
+def _run_all_inner():
     for name, base_url, out_dir, _, _ in CASES:
         dest, errs = build(base_url, out_dir)
         print(f"构建 {name} -> {dest} : {'OK' if not errs else 'ERROR'}")
@@ -246,7 +298,105 @@ def _run_all():
         srv2.terminate()
 
 
+def selftest_exitcode():
+    """故障注入自证（TEST-DEFECT-R2-008）：证明本工具**看真实退出码**，
+    绝不把上一次残留的 HTML 当成本次有效产物。
+
+    做法：用一个假 hugo 包装器——它**先写出一个"看起来正常"的 index.html**（模拟
+    上一次构建的残留），再以**非零退出码**结束。若门禁只看 stdout 的 "ERROR" 前缀
+    或只看产物是否存在，就会把这份残留当成成功产物 -> 假绿。
+    正确行为：构建阶段必须因非零退出码触发 FATAL，整体 exit != 0。
+    """
+    print("=== verify_baseurl 退出码注入自证（残留产物 + 非零退出码必须判失败）===")
+    h = Harness("baseurl-selftest")
+
+    src_site = os.environ.get("SITE_DIR") or os.path.join(ROOT, "exampleSite")
+    if not os.path.isdir(src_site):
+        print(f"[FATAL] 找不到站点目录用于注入: {src_site}")
+        sys.exit(EXIT_FAIL)
+
+    with TempWorkspace("baseurl-selftest") as ws:
+        # 假 hugo：把 stale 产物写进 -d 目录，然后以退出码 1 结束。
+        # 为绕开 Windows 下 .cmd 包装器的中文路径编码问题，这里**不经 shell**：
+        #   HUGO_BIN   = 当前 Python 解释器
+        #   HUGO_ARGS  = "<fake_hugo.py>"（shlex 解析后成为第一个参数）
+        # build() 会拼成 [python, <fake_hugo.py>, ...hugo args]，等价于直接执行脚本。
+        fake_py = ws.path("fake_hugo.py")
+        # 假 hugo 除写出 STALE 产物外，再向 marker 记一行"我确实写了产物"。
+        # 为什么需要 marker：本工具**修复后**会在失败路径正确清理 deploy 目录
+        # （TEST-DEFECT-R2-003/004），因此父进程再去 stat 残留 index.html 时它已被
+        # 自己的清理删掉——那是"清理生效"的正确表现，不能据此判注入失败。
+        # marker 写在 ws（唯一临时目录）里，与产物清理互不干扰，作为注入生效的真实证据。
+        marker = ws.path("stale_marker.txt")
+        with open(fake_py, "w", encoding="utf-8") as f:
+            f.write(
+                "import os, sys\n"
+                "args = sys.argv[1:]\n"
+                "dest = None\n"
+                "if '-d' in args:\n"
+                "    dest = args[args.index('-d') + 1]\n"
+                "if dest:\n"
+                "    os.makedirs(dest, exist_ok=True)\n"
+                "    with open(os.path.join(dest, 'index.html'), 'w', encoding='utf-8') as g:\n"
+                "        g.write('<!doctype html><title>STALE</title>')\n"
+                "mk = os.environ.get('BASEURL_SELFTEST_MARKER')\n"
+                "if mk:\n"
+                "    with open(mk, 'w', encoding='utf-8') as g:\n"
+                "        g.write('wrote-stale:' + (dest or ''))\n"
+                "sys.stderr.write('injected build failure (stale artifact left behind)\\n')\n"
+                "sys.exit(1)\n")
+
+        env = dict(os.environ)
+        env["HUGO_BIN"] = sys.executable            # 直接执行解释器，不经 shell
+        env["HUGO_ARGS"] = f'"{fake_py}"'          # shlex -> [fake_py]
+        env["SITE_DIR"] = os.path.abspath(src_site)
+        run_id = f"inj{os.getpid()}"
+        env["BASEURL_RUN_ID"] = run_id
+        env["BASEURL_SELFTEST_MARKER"] = marker     # 传给假 hugo（经子进程 env 继承）
+        env.pop("PW_BROWSERS", None)       # 构建阶段就会失败，到不了浏览器
+        deploy_dir = os.path.join(ROOT, "tmp", "deploy-" + run_id)
+
+        try:
+            p = subprocess.run([sys.executable, os.path.abspath(__file__)],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="ignore", env=env)
+            out = p.stdout + p.stderr
+            # 关键证据：注入确实写出了 STALE 产物（否则注入没有意义）。
+            # 用 marker 判断而非直接 stat 产物——本工具修复后会在失败路径清理产物，
+            # 产物消失恰恰是"运行期清理生效"的正确行为（TEST-DEFECT-R2-003/004）。
+            injected = os.path.isfile(marker) and "wrote-stale" in open(
+                marker, encoding="utf-8").read()
+            h.record("注入确实写出了 STALE 产物（证明'读残留得 PASS'是真实风险）",
+                     injected, "假 hugo 写产物并留下 marker 证据")
+            # 附加证据：修复后的成功/失败路径都应把产物清掉（不留残骸）
+            leftover = os.path.isfile(os.path.join(deploy_dir, "root", "index.html"))
+            h.record("失败路径已清理本次残留产物（运行期清理生效）", not leftover,
+                     f"deploy 目录残留={leftover}")
+            h.record("非零退出码使整体判失败（exit!=0）", p.returncode != 0,
+                     f"rc={p.returncode}")
+            h.record("失败原因指向构建退出码而非产物缺失",
+                     ("退出码" in out) or ("构建失败" in out),
+                     next((l for l in out.splitlines() if "构建失败" in l or "退出码" in l), "未命中")[:120])
+
+            # 反向再验一次：仅凭 stdout 里是否出现 ERROR 前缀不足以判定（假 hugo 不打印 ERROR）
+            h.record("假 hugo 未打印 ERROR 前缀（证明不能只靠 stdout 前缀判断）",
+                     "ERROR" not in out.upper().split("HUGO")[0],
+                     "stderr 仅有 injected build failure 一行")
+        finally:
+            # 清理本注入留下的 deploy 目录（边界约束在 ROOT/tmp 内）
+            from _testlib import safe_rmtree
+            try:
+                safe_rmtree(deploy_dir)
+            except Exception as e:      # pragma: no cover
+                print(f"[WARN] 清理注入目录失败 {deploy_dir}: {e}")
+
+    h.finish()
+
+
 def main():
+    if "--selftest-exitcode" in sys.argv[1:]:
+        selftest_exitcode()
+        return
     guard(H, _run_all)
     H.finish()
 

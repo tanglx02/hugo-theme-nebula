@@ -3,6 +3,61 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 第二轮集中修复（独立复验报告）
+
+针对 `Nebula-v1.0.9-修复分支-独立复验报告.md` 确认的问题做**有范围控制的修复**：
+不改技术栈、不加无关功能、不降低任何断言。**尚未发布**（未打 tag、未创建 Release）。
+基线为已复验的 `90b1f50`，修复分支 `fix/third-party-audit-v1.0.9-r2`。
+
+### 产品缺陷
+
+- **BUG-R2-003（回归）未配置头像渲染破损图**：SEC-03 加固把判断从 `{{ with site.Params.avatar }}`
+  改成 `{{ if $avatarURL }}`，而 `rel-url.html` 对空串返回站点根（`/` 或 `/blog/`）→
+  卡片与侧栏输出 `<img src="/">` 破损图，字母头像兜底成死代码。
+  新增 `partial "util/avatar-url.html"`：空/纯空白/危险 scheme/**解析成站点根**一律视为无头像，
+  调用方据此回退（卡片→字母头像，侧栏→内置 `img/avatar.svg`）。子目录部署同样正确。
+- **BUG-R2-001 contentLimit 中国中文正文截断越界**：`index.json` 用**字节数** `len` 判断，
+  却拿该字节数当 **rune** 结束索引调用 `slicestr` → 中文正文（rune 数 < limit < 字节数）
+  越界 panic、整站构建失败（BUG-P1-003 同根因清扫遗漏）。改用
+  `partial "util/slice-runes.html"`（`countrunes` 语义）。
+- **BUG-R2-002 / DOC-R2-001 能力门限保守一个小版本**：`resources.Publish` 自 **Hugo 0.166.0**
+  起提供，此前误设 0.167.0。版本探测改为语义化数值比较（major/minor），
+  报错信息、README、`theme.toml`、`docs/稳定基线.md`、`docs/测试说明.md` 同步修正为 0.166+。
+- **BUG-R2-004 关闭弹窗后页面滚动跳变**：焦点归还触发按钮时未用 `preventScroll`，
+  Chromium/WebKit 会把文档滚回触发元素在流中的位置。工厂 `close()` 与移动菜单 Escape
+  改用 `focus({ preventScroll: true })`，保留焦点可访问性。
+  `verify_modal_scroll.py` 新增断言 **2d**：关闭弹窗后 scrollY 相对打开位置漂移须 ≤60px
+  （修复前 Chromium −358px / WebKit −65px，修复后三引擎 0px）；`SCROLL_FOCUS_BUG=1`
+  可注入"未阻止滚动"自证该断言会变红（原测试只验证"能滚动"，未验证"位置不变"）。
+- **BUG-R2-005 JSON-LD `author.name: null`**：无作者时不再输出 `"author":{"name":null}`，
+  而是**省略 author 字段**；有作者（站点级或文章级）时输出正常字符串姓名。
+
+### 测试体系缺陷
+
+- **TEST-DEFECT-R2-006 子目录测试假绿**：`subdir_test.py` 复用 `tmp/public-blog` 不清空，
+  删源文章后旧 HTML 仍在 → 假绿。构建前清理，且负向场景必须能失败。
+- **TEST-DEFECT-R2-001 索引正文异常截断仍通过**：`check_index.py` 增加尾部标记 +
+  按 `contentLimit` 约定的截断校验，异常缩短即判错。
+- **TEST-DEFECT-R2-002 CI 步骤静默消失仍通过**：`check_ci_jobs.py` 增加关键步骤 /
+  运行命令 / 条件 / `continue-on-error` / job 级恒假条件 / 三引擎门控结构契约；
+  删除、禁用、假条件替代命令均判红。新增 `check_ci_jobs.py --selftest`：
+  对 7 类故障注入**逐一自证门禁必红**（删除步骤 / 步骤 `if:false` / job `if:false` /
+  `continue-on-error` / 空转 `echo` / 单引擎门控 / 替换 matrix 取值）。
+  同时把 6 个涉及浏览器差异的检查从 chromium 单引擎改为**三引擎**运行。
+- **TEST-DEFECT-R2-008 忽略 Hugo 退出码**：`verify_baseurl.py` 显式检查构建退出码；
+  新增 `--selftest-exitcode`：用"残留产物 + 非零退出码"的假 hugo 自证绝不读残留产物得 PASS。
+  构建目录加入 PID 保证并发安全、构建前清空目录、`--noBuildLock` 避免锁残留。
+- **TEST-DEFECT-R2-007 HTML inventory 缺失静默跳过**：缺文件 / 与本次产物不符即硬失败；
+  inventory 增加 `build_id` 构建指纹，跨构建复用即 FATAL。
+- **TEST-DEFECT-R2-003/004/005 临时产物与路径**：默认路径基准统一、失败/中断清理、
+  `tools/_ml-giscus.toml` 纳入 `.gitignore`。
+- **BUG-P3-006 触控目标覆盖不全**：`≤900px` 把搜索按钮与品牌入口一并提升到 44×44
+  （用 `min-height` 避免窄屏溢出）；README 明确区分"已提升"与"仍为 AA 24×24 / 内联豁免"项。
+- **BUG-P3-004 图片尺寸 / CLS 限制**：README 已知限制明确标注为**已记录限制**，不声称完全解决。
+- **第三方 SRI / CSP**：README 说明为**可选设计**，由使用者自行配置，主题不代为承担风险。
+
+---
+
 ## [未发布] — 独立第三方测试报告的集中修复轮
 
 针对 `Nebula-v1.0.9-独立第三方全面测试报告.md` 确认的问题做**有范围控制的修复**：

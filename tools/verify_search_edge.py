@@ -18,6 +18,10 @@ from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
+# 引擎参数（TEST-DEFECT-R2-002）：本脚本验证搜索交互与竞态，属浏览器差异项，
+# 因此支持在 chromium / firefox / webkit 上运行（默认 chromium 保持向后兼容）。
+BROWSER = sys.argv[2] if len(sys.argv) > 2 else (
+    os.environ.get("PW_BROWSERS") or "chromium")
 
 DATE_LOCALE = os.environ.get("SEARCH_DATE_LOCALE", "zh-CN")
 EXPECTED_DATE = {
@@ -49,10 +53,12 @@ def search(page, kw, wait=700):
 
 def _run_all():
     with sync_playwright() as p:
+        launcher = {"chromium": p.chromium, "firefox": p.firefox,
+                    "webkit": p.webkit}.get(BROWSER, p.chromium)
         try:
-            b = _launch(p.chromium)
+            b = _launch(launcher)
         except Exception as e:
-            H.fatal_error("chromium 浏览器启动失败", str(e)[:200])
+            H.fatal_error(f"{BROWSER} 浏览器启动失败", str(e)[:200])
             return
         ctx = b.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = ctx.new_page()

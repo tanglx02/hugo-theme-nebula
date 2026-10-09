@@ -25,7 +25,7 @@ env:
 # CI JOB INVENTORY —— 由 tools/check_ci_jobs.py 自动校验，**禁止手工改数字**
 #
 #   job                    matrix 维度            展开数量   备注
-#   build                  hugo-version x4        4
+#   build                  hugo-version x6        6
 #   subdir                 -                      1
 #   static-checks          -                      1
 #   browser-tests          browser x3             3
@@ -34,13 +34,13 @@ env:
 # 改动 matrix（加/删浏览器、加 Hugo 版本等）必须同步更新下面两行，
 # 否则 tools/check_ci_jobs.py 判定失败，CI 变红。
 #
-# CI-JOBS: build=4
+# CI-JOBS: build=6
 # CI-JOBS: subdir=1
 # CI-JOBS: static-checks=1
 # CI-JOBS: browser-tests=3
 # CI-JOBS: release-full-audit=3
-# CI-JOBS-TOTAL: 12
-# CI-JOBS-PUSH-TOTAL: 9        （非 tag 推送：Release job 被 if 跳过）
+# CI-JOBS-TOTAL: 14
+# CI-JOBS-PUSH-TOTAL: 11       （非 tag 推送：Release job 被 if 跳过）
 # ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------- 构建矩阵
@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
+        hugo-version: ['0.128.0', '0.148.0', '0.162.0', '0.166.0', '0.167.0', 'latest']
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -403,30 +403,27 @@ jobs:
         run: python3 tools/verify_search_modal.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search edge cases & race conditions
-        if: matrix.browser == 'chromium'
+        # 三引擎执行（TEST-DEFECT-R2-002）：搜索交互与竞态存在真实浏览器差异。
         env:
           SEARCH_DATE_LOCALE: 'zh-CN'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search date i18n in rendered results (en build must show "Sep 28, 2026")
-        if: matrix.browser == 'chromium'
         env:
           SEARCH_DATE_LOCALE: 'en'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081 ${{ matrix.browser }}
 
       - name: Search highlight - HTML entities & regex/XSS safety on & < > " '
-        if: matrix.browser == 'chromium'
-        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 chromium
+        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search shard failure handling + deep-keyword semantics
-        if: matrix.browser == 'chromium'
         run: python3 tools/verify_search_shard.py http://127.0.0.1:8090 ${{ matrix.browser }}
 
       - name: Three baseURL deployments (/, /blog/, /blog/sub/)
-        if: matrix.browser == 'chromium'
         env:
           SITE_DIR: exampleSite
           HUGO_ARGS: '--source . --themesDir ../..'
+          PW_BROWSERS: ${{ matrix.browser }}
         run: python3 tools/verify_baseurl.py
 
       - name: Modal scroll lock & restore (BUG-P1-001 regression) — all engines
@@ -435,14 +432,12 @@ jobs:
         run: python3 tools/verify_modal_scroll.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Text contrast WCAG AA (light + dark) (BUG-P2-003 regression)
-        if: matrix.browser == 'chromium'
-        run: python3 tools/verify_contrast.py http://127.0.0.1:8080 chromium
+        run: python3 tools/verify_contrast.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Responsive overflow & header breakpoint incl. English build (BUG-P2-002)
-        if: matrix.browser == 'chromium'
         env:
           OVERFLOW_EXTRA_URLS: 'http://127.0.0.1:8081'
-        run: python3 tools/check_responsive_overflow.py http://127.0.0.1:8080 chromium
+        run: python3 tools/check_responsive_overflow.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Upload audit report
         if: always()
@@ -515,6 +510,9 @@ jobs:
           AUDIT_FULL: '1'
           AUDIT_BROWSERS: ${{ matrix.browser }}
           AUDIT_VIEWPORTS: '320,375,768,1440'
+          # TEST-DEFECT-R2-007：缺失 inventory 必须硬失败（不得静默跳过交叉验证），
+          # 且 inventory 必须绑定本次构建指纹
+          AUDIT_REQUIRE_INVENTORY: '1'
         run: python3 tools/audit.py http://127.0.0.1:8080
       - name: Release copy semantics (copy must never fake success)
         run: python3 tools/verify_copy.py http://127.0.0.1:8080 ${{ matrix.browser }}

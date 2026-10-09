@@ -16,10 +16,10 @@ features = [
   "SEO 优化",
   "RSS / sitemap / robots",
 ]
-# 最低版本经真实构建验证（CI 矩阵同时验证 0.128.0 / 0.162.0 / 0.167.0 / latest）：
+# 最低版本经真实构建验证（CI 矩阵同时验证 0.128.0 / 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0 / latest）：
 #   theme.toml 与 README「版本兼容」表保持一致
 # 关于搜索索引：
-#   - 分片模式（params.search.mode = "shard"）依赖 resources.Publish，需要 Hugo 0.167+；
+#   - 分片模式（params.search.mode = "shard"）依赖 resources.Publish，需要 Hugo 0.166+；
 #     在更低版本上**显式报错**并给出替代方案（不静默降级）。
 #   - 默认的 auto 模式在低版本超过阈值时会**自动回退为单文件索引**（打 WARN），
 #     因此默认配置在 0.128.0 起即可正常构建，全文搜索能力不变。

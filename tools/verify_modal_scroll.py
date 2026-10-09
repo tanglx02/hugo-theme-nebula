@@ -168,6 +168,13 @@ def run(h):
         print(f"长页面: {page_url}  图片页: {image_page or '(无)'}")
 
         ctx = browser.new_context(viewport={"width": 1024, "height": 700}, locale="zh-CN")
+        # 故障注入（TEST-DEFECT-R2-002 思路）：SCROLL_FOCUS_BUG=1 时把 focus() 的
+        # 选项参数剥掉，模拟"未使用 preventScroll"的历史实现，用于自证 2d 断言
+        # 确实会在回归时变红（默认关闭，不影响正常门禁）。
+        if os.environ.get("SCROLL_FOCUS_BUG", "").strip() in ("1", "true", "True"):
+            ctx.add_init_script(
+                "(() => { const f = HTMLElement.prototype.focus;"
+                " HTMLElement.prototype.focus = function(){ return f.call(this); }; })();")
         pg = ctx.new_page()
         errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)[:140]))
@@ -206,6 +213,23 @@ def run(h):
                  f"active=#{active_id(pg)}")
         h.record("2c. 遮罩关闭后背景 inert 全部解除", bg_inert(pg) == 0,
                  f"剩余 inert {bg_inert(pg)}")
+
+        # ---------- 2d 关闭弹窗不得移动页面滚动位置（BUG-R2-004） ----------
+        # 症状：把焦点还给触发元素时若不阻止滚动，Chromium/WebKit 会把文档滚回
+        # 触发按钮的静态位置，用户在长文中开关搜索后页面位置被拉走。
+        # 判据：关闭后的 scrollY 与打开后（同一锁定位置）相比漂移不得超过容差。
+        # 实测：修复前 Chromium −358px / WebKit −65px；修复后三引擎漂移 = 0px。
+        pg.evaluate("() => window.scrollTo(0, 1600)")
+        pg.wait_for_timeout(150)
+        pg.click("#searchTrigger")
+        pg.wait_for_timeout(280)
+        y_open = pg.evaluate("() => window.scrollY")
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(320)
+        y_close = pg.evaluate("() => window.scrollY")
+        drift = abs(y_close - y_open)
+        h.record("2d. 关闭弹窗后页面滚动位置不被改变（preventScroll，BUG-R2-004）",
+                 drift <= 60, f"open={y_open:.0f} close={y_close:.0f} 漂移={drift:.0f}px")
 
         # ---------- 3 Escape（焦点在触发元素上） ----------
         got()

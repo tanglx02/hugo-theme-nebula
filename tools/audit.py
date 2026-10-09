@@ -926,15 +926,46 @@ def run(h):
     if FULL:
         # ⓪ 与 check_html_quality 的 inventory 交叉验证
         # （两套检查必须用同一份规范化结果；任何一套漏掉都要 CI 红）
+        #
+        # TEST-DEFECT-R2-007：旧实现在 inventory JSON **缺失时只打印"跳过"**，
+        # 于是交叉验证可以被静默绕过（CI 里永远红不起来）；而且没有
+        # "这份 inventory 属于哪次构建" 的绑定，两次构建互相覆盖时会把
+        # 两份不同产物判成"一致"。
+        # 现在：AUDIT_REQUIRE_INVENTORY=1 时缺失即 fatal；并且比对构建指纹。
         inv_json = os.path.join(ROOT, "tools", "html_inventory.json")
-        if os.path.isfile(inv_json):
+        if not os.path.isfile(inv_json):
+            if os.environ.get("AUDIT_REQUIRE_INVENTORY", "").strip() not in ("", "0", "false", "False"):
+                h.fatal_error(
+                    "缺少 tools/html_inventory.json（交叉验证无法进行）",
+                    "本次要求强制交叉验证（AUDIT_REQUIRE_INVENTORY=1），"
+                    "但 inventory 文件不存在。CI 中 static-checks 必须先运行 "
+                    "tools/check_html_quality.py 生成它；缺失即判失败，不得静默跳过。")
+                return
+            print("交叉验证: 未找到 tools/html_inventory.json（本次未要求强制交叉验证，"
+                  "CI 中请置 AUDIT_REQUIRE_INVENTORY=1 使其成为硬门禁）")
+        else:
             with open(inv_json, encoding="utf-8") as f:
                 other = json.load(f)
             other_urls = set(other.get("expected_html_urls") or [])
+            # 构建指纹绑定：inventory 必须确实来自**本次**的构建产物
+            other_build = other.get("build_dir")
+            other_fp = other.get("build_id")
+            if other_build and os.path.abspath(other_build) != os.path.abspath(BUILD_DIR):
+                h.fatal_error(
+                    "交叉验证的 inventory 不属于本次构建产物",
+                    f"inventory.build_dir={other_build}，本次 AUDIT_BUILD_DIR={BUILD_DIR}；"
+                    f"两份 inventory 可能来自不同构建，比较结果不可信")
+                return
+            cur_fp = inv.get("build_id")
+            if other_fp and cur_fp and other_fp != cur_fp:
+                h.fatal_error(
+                    "交叉验证的 inventory 构建指纹不一致（疑似复用了旧构建的 inventory）",
+                    f"本次 {cur_fp} vs inventory 文件 {other_fp}")
+                return
             only_audit = sorted(expected - other_urls)
             only_other = sorted(other_urls - expected)
             print(f"交叉验证 check_html_quality inventory: "
-                  f"{len(other_urls)} 个 URL"
+                  f"{len(other_urls)} 个 URL（构建指纹 {other_fp or 'n/a'}）"
                   f"{'（一致）' if not only_audit and not only_other else '（不一致）'}")
             if only_audit or only_other:
                 h.fatal_error("audit 与 HTML quality 的 inventory 不一致",
@@ -942,10 +973,7 @@ def run(h):
                               f"仅 HTML quality 有: {only_other[:5]}")
                 return
             h.record("audit 与 HTML quality inventory 完全一致",
-                     True, f"{len(other_urls)} 个 URL")
-        else:
-            print("交叉验证: 未找到 tools/html_inventory.json（跳过，"
-                  "CI 中 static-checks 会先生成）")
+                     True, f"{len(other_urls)} 个 URL，指纹 {other_fp or 'n/a'}")
 
         # ① 构建产物 inventory 100% 被审计
         if missing:

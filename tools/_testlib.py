@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import traceback
 import urllib.request
@@ -78,6 +79,122 @@ def require_playwright():
             {"suite": "unknown", "status": "FAIL", "reason": "missing playwright"},
             ensure_ascii=False))
         sys.exit(EXIT_FAIL)
+
+
+# ---------------------------------------------------------------------------
+# 默认构建目录：统一基准（TEST-DEFECT-016 / TEST-DEFECT-R2-003）
+# ---------------------------------------------------------------------------
+def default_build_dir(argv=None):
+    """解析"构建产物目录"参数的统一入口。
+
+    为什么需要它：此前各脚本默认路径不一致 —— `check_index` / `check_seo` /
+    `check_features` 用 `<repo>/public`，而 `check_html_quality` /
+    `security_baseline` / `html_inventory` / `check_alias_pages` 用 **cwd 相对**
+    的 `public`。于是同一份产物，从仓库根运行与从 tools/ 运行得到不同结论，
+    手工复核结果不可比，也容易在 CI 外误判。
+
+    约定：
+      * 显式传参 -> 用传参（相对路径按 cwd 解析，符合直觉）；
+      * 未传参   -> 用 `<repo>/public`（与实际 `hugo -d public` 输出一致）；
+      * `-h/--help` -> 打印用法后 exit 0（不再被当成路径处理，
+        旧实现会把 `--help` 当目录名，报"目录不存在"）。
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    if any(a in ("-h", "--help") for a in args):
+        print("用法: python tools/<script>.py [构建目录]   "
+              "（缺省 <repo>/public；-h/--help 显示本帮助）")
+        sys.exit(EXIT_PASS)
+    for a in args:
+        if not a.startswith("-"):
+            return os.path.abspath(a)
+    return os.path.join(REPO_ROOT, "public")
+
+
+# ---------------------------------------------------------------------------
+# 临时产物：安全路径与"每次运行都从空目录开始"的隔离语义
+# ---------------------------------------------------------------------------
+REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+TMP_ROOT = os.path.join(REPO_ROOT, "tmp")
+
+
+def safe_rmtree(path, boundary=TMP_ROOT):
+    """受边界约束的递归删除 —— 只允许删除 boundary 之下的路径。
+
+    为什么必须有这个约束（TEST-DEFECT-R2-004 / R2-006）：
+      测试脚本要"每次构建前清空产物目录"，如果直接对从环境变量/argv 拼出来的
+      路径调用 shutil.rmtree，一旦传进来的是 `/`、仓库根、或用户的 home，
+      就是一次不可逆的灾难。这里强制：规范化后的绝对路径必须**真在** boundary
+      之下（且不等于 boundary 本身），否则拒绝并抛错。
+
+    返回 True 表示已删除/不存在；越界抛 ValueError。
+    """
+    if not path:
+        return True
+    target = os.path.normpath(os.path.abspath(path))
+    root = os.path.normpath(os.path.abspath(boundary))
+    if target == root or not target.startswith(root + os.sep):
+        raise ValueError(
+            f"拒绝删除越界路径: {target}（必须位于 {root} 之内，且不等于它自身）")
+    if os.path.exists(target):
+        shutil.rmtree(target, ignore_errors=True)
+    return True
+
+
+def fresh_dir(path, boundary=TMP_ROOT):
+    """删除并重建目录：保证每次运行都从**空目录**开始，绝不复用上次残留。
+
+    TEST-DEFECT-R2-006 的根因就是复用 `tmp/public-blog` 却不清理：
+    删掉源文章后旧 HTML 仍在，测试照样 10/10 假绿。
+    """
+    safe_rmtree(path, boundary=boundary)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+class TempWorkspace:
+    """带唯一 run-id 的临时目录，支持 `with` 保证成功/失败/异常都清理。
+
+    与 `.gitignore` 的分工必须清楚：`.gitignore` 只影响 git 是否上报，**不能**
+    阻止残留文件污染下一次运行、更不能阻止旧的产物被当成新的构建结果复用。
+    真正的隔离只能靠运行期：唯一目录 + 前置清空 + finally 清理。
+
+    用法：
+        with TempWorkspace("deploy") as ws:
+            out = ws.path("root")
+    """
+
+    def __init__(self, prefix, keep=False, boundary=TMP_ROOT):
+        self.prefix = prefix
+        self.keep = keep or os.environ.get("KEEP_TMP", "") not in ("", "0", "false", "False")
+        self.boundary = boundary
+        self.path_root = None
+
+    def __enter__(self):
+        os.makedirs(self.boundary, exist_ok=True)
+        self.path_root = os.path.join(
+            self.boundary, f"{self.prefix}-{os.getpid()}-{int(_unique_suffix())}")
+        safe_rmtree(self.path_root, boundary=self.boundary)   # 防 run-id 碰撞
+        os.makedirs(self.path_root, exist_ok=True)
+        return self
+
+    def path(self, *parts):
+        return os.path.join(self.path_root, *parts)
+
+    def __exit__(self, exc_type, exc, tb):
+        if self.keep:
+            print(f"[KEEP_TMP] 保留临时目录以便排查: {self.path_root}")
+            return False
+        try:
+            safe_rmtree(self.path_root, boundary=self.boundary)
+        except Exception as e:      # pragma: no cover
+            print(f"[WARN] 临时目录清理失败 {self.path_root}: {e}")
+        return False
+
+
+def _unique_suffix():
+    import random
+    import time
+    return f"{time.time_ns()}{random.randint(0, 9999):04d}"
 
 
 class Harness:
