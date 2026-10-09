@@ -4,7 +4,7 @@
       {{ with site.Params.logo }}
         <img class="brand-logo" src="{{ partial "util/rel-url.html" . | safeURL }}" alt="{{ site.Title }}">
       {{ else }}
-        <span class="brand-mark">{{ with site.Params.logoText }}{{ . }}{{ else }}{{ slicestr site.Title 0 1 }}{{ end }}</span>
+        <span class="brand-mark">{{ with site.Params.logoText }}{{ . }}{{ else }}{{ partial "util/slice-runes.html" (dict "text" site.Title "n" 1) }}{{ end }}</span>
       {{ end }}
       <span class="brand-text">{{ site.Title }}</span>
     </a>
@@ -40,9 +40,17 @@
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
       </button>
 
-      <button type="button" class="icon-btn burger" id="burger" aria-label="{{ i18n "nav.menu" }}">
+      <button type="button" class="icon-btn burger" id="burger" aria-label="{{ i18n "nav.menu" }}"
+              aria-expanded="false" aria-controls="mainNav">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
     </div>
   </div>
 </header>
+
+{{- /* 无 JS 回退：搜索与主题切换按钮依赖脚本，禁用脚本时它们点了没反应。
+       这里给出明确提示，而不是让用户对着"没反应的按钮"困惑（BUG-P3-002）。
+       正文 / 目录 / 图片本身是纯 HTML，无脚本时全部可用。 */ -}}
+<noscript>
+  <div class="noscript-hint" role="note">{{ i18n "common.noScript" }}</div>
+</noscript>
