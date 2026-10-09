@@ -1,20 +1,45 @@
 {{ define "main" }}
 {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
 
-{{- /* 文章级显示控制：集中解析，默认值与历史视觉一致 */ -}}
-{{- $showDate := .Params.showDate | default true -}}
-{{- $showLastmod := .Params.showLastmod | default false -}}
-{{- $showReadingTime := .Params.showReadingTime | default true -}}
-{{- $showWordCount := .Params.showWordCount | default true -}}
-{{- $showTags := .Params.showTags | default true -}}
-{{- $showRelated := .Params.showRelated | default true -}}
-{{- $showShare := .Params.showShare | default (site.Params.share.enable | default false) -}}
-{{- $showSeries := .Params.showSeries | default true -}}
-{{- $showNav := .Params.showNav | default true -}}
-{{- $enableComments := .Params.comments | default true -}}
+{{- /* 文章级显示控制：集中解析，默认值与历史视觉一致。
 
+       取值必须走 util/bool-param.html：历史写法 `.Params.showDate | default true`
+       会**吞掉显式 false**（Hugo 的 default 只认零值，而 false==bool 零值），
+       导致文章里写 showDate: false / toc: false / comments: false 全部无效。
+       该 partial 返回 dict，取 .value 得到真 bool（partial 返回值本身恒为字符串）。
+
+       站点级可覆盖默认值：params.post.{showDate,showLastmod,...}（缺省时保持原默认）。 */ -}}
+{{- $postDef := site.Params.post | default dict -}}
+{{- $d := dict
+    "showdate"       (partial "util/bool-param.html" (dict "params" $postDef "key" "showdate" "default" true)).value
+    "showlastmod"    (partial "util/bool-param.html" (dict "params" $postDef "key" "showlastmod" "default" false)).value
+    "showreadingtime" (partial "util/bool-param.html" (dict "params" $postDef "key" "showreadingtime" "default" true)).value
+    "showwordcount"  (partial "util/bool-param.html" (dict "params" $postDef "key" "showwordcount" "default" true)).value
+    "showtags"       (partial "util/bool-param.html" (dict "params" $postDef "key" "showtags" "default" true)).value
+    "showrelated"    (partial "util/bool-param.html" (dict "params" $postDef "key" "showrelated" "default" true)).value
+    "showseries"     (partial "util/bool-param.html" (dict "params" $postDef "key" "showseries" "default" true)).value
+    "shownav"        (partial "util/bool-param.html" (dict "params" $postDef "key" "shownav" "default" true)).value
+    "showshare"      (partial "util/bool-param.html" (dict "params" $postDef "key" "showshare" "default" (site.Params.share.enable | default false))).value
+    "comments"       (partial "util/bool-param.html" (dict "params" $postDef "key" "comments" "default" true)).value
+    "toc"            (partial "util/bool-param.html" (dict "params" $postDef "key" "toc" "default" true)).value
+    "breadcrumb"     (partial "util/bool-param.html" (dict "params" $postDef "key" "breadcrumb" "default" true)).value
+-}}
+{{- $showDate := (partial "util/bool-param.html" (dict "page" . "key" "showdate" "default" $d.showdate)).value -}}
+{{- $showLastmod := (partial "util/bool-param.html" (dict "page" . "key" "showlastmod" "default" $d.showlastmod)).value -}}
+{{- $showReadingTime := (partial "util/bool-param.html" (dict "page" . "key" "showreadingtime" "default" $d.showreadingtime)).value -}}
+{{- $showWordCount := (partial "util/bool-param.html" (dict "page" . "key" "showwordcount" "default" $d.showwordcount)).value -}}
+{{- $showTags := (partial "util/bool-param.html" (dict "page" . "key" "showtags" "default" $d.showtags)).value -}}
+{{- $showRelated := (partial "util/bool-param.html" (dict "page" . "key" "showrelated" "default" $d.showrelated)).value -}}
+{{- $showShare := (partial "util/bool-param.html" (dict "page" . "key" "showshare" "default" $d.showshare)).value -}}
+{{- $showSeries := (partial "util/bool-param.html" (dict "page" . "key" "showseries" "default" $d.showseries)).value -}}
+{{- $showNav := (partial "util/bool-param.html" (dict "page" . "key" "shownav" "default" $d.shownav)).value -}}
+{{- $enableComments := (partial "util/bool-param.html" (dict "page" . "key" "comments" "default" $d.comments)).value -}}
+{{- $showBreadcrumb := (partial "util/bool-param.html" (dict "page" . "key" "breadcrumb" "default" $d.breadcrumb)).value -}}
+{{- $showTOC := (partial "util/bool-param.html" (dict "page" . "key" "toc" "default" $d.toc)).value -}}
+
+{{- /* 目录：仅当开关允许**且**正文确实有足够章节时输出（len 阈值沿用历史 60）。 */ -}}
 {{- $hasTOC := false -}}
-{{- if .Params.toc | default true -}}
+{{- if $showTOC -}}
   {{- with .TableOfContents -}}{{- if gt (len .) 60 -}}{{- $hasTOC = true -}}{{- end -}}{{- end -}}
 {{- end -}}
 
@@ -22,7 +47,9 @@
   <div>
     <div class="card article">
       <div class="article-head">
-        <nav class="breadcrumb">
+        {{- /* 面包屑：文章级 breadcrumb: false 可隐藏（功能四：文章元信息可配置） */ -}}
+        {{ if $showBreadcrumb }}
+        <nav class="breadcrumb" aria-label="breadcrumb">
           <a href="{{ site.Home.RelPermalink }}">{{ i18n "nav.home" }}</a>
           <span>/</span>
           {{ with .Params.categories }}
@@ -33,6 +60,7 @@
           {{ end }}
           <span>{{ i18n "common.body" }}</span>
         </nav>
+        {{ end }}
 
         <h1 class="article-title">{{ .Title }}</h1>
 

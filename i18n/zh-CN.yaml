@@ -63,6 +63,13 @@ post:
   author: 作者
   toTop: 返回顶部
 
+# 阅读体验（功能二）：进度条 / 返回顶部 / 专注模式 / 编辑入口
+reading:
+  focusMode: 专注模式
+  focusExit: 退出专注模式
+  editPage: 编辑此页
+  authors: 作者
+
 home:
   latest: 最新文章
   viewAll: 查看全部 →

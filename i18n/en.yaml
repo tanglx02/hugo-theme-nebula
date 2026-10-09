@@ -62,6 +62,13 @@ post:
   author: Author
   toTop: Back to top
 
+# Reading experience (feature 2): progress bar / back-to-top / focus / edit
+reading:
+  focusMode: Focus mode
+  focusExit: Exit focus mode
+  editPage: Edit this page
+  authors: Authors
+
 home:
   latest: Latest posts
   viewAll: View all →

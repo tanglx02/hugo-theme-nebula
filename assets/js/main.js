@@ -60,20 +60,95 @@
     });
   }
 
-  /* ---------- Scroll: progress / header shadow / back to top ---------- */
+  /* ---------- Scroll: progress / header shadow / back to top ----------
+     进度条（功能二）：宽度按**真实阅读区**计算，而不是整篇文档。
+       - 阅读区优先取 .post-content（正文 prose），退化为 <article>，再退化为整篇文档；
+       - 起点 = 阅读区顶部与视口顶端对齐时；终点 = 阅读区底部抵达视口底部时；
+         正文比视口还短时直接记满（ratio=1），不会卡在 0 或冲出 100。
+     默认外观（位置 / 尺寸 / 渐变 / 过渡）与历史完全一致，只是"滚动量→宽度"的
+     映射改为围绕正文，语义更准确（此前是整篇文档，含页脚 / 相关文章）。 */
   var header = $('#siteHeader'), bar = $('#progressBar'), toTop = $('#toTop');
+
+  /* 尊重系统"减少动态效果"：平滑滚动降级为瞬时跳转 */
+  var REDUCE_MOTION = false;
+  try { REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+  function readingArea() {
+    var pc = $('.post-content');
+    if (pc) return pc;
+    return $('article');
+  }
+
   function onScroll() {
-    var st = window.pageYOffset || document.documentElement.scrollTop;
-    var h = document.documentElement.scrollHeight - window.innerHeight;
-    if (bar) bar.style.width = (h > 0 ? (st / h) * 100 : 0) + '%';
+    var st = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (bar) {
+      var area = readingArea();
+      var ratio;
+      if (area && area.offsetHeight > 0) {
+        var top = area.getBoundingClientRect().top + st;   // 阅读区顶部的文档绝对坐标
+        var start = top;
+        var end = top + area.offsetHeight - window.innerHeight;
+        var span = end - start;
+        ratio = span > 0 ? (st - start) / span : (st >= start ? 1 : 0);
+      } else {
+        var h = document.documentElement.scrollHeight - window.innerHeight;
+        ratio = h > 0 ? st / h : 0;
+      }
+      if (!isFinite(ratio)) ratio = 0;
+      ratio = Math.min(1, Math.max(0, ratio));
+      bar.style.width = (ratio * 100) + '%';
+    }
     if (header) header.classList.toggle('is-scrolled', st > 10);
     if (toTop) toTop.classList.toggle('show', st > 400);
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
   onScroll();
+  /* 返回顶部：<button> 天然键盘可达（Tab 聚焦、Enter / Space 触发），
+     此处只需在减少动效时避免平滑滚动。 */
   if (toTop) toTop.addEventListener('click', function () {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { window.scrollTo({ top: 0, behavior: REDUCE_MOTION ? 'auto' : 'smooth' }); }
+    catch (e) { window.scrollTo(0, 0); }
   });
+
+  /* ---------- Focus mode（功能二：专注阅读） ----------
+     设计约束（对应验收要求）：
+       - **不隐藏正文**：只收起侧栏 / 相关文章 / 系列 等次要区块（CSS 负责）；
+       - **不失去导航**：站点头部导航始终保留，随时可离开当前页；
+       - **不破坏焦点**：被收起元素用 display:none（移除 Tab 序），
+         按钮本身是原生 <button>，aria-pressed 反映当前状态；
+       - 偏好持久化到 localStorage，并在 head 中**提前应用**避免刷新闪动；
+       - Escape 可退出（有浮层打开时让位给浮层的 Escape）。 */
+  var focusBtn = $('#focusToggle');
+  if (focusBtn) {
+    var focusLabel = $('.focus-label', focusBtn);
+    var setFocus = function (on, persist) {
+      document.documentElement.classList.toggle('focus-on', on);
+      focusBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var text = on ? (T_.focusExit || 'Exit focus mode') : (T_.focusMode || 'Focus mode');
+      if (focusLabel) focusLabel.textContent = text;
+      focusBtn.setAttribute('aria-label', text);
+      focusBtn.setAttribute('title', text);
+      if (persist) {
+        try {
+          if (on) localStorage.setItem('nebula-focus', 'on');
+          else localStorage.removeItem('nebula-focus');
+        } catch (e) {}
+      }
+    };
+    /* 初始态由 head 里的提前脚本写入 html.focus-on，这里同步按钮状态即可 */
+    setFocus(document.documentElement.classList.contains('focus-on'), false);
+    focusBtn.addEventListener('click', function () {
+      setFocus(!document.documentElement.classList.contains('focus-on'), true);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!document.documentElement.classList.contains('focus-on')) return;
+      /* 浮层打开时 Escape 属于浮层（工厂会处理），这里不抢 */
+      if ($('.lightbox.open') || $('.search-overlay.open')) return;
+      setFocus(false, true);
+    });
+  }
 
   /* ---------- Clipboard（统一实现） ----------
      代码块复制 / 分享复制 / 微信复制共用同一实现，结果只有 success / failure。

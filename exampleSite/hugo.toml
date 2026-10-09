@@ -34,6 +34,14 @@ rssLimit = 20
   [params.search]
     enable = true
 
+  # 阅读体验（功能二）：进度条 / 返回顶部 / 专注模式
+  # 示例站点把专注模式**打开**以便演示与测试；主题默认值是 false（不改既有行为）。
+  # 文章级可用 Front Matter 覆盖：showProgress / showBackToTop / showFocusMode。
+  [params.reading]
+    progressBar = true
+    backToTop = true
+    focusMode = true
+
   [params.views]
     enable = false
 

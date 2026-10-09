@@ -16,6 +16,32 @@
 <meta name="author" content="{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}">
 <link rel="canonical" href="{{ .Permalink }}">
 
+{{- /* ---------- 阅读体验（功能二）开关 ----------
+      放在 head 里解析，并写入 .Store 供 baseof 读取 —— 这样"专注模式是否可用"
+      在 <head> 就已知（可以提前应用持久化状态，避免刷新时闪一下），
+      同时保证开关逻辑只有**一处**定义，baseof 不再重复计算。
+
+      站点级默认 params.reading.{progressBar,backToTop,focusMode}；
+      文章页可用 Front Matter 覆盖：showProgress / showBackToTop / showFocusMode。
+      默认值与历史观感严格一致：progressBar / backToTop 此前始终渲染（默认 true），
+      focusMode 为新增能力（默认 false）。
+
+      取值一律走 util/bool-param.html（返回 dict，须取 .value 才是真 bool）。
+      **不能**写成 {{ $p := partial "..." }} 再 {{ if $p }}：partial 的返回值恒为
+      template.HTML 字符串，字符串 "false" 在 if 里是真。 */ -}}
+{{- $rp := site.Params.reading | default dict -}}
+{{- $pbar := (partial "util/bool-param.html" (dict "params" $rp "key" "progressbar" "default" true)).value -}}
+{{- $stop := (partial "util/bool-param.html" (dict "params" $rp "key" "backtotop" "default" true)).value -}}
+{{- $sfoc := (partial "util/bool-param.html" (dict "params" $rp "key" "focusmode" "default" false)).value -}}
+{{- if .IsPage -}}
+  {{- $pbar = (partial "util/bool-param.html" (dict "page" . "key" "showprogress" "default" $pbar)).value -}}
+  {{- $stop = (partial "util/bool-param.html" (dict "page" . "key" "showbacktotop" "default" $stop)).value -}}
+  {{- $sfoc = (partial "util/bool-param.html" (dict "page" . "key" "showfocusmode" "default" $sfoc)).value -}}
+{{- end -}}
+{{- .Store.Set "nebula_pbar" $pbar -}}
+{{- .Store.Set "nebula_stop" $stop -}}
+{{- .Store.Set "nebula_focus" $sfoc -}}
+
 {{- /* Theme init: prevent flash of wrong theme */ -}}
 <script>
 (function () {
@@ -26,6 +52,15 @@
   } catch (e) {}
 })();
 </script>
+{{- /* 专注模式：提前应用持久化状态，避免刷新时"先亮后隐"的闪动（功能二）。
+       仅在当前页确实提供专注模式时才注入，默认关闭的站点多出的字节数为 0。 */ -}}
+{{- if and .IsPage $sfoc }}
+<script>
+(function () {
+  try { if (localStorage.getItem('nebula-focus') === 'on') document.documentElement.classList.add('focus-on'); } catch (e) {}
+})();
+</script>
+{{- end }}
 
 {{- /* Open Graph / Twitter */ -}}
 <meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}">

@@ -62,6 +62,13 @@ post:
   author: 作者
   toTop: 回到頂部
 
+# 閱讀體驗（功能二）：進度條 / 回到頂部 / 專注模式 / 編輯入口
+reading:
+  focusMode: 專注模式
+  focusExit: 退出專注模式
+  editPage: 編輯此頁
+  authors: 作者
+
 home:
   latest: 最新文章
   viewAll: 檢視全部 →

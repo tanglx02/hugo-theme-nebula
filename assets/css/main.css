@@ -1414,3 +1414,97 @@ img.zoomable { cursor: zoom-in; }
   .landing-title { font-size: 26px; }
   .hero-lg .hero-main { min-height: 260px; }
 }
+
+/* ---------- 22. Reading experience（功能二：阅读体验） ----------
+   包含：专注模式入口按钮 / 专注模式激活态 / 打印样式。
+   进度条与返回顶部的**默认外观完全不变**（沿用 §4 与 §15），
+   本段只新增能力，不修改既有选择器的视觉。 */
+
+/* 专注模式入口：左下角胶囊按钮，与右下角返回顶部对称。
+   文案由 i18n 注入，JS 维护 aria-pressed 与图标切换。 */
+.focus-toggle {
+  position: fixed;
+  left: 24px; bottom: 28px;
+  z-index: 90;
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 42px; padding: 0 15px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+  box-shadow: var(--shadow);
+  transition: color .2s ease, background .2s ease, border-color .2s ease;
+}
+.focus-toggle svg { width: 17px; height: 17px; flex: none; }
+.focus-toggle:hover { color: var(--brand-ink); border-color: var(--brand); }
+.focus-toggle .i-exit { display: none; }
+html.focus-on .focus-toggle .i-enter { display: none; }
+html.focus-on .focus-toggle .i-exit { display: block; }
+html.focus-on .focus-toggle { background: var(--brand-solid); border-color: var(--brand); color: #fff; }
+
+/* 专注模式激活态。
+   原则（对应验收要求）：**只收敛次要信息**，正文与站点头部导航必须保留 ——
+   用户随时能通过顶部导航离开当前页，不会"被困在"专注模式里。
+   被收敛的元素一律 display:none，同时从 Tab 序中移除，不产生"看不见却能聚焦"的陷阱；
+   隐藏状态由 localStorage 记忆，head 中已提前应用，刷新不会闪动。 */
+html.focus-on .layout { grid-template-columns: minmax(0, 1fr); }
+html.focus-on .sidebar,
+html.focus-on .breadcrumb,
+html.focus-on .article-meta,
+html.focus-on .article-cover,
+html.focus-on .article-tags,
+html.focus-on .post-nav,
+html.focus-on .related,
+html.focus-on .series-card,
+html.focus-on .share-card,
+html.focus-on #comments { display: none; }
+html.focus-on .article { max-width: 760px; margin: 0 auto; }
+
+@media (max-width: 768px) {
+  .focus-toggle { left: 14px; bottom: 18px; }
+  /* 窄屏只留图标，避免与返回顶部拥挤 */
+  .focus-toggle .focus-label { display: none; }
+  .focus-toggle { padding: 0 12px; }
+}
+
+/* ---------- 打印样式（功能二） ----------
+   纸面阅读目标：干净、省墨、链接可追溯。
+   - 移除交互/装饰元素（进度条、返回顶部、专注按钮、灯箱、搜索、页头页脚、
+     分享、上下篇、相关文章、系列、侧栏、评论）；
+   - 强制白底黑字（暗色主题也如此），正文使用适合纸面的字号与行高；
+   - 链接**附上完整 URL**（打印后不可点击，URL 是唯一线索），同页锚点除外；
+   - 标题不与正文分离、图片/表格/代码不跨页裁切、代码块自动换行。 */
+@media print {
+  :root, html[data-theme="dark"] {
+    --bg: #fff; --bg-elev: #fff; --bg-soft: #fff; --bg-code: #f6f6f6;
+    --text: #000; --text-strong: #000; --text-muted: #333;
+    --border: #bbb; --border-soft: #ccc;
+    --shadow: none; --shadow-sm: none; --shadow-lg: none;
+  }
+  html { scroll-behavior: auto; }
+  body { background: #fff; color: #000; font-size: 11.5pt; line-height: 1.6; }
+
+  .progress-bar, .to-top, .focus-toggle, .lightbox, .search-overlay,
+  .site-header, .site-footer, .burger, .share-card, .post-nav, .related,
+  .series-card, .sidebar, .breadcrumb, #comments, .comments,
+  .article-cover, .pagination, .list-pager, .code-copy, .code-lang,
+  .hero, .hero-mini, .home-full { display: none !important; }
+
+  .wrap, .layout { display: block !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+  .card, .article { box-shadow: none !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+  .post-content { font-size: 11.5pt; line-height: 1.62; color: #000; max-width: 100%; }
+
+  /* 链接显示完整 URL（仅正文内的 http(s) 外链） */
+  .post-content a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9.5pt; color: #444; word-break: break-all; }
+  a { color: #000; text-decoration: underline; }
+
+  h1, h2, h3, h4, h5, h6 { color: #000; break-after: avoid-page; page-break-after: avoid; }
+  img, svg, table, figure, pre, blockquote, tr { break-inside: avoid; page-break-inside: avoid; max-width: 100% !important; }
+  p, li { orphans: 3; widows: 3; }
+  img { box-shadow: none !important; }
+  pre, code { background: #f4f4f4 !important; color: #000 !important; border: 1px solid #ddd; }
+  pre { white-space: pre-wrap; word-break: break-word; overflow: visible !important; }
+  blockquote { border-left: 3px solid #999; padding-left: 12px; color: #333; }
+  .article-title { font-size: 20pt; }
+}
