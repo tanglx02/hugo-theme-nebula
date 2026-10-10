@@ -1508,3 +1508,56 @@ html.focus-on .article { max-width: 760px; margin: 0 auto; }
   blockquote { border-left: 3px solid #999; padding-left: 12px; color: #333; }
   .article-title { font-size: 20pt; }
 }
+
+/* ---------- 23. Markdown 提示块（功能三：GitHub Alerts） ----------
+   由 layouts/_default/_markup/render-blockquote.html 输出，**纯 CSS、零 JS**。
+   普通引用不经过这些规则（render hook 对非 alert 输出的是默认 <blockquote>）。
+   配色一律使用既有设计变量；深色主题由 html[data-theme="dark"] 变量自动接管，
+   因此这里不需要写第二套颜色，也不会降低对比度。 */
+.md-alert {
+  margin: 1.5em 0;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--brand);
+  background: var(--brand-soft);
+  font-size: 14.5px;
+}
+.md-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin-bottom: 6px;
+}
+.md-alert-icon { display: inline-flex; }
+.md-alert-icon svg { width: 17px; height: 17px; flex: none; }
+.md-alert-body > *:first-child { margin-top: 0; }
+.md-alert-body > *:last-child { margin-bottom: 0; }
+
+/* note：信息蓝（复用 --brand-ink 保证文字对比度） */
+.md-alert-note { border-color: var(--brand); background: var(--brand-soft); }
+.md-alert-note .md-alert-icon { color: var(--brand-ink); }
+
+/* tip：成功绿 */
+.md-alert-tip { border-color: #28c840; background: rgba(40, 200, 64, .12); }
+.md-alert-tip .md-alert-icon { color: #1f7a2e; }
+html[data-theme="dark"] .md-alert-tip .md-alert-icon { color: #6ee08a; }
+
+/* important：强调紫 */
+.md-alert-important { border-color: #7c5cff; background: rgba(124, 92, 255, .12); }
+.md-alert-important .md-alert-icon { color: #5a3fd6; }
+html[data-theme="dark"] .md-alert-important .md-alert-icon { color: #b5a3ff; }
+
+/* warning：警示橙 */
+.md-alert-warning { border-color: #e6a23c; background: rgba(230, 162, 60, .14); }
+.md-alert-warning .md-alert-icon { color: #95610d; }
+html[data-theme="dark"] .md-alert-warning .md-alert-icon { color: #f0b860; }
+
+/* caution：危险红（复用 --accent-ink 保证对比度） */
+.md-alert-caution { border-color: var(--accent); background: rgba(245, 108, 108, .12); }
+.md-alert-caution .md-alert-icon { color: var(--accent-ink); }
+
+/* 提示块内的代码/引用不溢出 */
+.md-alert pre { overflow-x: auto; }
+.md-alert blockquote { margin: .8em 0; }

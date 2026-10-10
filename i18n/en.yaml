@@ -135,3 +135,11 @@ menu:
   archives: Archives
   about: About
   aboutMe: About me
+
+# Markdown alerts (feature 3): default titles
+alert:
+  note: Note
+  tip: Tip
+  important: Important
+  warning: Warning
+  caution: Caution

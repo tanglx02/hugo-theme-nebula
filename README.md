@@ -28,6 +28,9 @@
 - 🖼️ **图片 Pipeline**：page bundle 图片自动生成 WebP 多尺寸 `srcset`，带 `width/height` 防 CLS；static 路径保持原样
 - 📚 **系列文章**：`series` + `series_order`，显示进度与系列内上下篇
 - 💻 **代码块**：macOS 风格窗口、语言标签、`filename` / 行号 / 指定行高亮、一键复制
+- 💡 **Markdown 提示块**：GitHub / Obsidian 风格的 `> [!NOTE]` 五种语义类型（Note/Tip/Important/Warning/Caution），
+  纯 Render Hook + CSS、**零 JavaScript**；默认标题走 i18n，可自定义标题；未知类型自动退化为普通引用（**不会让构建失败**）；
+  非提示块的普通引用与历史输出**逐字节相同**
 - 🖼️ **灯箱**：`role=dialog` + Focus Trap（Tab 循环、背景 inert、Esc 关闭、焦点归还）
 - 🌍 **i18n**：内置 `zh-CN` / `zh-TW` / `en`
 - 🔀 **多 Section**：内容范围通过 `params.content.sections` 配置，不写死 `posts`
@@ -420,6 +423,10 @@ showNav: true             # 上下篇导航
 showSeries: true          # 系列卡片
 showShare: false          # 分享（也可用 params.share.enable 全局开启）
 lightbox: true            # 图片灯箱
+breadcrumb: true          # 面包屑（可选）
+showProgress: true        # 阅读进度条（可选，默认取 params.reading.progressBar）
+showBackToTop: true       # 返回顶部（可选，默认取 params.reading.backToTop）
+showFocusMode: false      # 专注模式入口（可选，默认取 params.reading.focusMode）
 ---
 ```
 
@@ -432,6 +439,49 @@ lightbox: true            # 图片灯箱
   enable = true
   providers = ["copy", "x", "telegram", "facebook", "weibo", "wechat"]
 ```
+
+## Markdown 提示块（Callouts）
+
+写法与 GitHub / Obsidian 的 alert 语法一致，**纯 Render Hook + CSS、零 JavaScript、零第三方请求**：
+
+```markdown
+> [!NOTE]
+> 有用的补充信息。
+
+> [!TIP]
+> 更推荐的做法。
+
+> [!IMPORTANT]
+> 必须知道的关键信息。
+
+> [!WARNING]
+> 可能造成问题的内容。
+
+> [!CAUTION]
+> 存在风险，行动前请确认。
+
+> [!WARNING] 自定义标题
+> 类型标记后跟文字即可替换默认标题（类型与图标不变）。
+```
+
+| 类型 | 简体中文 | 繁體中文 | English |
+| --- | --- | --- | --- |
+| `NOTE` | 说明 | 說明 | Note |
+| `TIP` | 提示 | 提示 | Tip |
+| `IMPORTANT` | 重要 | 重要 | Important |
+| `WARNING` | 警告 | 警告 | Warning |
+| `CAUTION` | 注意 | 注意 | Caution |
+
+行为约定（均有测试断言，见 `tools/check_content_components.py`）：
+
+- **默认外观不变**：没有类型标记的普通引用与开启本功能前**逐字节相同**（全站产物 diff = 0）；
+- **未知类型不报错**：`> [!BOGUS]` 之类不在上表内的类型**退化为普通引用**，绝不生成错误的提示块，
+  也不会让构建失败（Hugo 会把任意 `> [!XXX]` 都放进 `.AlertType`，主题自行守卫）；
+- **零 JS / 零外部依赖**：图标是内联 SVG，配色复用主题设计变量，暗色模式自动适配；
+- **版本兼容**：blockquote 渲染钩子自 **Hugo 0.148.0** 起生效；在 **0.128.0** 上该文件被 Hugo
+  静默忽略，提示块退化为普通引用（`[!NOTE]` 标记行原样显示），**构建不报错**，因此最低版本仍为 0.128.0。
+
+演示页：`exampleSite/content/posts/alerts-and-callouts.md`（英文：`content-en/posts/alerts-and-callouts.md`）。
 
 ## 代码块
 
@@ -498,7 +548,7 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）** | 1 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价/Hugo 0.128–0.167 矩阵/alias 空值回归）** | 1 |
 | Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
