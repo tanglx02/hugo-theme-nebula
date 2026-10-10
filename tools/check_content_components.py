@@ -2,8 +2,14 @@
 # -*- coding: utf-8 -*-
 """功能三验收：技术内容组件。
 
-当前覆盖 **Markdown 提示块（GitHub Alerts 风格）**；标签页/步骤/文件树/徽标/
-画廊/可选 Mermaid+KaTeX 会陆续并入本脚本的后续小节。
+覆盖：
+  * **Markdown 提示块**（GitHub Alerts 风格：NOTE/TIP/IMPORTANT/WARNING/CAUTION）；
+  * **标签页**（tabs / tab）与**步骤**（steps / step），含**交叉嵌套**；
+  * 面板内代码块复用统一管线（语言标签 + 一键复制）；
+  * 多语言（zh-CN / zh-TW / en）+ Hugo 0.128.0 ~ 0.167.0 版本矩阵；
+  * 跨版本回归：多语言站点 alias 空值防御。
+
+其余组件（文件树 / 按钮 / 徽标 / 画廊 / 可选 Mermaid+KaTeX）会陆续并入后续小节。
 
 断言的都是**直接证明真实行为**的东西，不是"脚本没报错"：
 
@@ -22,10 +28,24 @@ B. 多语言 / 版本矩阵
    B2 Hugo 0.128.0 优雅退化（无 md-alert、构建成功、marker 行可见）；
    B3 Hugo 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0 均正常生成。
 
+C. 功能三（第二、三项）：标签页与步骤
+   C1 tabs 容器 id 唯一 / tab 按钮与 tabpanel 计数 / aria-selected 初值；
+   C2 服务端写死 hidden（无 JS 才不会面板重叠）；
+   C3 步骤 <ol> 语义 + 可选标题（无标题不输出空标题）；
+   C4 **交叉嵌套内容完整**（回归：unsafe=false 下 markdownify 丢弃原始 HTML）；
+   C5 面板/步骤内代码块复用统一管线（语言标签 + 复制按钮）；
+   C6 零 JS 内容不丢（纯 CSS 覆盖 UA 的 [hidden]）+ 序号由 CSS counter 生成；
+   C7 无障碍 / 打印展开 / prefers-reduced-motion；
+   C8 tabs.js 按需注入（用了 tabs 的页面才有）且带 fingerprint；
+   C9 组件页零第三方请求；
+   C10 五版本产物结构签名完全一致；
+   C11 反证：去掉 token 机制后嵌套内容必须真的丢失（证明 C4 有区分力）。
+
 用法：
     python tools/check_content_components.py
 环境变量：
-    HUGO_BIN   Hugo 可执行文件（默认 hugo，用于"当前版本"相关断言）
+    HUGO_BIN          Hugo 可执行文件（默认 hugo，用于"当前版本"相关断言）
+    HUGO_MATRIX_DIR   Hugo 版本矩阵目录（B2/B3/C10/C 小节）
 """
 
 import difflib
@@ -108,6 +128,86 @@ draft: false
 > 末尾引用
 """
 
+# 功能三（第二、三项）探针：标签页 tabs/tab + 步骤 steps/step + 交叉嵌套。
+# 计数期望（供 C1 断言）：
+#   tabs 容器 2；tab 按钮 4；tabpanel 4；每容器首面板可见其余 hidden（共 2 hidden）；
+#   steps ol 2；li.step 5；带标题的 step-title 3；面板/步骤内代码块 5（各带复制按钮）。
+PROBE_COMPONENTS_MD = """---
+title: "CC Components"
+date: 2024-05-07
+draft: false
+---
+
+## 1 独立标签页
+
+{{< tabs >}}
+{{< tab "Linux" >}}
+
+```bash
+apt-get update
+```
+
+{{< /tab >}}
+{{< tab "Windows" >}}
+
+```powershell
+winget install X
+```
+
+{{< /tab >}}
+{{< /tabs >}}
+
+## 2 独立步骤（含可选标题）
+
+{{< steps >}}
+{{< step "准备" >}}
+
+```bash
+uname -a
+```
+
+{{< /step >}}
+{{< step >}}
+
+无标题步骤正文 NOHEAD-TEXT
+
+{{< /step >}}
+{{< step "收尾" >}}
+
+完成 COMPLETE-TEXT
+
+{{< /step >}}
+{{< /steps >}}
+
+## 3 标签页内嵌步骤（回归：嵌套内容不得被 markdownify 丢弃）
+
+{{< tabs >}}
+{{< tab "脚本" >}}
+
+{{< steps >}}
+{{< step >}}
+
+```bash
+curl -fsSL https://example.com/install.sh | bash
+```
+
+{{< /step >}}
+{{< step >}}
+
+verify NESTED-VERIFY
+
+{{< /step >}}
+{{< /steps >}}
+
+{{< /tab >}}
+{{< tab "手动" >}}
+
+手动说明 MANUAL-TEXT
+
+{{< /tab >}}
+{{< /tabs >}}
+"""
+
 HUGO_VERSIONS = ("0.128.0", "0.148.0", "0.162.0", "0.166.0", "0.167.0")
 # 可执行文件名随平台变化：Windows 是 hugo.exe，CI（Linux）是 hugo。
 HUGO_EXE = "hugo.exe" if os.name == "nt" else "hugo"
@@ -132,13 +232,17 @@ H = Harness("content_components")
 # --------------------------------------------------------------------------- #
 # 工具
 # --------------------------------------------------------------------------- #
-def build_probe(tag, lang=None, extra_toml="", hugo=HUGO):
+def build_probe(tag, lang=None, extra_toml="", hugo=HUGO, pages=None, minify=False,
+                theme_dir=None):
     """在 tmp 下搭一个最小站点（不写 exampleSite），返回 (out_dir, log, rc)。
 
     为什么要最小站点而不是直接用 exampleSite：
       * 提示块的断言需要**可控的正文**（精确含 5 种类型 + 未知类型 + 普通引用）；
       * 最小站点只有 1 个页面，diff 的对象唯一，字节比较不会被无关差异干扰；
       * 不往 exampleSite 写任何探针文件（§11 要求临时文件必须清理）。
+
+    pages：额外页面 {文件名: 正文}，与 p1.md 一起写进三个内容目录（用于组件探针）。
+    theme_dir：覆盖主题目录（用于"被改动过的主题副本"的对照实验）。
     """
     root = os.path.join(OUT_ROOT, f"_cc_{tag}")
     safe_rmtree(root)
@@ -149,13 +253,18 @@ def build_probe(tag, lang=None, extra_toml="", hugo=HUGO):
     for d in ("content", "content-en", "content-zh-tw"):
         with io.open(os.path.join(root, d, "p1.md"), "w", encoding="utf-8") as f:
             f.write(PROBE_MD)
+        for name, body in (pages or {}).items():
+            with io.open(os.path.join(root, d, name), "w", encoding="utf-8") as f:
+                f.write(body)
     out = os.path.join(root, "public")
     # themesDir 直接用**真实的主题父目录**（与 exampleSite 的 `--themesDir ../..` 等价）。
     # 不要用符号链接/junction 造 themes/ 目录：Hugo 0.128.0 / 0.148.0 不解析符号链接，
     # 会报 `module "hugo-theme-nebula" not found`（0.162+ 才跟随）。真实路径在五个
     # 版本上行为一致，也更贴近 exampleSite 的实际用法。
-    cmd = [hugo, "--source", root, "--themesDir", THEMES_DIR, "--gc", "-d", out,
-           "--cleanDestinationDir"]
+    cmd = [hugo, "--source", root, "--themesDir", theme_dir or THEMES_DIR, "--gc",
+           "-d", out, "--cleanDestinationDir"]
+    if minify:
+        cmd.append("--minify")
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                        errors="ignore", timeout=300)
     return out, (r.stdout or "") + (r.stderr or ""), r.returncode
@@ -201,6 +310,20 @@ def css_text(out):
         if n.startswith("main") and n.endswith(".css"):
             return read(os.path.join(d, n)) or ""
     return ""
+
+
+def css_norm(css):
+    """归一化 CSS 空白，兼容 --minify（`.a > b` -> `.a>b`）。"""
+    return css.replace(" > ", ">").replace("> ", ">").replace(" >", ">")
+
+
+def tabs_containers(html):
+    return re.findall(r'<div class="tabs" id="([^"]+)">(.*?)(?=<div class="tabs" id=|\Z)',
+                      html, re.S)
+
+
+def count(pat, s):
+    return len(re.findall(pat, s))
 
 
 # --------------------------------------------------------------------------- #
@@ -360,28 +483,20 @@ def run_checks():
 
 
 def build_nohook_copy():
-    """构造"无 render-blockquote.html"的同源主题副本并构建。
+    """构造"同一份主题、只少 render-blockquote.html"的对照组并构建。
 
-    唯一差异是那个钩子文件；CSS 与 i18n 从工作区同步（它们与钩子无关）。
+    关键：对照组必须与工作区**逐字节一致**（含未提交的 scripts.html / main.js），
+    否则指纹化的资源名前缀等与"钩子"无关的差异会制造 diff，
+    把 A6 的"唯一差异 = 钩子"前提打破（实测：曾因此假红）。
+
+    因此这里直接复制工作区主题（排除构建产物与缓存），只删掉那一个钩子文件。
+    这比"git archive HEAD + 手工同步 CSS/i18n"更严格：无需列举要同步的文件，
+    也就不会因为漏同步而假红。
     """
     d = os.path.join(OUT_ROOT, "_cc_nohook")
     safe_rmtree(d)
-    os.makedirs(d, exist_ok=True)
-    r = subprocess.run(["git", "archive", "HEAD"], cwd=REPO,
-                       capture_output=True, timeout=120)
-    if r.returncode != 0:
-        return None, "git archive failed", 1
-    import tarfile
-    with tarfile.open(fileobj=io.BytesIO(r.stdout)) as tf:
-        tf.extractall(d)
-    # 同步工作区未提交的 CSS / i18n（保证唯一差异是钩子）
-    for rel in ("assets/css/main.css", "i18n/en.yaml", "i18n/zh-CN.yaml", "i18n/zh-TW.yaml"):
-        src = os.path.join(REPO, rel)
-        dst = os.path.join(d, rel)
-        if os.path.isfile(src):
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
-    # 确保本副本**没有**钩子文件
+    shutil.copytree(REPO, d, ignore=shutil.ignore_patterns(
+        "tmp", "public", "public-*", ".git", "myblog", "__pycache__", "resources"))
     hook = os.path.join(d, "layouts/_default/_markup/render-blockquote.html")
     if os.path.exists(hook):
         os.remove(hook)
@@ -528,12 +643,203 @@ def run_alias_defense():
 
 
 # --------------------------------------------------------------------------- #
+# C. 功能三（第二、三项）：标签页 tabs/tab + 步骤 steps/step
+#
+# ⚠ 这些探针用 --minify 构建（与 CI 生产构建一致）。Hugo 的 minifier 会**去掉
+#   属性值两端的引号**（`class="tabs"` -> `class=tabs`）并压缩 CSS 空白
+#   （`.a > b` -> `.a>b`）。因此断言一律写成"引号可选 + 空白归一"的形态，
+#   否则会在生产产物上假红（本轮实测踩过）。
+# --------------------------------------------------------------------------- #
+NESTED_BLOCKTOKEN = "NEBULABLOCKTOKEN"
+
+
+def run_component_checks():
+    """构建含 tabs/steps 的探针站点，断言**真实产物**的结构与行为。"""
+    out, log, rc = build_probe(
+        "comp", pages={"p2.md": PROBE_COMPONENTS_MD}, minify=True)
+    if rc != 0:
+        H.fatal_error("组件探针站点构建失败", log[-800:])
+        return None
+    html = page(out, "p2/index.html")
+    if html is None:
+        H.fatal_error("组件探针页面未生成", out)
+        return None
+    css = css_norm(css_text(out))
+
+    # ---------- C1 服务端渲染的结构与计数 ----------
+    containers = re.findall(r'<div class="?tabs"? id="?(tabs-\d+)"?', html)
+    H.record("C1 两个 tabs 容器，id 页内唯一（tabs-1/tabs-2）",
+             containers == ["tabs-1", "tabs-2"], f"{containers}")
+    n_tab = count(r'class="?tabs-tab"?[\s>]', html)
+    n_panel = count(r'role="?tabpanel"?', html)
+    H.record("C1 tab 按钮 = 4（每个容器 2 个）", n_tab == 4, f"{n_tab}")
+    H.record("C1 tabpanel = 4", n_panel == 4, f"{n_panel}")
+    H.record("C1 每个容器恰好 1 个 aria-selected=true（首个）",
+             count(r'aria-selected="?true"?', html) == 2
+             and count(r'aria-selected="?false"?', html) == 2, "")
+    H.record("C1 tablist 数量 = 2 且都带 aria-label（i18n 文案）",
+             count(r'role="?tablist"?', html) == 2
+             and count(r'role="?tablist"?[^>]*aria-label=', html) == 2, "")
+
+    # ---------- C2 服务端就写好 hidden（无 JS 才不会重叠） ----------
+    hiddens = count(r'<div class="?tabs-panel"?[\s>][^>]*\bhidden\b', html)
+    H.record("C2 服务端写死 hidden：每个容器只留首面板可见（合计 2 个 hidden）",
+             hiddens == 2, f"hidden={hiddens}")
+
+    # ---------- C3 步骤：ol 语义 + CSS counter 序号 ----------
+    H.record("C3 steps 渲染为 <ol class=\"steps\">（有序列表语义 + aria-label）",
+             count(r'<ol class="?steps"?[\s>][^>]*aria-label=', html) == 2, "")
+    H.record("C3 li.step = 5（3 + 2）", count(r'<li class="?step"?[\s>]', html) == 5, "")
+    H.record("C3 step-title = 2（仅带标题的步骤输出；无标题的不输出空标题）",
+             count(r'class="?step-title"?[\s>]', html) == 2, "")
+    H.record("C3 无标题步骤不输出空 step-title（内容仍在）",
+             "NOHEAD-TEXT" in html
+             and count(r'class="?step-title"?[^>]*></p>', html) == 0, "")
+
+    # ---------- C4 交叉嵌套：内容必须完整（回归：markdownify 丢弃原始 HTML） ----------
+    # 这是第六节踩过的坑：unsafe=false 下父级 markdownify 会把子组件的原始 HTML
+    # 整段丢掉。修复是 token 占位符机制，因此这里必须断言
+    #   (a) 嵌套内容（NESTED-VERIFY / MANUAL-TEXT）真的在产物里；
+    #   (b) **没有** token 残留；
+    #   (c) **没有** `<!-- raw HTML omitted -->`；
+    #   (d) 嵌套的 steps 的 <ol> 落在对应 tabpanel 内（而不是被提到容器外）。
+    H.record("C4 标签页内嵌步骤：步骤正文保留（NESTED-VERIFY）",
+             "NESTED-VERIFY" in html, "")
+    H.record("C4 标签页内嵌步骤：嵌套 <ol class=\"steps\"> 落在 tabpanel 内部",
+             bool(re.search(r'role="?tabpanel"?[^>]*>.*?<ol class="?steps"?', html, re.S)), "")
+    H.record("C4 嵌套未留下占位符 token 残留", NESTED_BLOCKTOKEN not in html, "")
+    H.record("C4 嵌套未触发 raw HTML omitted", "raw HTML omitted" not in html, "")
+
+    # ---------- C5 面板/步骤内代码块复用统一管线（语言标签 + 复制按钮） ----------
+    H.record("C5 面板内代码块带语言标签（bash/powershell 来自 highlight）",
+             bool(re.search(r'language-(bash|powershell)', html)), "")
+    H.record("C5 面板/步骤内代码块带一键复制按钮（复用 render-codeblock hook）",
+             count(r'class="?code-copy"?[\s>]', html) == 4, f"{count(r'code-copy', html)}")
+
+    # ---------- C6 零 JS 内容不丢（纯 CSS 覆盖 UA 的 [hidden]） ----------
+    H.record("C6 默认态 .tabs-panel[hidden]{display:block}（覆盖 UA，无 JS 全部可见）",
+             ".tabs-panel[hidden]{display:block}" in css, "")
+    H.record("C6 默认态导航条隐藏 .tabs-nav{display:none}",
+             ".tabs-nav{display:none}" in css, "")
+    H.record("C6 增强态才收成标签页 .tabs-enhanced .tabs-panel[hidden]{display:none}",
+             ".tabs-enhanced .tabs-panel[hidden]{display:none}" in css, "")
+    H.record("C6 增强态由脚本自加 .tabs-enhanced（而非依赖 has-js）",
+             bool(re.search(r'\.tabs-enhanced \.tabs-nav\{display:flex', css)), "")
+    H.record("C6 序号由 CSS counter 生成（零 JS）",
+             "counter-reset:nebula-step" in css and "counter(nebula-step)" in css, "")
+    H.record("C6 序号圆点用 --brand-solid + 白字（对比度约定）",
+             bool(re.search(r'background:var\(--brand-solid\);color:#fff', css)), "")
+
+    # ---------- C7 无障碍 / 打印 / 动效偏好 ----------
+    H.record("C7 标签按钮是原生 <button type=\"button\">（键盘/读屏可用）",
+             count(r'<button type="?button"? class="?tabs-tab"?', html) == 4, "")
+    H.record("C7 tabpanel 与 tab 通过 aria-controls/labelledby 关联",
+             count(r'aria-controls="?tabs-', html) == 4
+             and count(r'aria-labelledby="?tabs-', html) == 4, "")
+    H.record("C7 面板内容区 <=0 溢出保护（min-width:0）", ".step-body{min-width:0}" in css, "")
+    H.record("C7 打印时全部面板展开（.tabs-panel[hidden]{display:block !important}）",
+             bool(re.search(r"@media print.*?\.tabs-panel\[hidden\]\{display:block\s*!important",
+                            css, re.S)), "")
+    H.record("C7 打印时导航条隐藏（display:none !important）",
+             bool(re.search(r"@media print.*?\.tabs-nav\{display:none\s*!important", css, re.S)), "")
+    H.record("C7 尊重 prefers-reduced-motion（去掉切换过渡）",
+             bool(re.search(r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{"
+                            r".*?\.tabs-enhanced \.tabs-tab\{transition:none", css, re.S)), "")
+
+    # ---------- C8 按需加载：tabs.js 只在用了 tabs 的页面注入 ----------
+    tabjs = re.findall(r'<script src="?([^" >]*js/tabs[.\-][^" >]*)"?', html)
+    H.record("C8 用过 tabs 的页面注入 tabs.js", bool(tabjs), f"{tabjs[:1]}")
+    H.record("C8 tabs.js 带 fingerprint 完整性属性",
+             bool(re.search(r'<script src="?[^" >]*js/tabs[.\-][^" >]*"?[^>]*integrity="?sha',
+                            html)), "")
+    # 反面对照：没用 tabs 的页面**不得**出现 tabs.js（证明"按需"是真的，
+    # 而不是"每页都塞一份"）。p1 只有提示块，没有 tabs。
+    p1 = page(out, "p1/index.html") or ""
+    H.record("C8 未使用 tabs 的页面不注入 tabs.js（按需加载真实生效）",
+             bool(p1) and not re.search(r'js/tabs[.\-]', p1), "")
+    H.record("C8 未使用 tabs 的页面也不输出标签页样式依赖的脚本标记",
+             "nebula_has_tabs" not in p1, "")
+
+    # ---------- C9 无第三方请求（延续 A8 的零外部依赖约束） ----------
+    ext = re.findall(r'<(?:script|link|img|iframe)[^>]*(?:src|href)="?(https?://[^" >]+)"?', html)
+    ext = [u for u in ext if not u.startswith("https://z.example/")]
+    H.record("C9 组件页不含第三方 http(s) 资源", not ext, f"{ext[:3]}")
+
+    return {"out": out, "html": html, "css": css}
+
+
+def run_component_matrix():
+    """五版本上 tabs/steps 的结构与内容一致性（含 0.128.0 无降级）。"""
+    ver_dirs = hugo_matrix()
+    if not ver_dirs:
+        H.fatal_error("未找到 Hugo 版本矩阵目录（组件）", HUGO_ROOT)
+        return
+    sigs = {}
+    for v, exe in sorted(ver_dirs.items()):
+        out, log, rc = build_probe(f"comp_v{v}", pages={"p2.md": PROBE_COMPONENTS_MD},
+                                   hugo=exe, minify=True)
+        if rc != 0:
+            H.record(f"C10 Hugo {v} 组件页构建成功", False, log[-300:])
+            continue
+        html = page(out, "p2/index.html") or ""
+        sig = (count(r'<div class="?tabs"? id="?tabs-', html),
+               count(r'class="?tabs-tab"?[\s>]', html),
+               count(r'role="?tabpanel"?', html),
+               count(r'<ol class="?steps"?[\s>]', html),
+               count(r'<li class="?step"?[\s>]', html))
+        sigs[v] = sig
+        H.record(f"C10 Hugo {v} 结构计数正确（2/4/4/2/5）", sig == (2, 4, 4, 2, 5), f"{sig}")
+        H.record(f"C10 Hugo {v} 嵌套内容完整（NESTED-VERIFY / MANUAL-TEXT）",
+                 "NESTED-VERIFY" in html and "MANUAL-TEXT" in html, "")
+        H.record(f"C10 Hugo {v} 无 token 残留 / 无 raw HTML omitted",
+                 NESTED_BLOCKTOKEN not in html and "raw HTML omitted" not in html, "")
+        H.record(f"C10 Hugo {v} tabs.js 按需注入",
+                 bool(re.search(r'js/tabs[.\-]', html)), "")
+    H.record("C10 五个 Hugo 版本产物结构签名完全一致",
+             len(sigs) >= 2 and len(set(sigs.values())) == 1, f"{sigs}")
+
+
+def run_nested_regression():
+    """反证：去掉 token 占位符机制后，嵌套内容必须**真的**丢失 —— 证明 C4 有区分力。
+
+    做法：把主题复制一份，把 util/nested-block.html 改成"直接返回内联 HTML"
+    （即修复前的行为），其余一字不改。若 C4 的断言在坏副本上变红，
+    说明它们测得的是真实行为，而不是"脚本恰好没报错"。
+    """
+    holder = os.path.join(OUT_ROOT, "_cc_broken_themes")
+    safe_rmtree(holder)
+    os.makedirs(holder, exist_ok=True)
+    dst = os.path.join(holder, "hugo-theme-nebula")
+    shutil.copytree(REPO, dst, ignore=shutil.ignore_patterns(
+        "tmp", "public", "public-*", ".git", "myblog", "__pycache__", "resources"))
+    broken = os.path.join(dst, "layouts", "partials", "util", "nested-block.html")
+    with io.open(broken, "w", encoding="utf-8") as f:
+        f.write("{{- .html -}}\n")   # 修复前行为：内联原始 HTML -> 被 markdownify 丢弃
+
+    out, log, rc = build_probe("broken", pages={"p2.md": PROBE_COMPONENTS_MD},
+                               theme_dir=holder)
+    if rc != 0:
+        H.record("C11 反证：坏副本也能构建（差异只在内容，不在构建）", False, log[-300:])
+        return
+    html = page(out, "p2/index.html") or ""
+    # 反证成立的条件：坏副本上 C4 的断言会失败
+    lost = "NESTED-VERIFY" not in html
+    omitted = "raw HTML omitted" in html
+    H.record("C11 反证：去掉 token 机制后嵌套内容确实丢失（证明 C4 有区分力）",
+             lost, f"lost={lost} omitted={omitted}")
+    H.record("C11 反证：坏副本出现 raw HTML omitted（修复前的可观测症状）",
+             omitted, "")
+
+
+# --------------------------------------------------------------------------- #
 def main():
     main_out = guard(H, run_checks)
     if main_out:
         guard(H, run_lang_checks, main_out)
         guard(H, run_hugo_matrix)
-        guard(H, run_alias_defense)
+        guard(H, run_component_checks)
+        guard(H, run_component_matrix)
+        guard(H, run_nested_regression)
         guard(H, run_alias_defense)
     H.finish()
 

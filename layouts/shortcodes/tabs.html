@@ -1,0 +1,46 @@
+{{- /* 标签页容器。用法（只支持 {{< >}} 形式）：
+
+       {{< tabs >}}
+       {{< tab "Linux" >}} ... {{< /tab >}}
+       {{< tab "Windows" >}} ... {{< /tab >}}
+       {{< /tabs >}}
+
+     设计要点（对应第六节"标签页与步骤组件"）：
+
+     1. **导航条服务端渲染** —— 面板标签由子 shortcode 写入本 shortcode 的
+        `.Scratch`，因此导航条与面板在 HTML 里同时存在，**不依赖 JavaScript**。
+        （实测：父 shortcode 读 `.Scratch` 早于 `.Inner` 求值完成，跨
+        0.128.0 ~ 0.167.0 行为一致。）
+
+     2. **无 JS 时内容不丢失** —— 见 assets/css/main.css：脚本没用上时导航条隐藏
+        （避免无功能的按钮），全部面板顺序展开、各自显示标题。tabs.js 生效
+        （给容器加 .tabs-enhanced）后才收成标签页。
+
+     3. **渐进增强而非依赖** —— WAI-ARIA tablist 语义在服务端就写好，
+        tabs.js 只负责"切换"这一动作，不生成结构。
+
+     4. **可嵌套** —— 若本组件被嵌在别的组件里（如某个步骤内部），整段标记
+        改以占位符 token 返回给父级，避免被父级的 markdownify 丢弃
+        （根因见 layouts/partials/util/nested-block.html）。
+
+     5. 面板内代码块走主题的 Render Hook，自动带语言标签与一键复制按钮。 */ -}}
+{{- /* 必须求值 .Inner：否则 Hugo 报
+       `shortcode "tabs" does not evaluate .Inner ... yet a closing tag was provided`。
+       用 InnerDeindent 版本，允许整个组件写在缩进上下文里（如列表项中）。 */ -}}
+{{- $noop := .InnerDeindent -}}
+{{- $panels := .Scratch.Get "panels" | default slice -}}
+{{- if $panels -}}
+{{- /* 标记本页用过标签页 -> layouts/partials/scripts.html 才会输出 tabs.js。
+       内容先于页脚渲染，因此此时写入、彼时读取，是可靠的。
+       （这正是"零依赖"与"按需加载"能同时成立的原因。） */ -}}
+{{- .Page.Store.Set "nebula_has_tabs" true -}}
+{{- $uid := partial "util/uid.html" (dict "page" .Page "prefix" "tabs") -}}
+{{- $out := partial "components/tabs.html" (dict "uid" $uid "panels" $panels) -}}
+{{- if .Parent -}}
+  {{- partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) -}}
+{{- else -}}
+  {{- $out -}}
+{{- end -}}
+{{- else -}}
+{{- warnf "shortcode tabs: 未检测到任何 {{< tab >}} 子项（位置 %s）" .Position -}}
+{{- end -}}

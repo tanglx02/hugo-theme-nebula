@@ -226,13 +226,14 @@ jobs:
         run: python3 tools/check_alias_pages.py public
 
       # 名称里含冒号时**必须加引号**，否则 YAML 报 "mapping values are not allowed here"
-      - name: "Content components (Markdown callouts: 5 types / i18n / unknown type / byte-identical plain quotes / Hugo 0.128-0.167 / alias nil guard)"
+      - name: "Content components (callouts 5 types / tabs+steps incl. nested / plain quotes byte-identical / Hugo 0.128-0.167 / alias nil guard)"
         env:
           HUGO_MATRIX_HOME: ${{ runner.tool_cache }}/hugo-matrix
         run: |
           set -e
           # 版本矩阵：CI 里现装 5 个 Hugo 版本（与 build job 的矩阵一致），
-          # 供 check_content_components.py 的 B2/B3/C 小节逐版本验证提示块与 alias 防御。
+          # 供 check_content_components.py 的 B2/B3/C10/C 小节逐版本验证
+          # 提示块、标签页/步骤与 alias 防御。
           for v in 0.128.0 0.148.0 0.162.0 0.166.0 0.167.0; do
             [ -x "$HUGO_MATRIX_HOME/$v/hugo" ] || {
               curl -sSL "https://github.com/gohugoio/hugo/releases/download/v$v/hugo_extended_${v}_linux-amd64.tar.gz" \

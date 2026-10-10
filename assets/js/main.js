@@ -206,7 +206,14 @@
     var code = block ? block.querySelector('pre') : null;
     if (!code) return;
     var text = code.innerText || code.textContent || '';
-    var old = btn.innerHTML;
+    /* 恢复用的原文案取自按钮**服务端渲染**的内容（首次点击时缓存），
+       而不是 JS 里再拼一个常量：文案随站点语言（i18n）走，也不会因
+       按钮内含 SVG 而被清空。 */
+    var old = btn.getAttribute('data-label');
+    if (old == null) {
+      old = (btn.textContent || '').trim();
+      btn.setAttribute('data-label', old);
+    }
     var ICON_OK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
 
     copyText(text, function (ok) {
@@ -216,7 +223,7 @@
       btn.classList.toggle('copied', ok);
       btn.classList.toggle('copy-failed', !ok);
       setTimeout(function () {
-        btn.innerHTML = old;
+        btn.textContent = old;
         btn.classList.remove('copied', 'copy-failed');
       }, ok ? 1600 : 2200);
     });

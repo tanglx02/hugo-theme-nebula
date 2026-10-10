@@ -10,6 +10,20 @@
     {{- with site.Params.busuanzi.integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }}></script>
 {{ end }}
 
+{{- /* ---------- 组件脚本（功能三：按需加载） ----------
+      标签页的渐进增强脚本**只在当前页确实用了 {{< tabs >}} 时**才输出，
+      普通页面因此多出的字节数为 0（第六节："不引入无必要的运行时依赖"）。
+      探测标记由 layouts/shortcodes/tabs.html 在渲染期写入 Page.Store：
+      内容先于本 partial 渲染，所以这里读得到。
+
+      `defer` 保证它不会阻塞首屏。**无 JS 时的"全展开"默认态完全由 CSS 保证**
+      （见 main.css §24：默认即"面板顺序展开 + 导航条隐藏"），不依赖任何脚本
+      打标记，因此脚本被禁用 / 被 CSP 拦掉时页面依然可用，也没有闪动。 */ -}}
+{{ if .Store.Get "nebula_has_tabs" }}
+{{ $tabsjs := resources.Get "js/tabs.js" | minify | fingerprint }}
+<script src="{{ $tabsjs.RelPermalink }}" integrity="{{ $tabsjs.Data.Integrity }}" defer></script>
+{{ end }}
+
 {{- /* 把 i18n 文案注入给前端脚本，避免 JS 中硬编码文案 */ -}}
 <script>
   window.NEBULA_I18N = {{ dict

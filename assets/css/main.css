@@ -1561,3 +1561,193 @@ html[data-theme="dark"] .md-alert-warning .md-alert-icon { color: #f0b860; }
 /* 提示块内的代码/引用不溢出 */
 .md-alert pre { overflow-x: auto; }
 .md-alert blockquote { margin: .8em 0; }
+
+/* ---------- 24. 标签页（功能三：tabs / tab shortcodes） ----------
+   渐进增强模型（与 assets/js/tabs.js 配合）：
+
+     * 默认态 = 「无 JS 可用」：全部面板顺序展开，各自显示标题；导航条隐藏
+       （点了没反应的按钮比没有按钮更糟）。因此**内容零丢失**是默认行为，
+       不依赖 noscript 兜底，也就没有"先藏后显"的闪动。
+
+       ⚠ 面板上的 `hidden` 属性是服务端就写好的（只有第一个面板不带）。
+         浏览器 UA 样式表会给 [hidden] 加 `display:none`，**必须显式覆盖**，
+         否则无 JS 时除第一个面板外全部消失 —— 这正是下面第一条规则的作用。
+
+     * tabs.js 实际跑起来之后给容器加 .tabs-enhanced -> 才收成真正的标签页。
+       刻意用 .tabs-enhanced（由脚本自己加）而不是 <html class="has-js">：
+       万一本脚本被拦掉，页面仍是"全部展开"的可用状态，不会退化成空盒子。
+
+   角色语义（role=tablist/tab/tabpanel、aria-*）在服务端模板里就写好，
+   JS 只切换状态，不生成结构。 */
+
+/* —— 默认态（无 JS / 脚本未生效）：顺序展开 —— */
+.tabs { margin: 1.6em 0; }
+.tabs-nav { display: none; }
+.tabs-panel {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+/* 覆盖 UA 对 [hidden] 的 display:none（默认态必须全部可见） */
+.tabs-panel[hidden] { display: block; }
+.tabs-panel-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tabs-panel > *:last-child { margin-bottom: 0; }
+
+/* —— 增强态：标签页 —— */
+.tabs-enhanced .tabs-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs-enhanced .tabs-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  padding: 9px 16px;
+  margin-bottom: -1px;              /* 与容器下边框重合，形成"当前页签" */
+  cursor: pointer;
+  transition: color .18s ease, background .18s ease, border-color .18s ease;
+}
+.tabs-enhanced .tabs-tab:hover { color: var(--brand-ink); background: var(--bg-soft); }
+.tabs-enhanced .tabs-tab.is-active {
+  color: var(--text-strong);
+  font-weight: 600;
+  background: var(--bg-elev);
+  border-color: var(--border);
+  border-bottom: 1px solid var(--bg-elev);
+}
+/* 焦点环必须清晰可见（键盘用户依赖它判断"现在在哪个标签上"） */
+.tabs-enhanced .tabs-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.tabs-enhanced .tabs-panels { margin-top: 0; }
+.tabs-enhanced .tabs-panel {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--bg-elev);
+}
+/* 增强后：仅选中面板可见（特异性高于上面那条，覆盖方向明确） */
+.tabs-enhanced .tabs-panel[hidden] { display: none; }
+/* 增强态下面板标题已由导航条承担，面板内的重复标题只在无 JS 时才有意义 */
+.tabs-enhanced .tabs-panel-title {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* 面板内部代码块的首尾外边距收一收，避免标签页里出现双倍留白 */
+.tabs-panel .code-block:last-child { margin-bottom: 0; }
+.tabs-panel .code-block:first-child { margin-top: 0; }
+
+/* ---------- 25. 步骤（功能三：steps / step shortcodes） ----------
+   零 JavaScript：序号由 CSS counter 生成。
+   默认态与增强态**完全一致** —— 步骤组件不需要脚本，因此不存在降级分支。 */
+.steps {
+  list-style: none;
+  counter-reset: nebula-step;
+  margin: 1.6em 0;
+  padding: 0;
+}
+.step {
+  position: relative;
+  counter-increment: nebula-step;
+  padding-left: 46px;
+  padding-bottom: 18px;
+}
+/* 连接线：最后一步不画，避免拖尾 */
+.step::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 30px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.step:last-child { padding-bottom: 0; }
+.step:last-child::before { display: none; }
+.step-body { min-width: 0; }
+/* 序号圆点：用 --brand-solid 承载白字，保证 4.5:1（与按钮同一套对比度约定） */
+.step-body::before {
+  content: counter(nebula-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--brand-solid);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+.step-title {
+  margin: 4px 0 8px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.step-body > *:last-child { margin-bottom: 0; }
+.step .code-block:first-child { margin-top: 8px; }
+.step .code-block:last-child { margin-bottom: 0; }
+/* 步骤里嵌标签页 / 标签页里嵌步骤：收掉容器的首尾外边距 */
+.step .tabs:last-child, .step .steps:last-child { margin-bottom: 0; }
+.tabs-panel .steps:last-child, .tabs-panel .tabs:last-child { margin-bottom: 0; }
+.step .tabs:first-child, .step .steps:first-child { margin-top: 8px; }
+
+@media (max-width: 600px) {
+  .step { padding-left: 38px; }
+  .step::before { left: 12px; }
+  .step-body::before { width: 26px; height: 26px; font-size: 12.5px; }
+  .tabs-enhanced .tabs-tab { padding: 8px 12px; font-size: 13.5px; }
+}
+
+/* 减少动态效果：去掉标签切换时的过渡（内容切换本身是瞬时的，不受影响） */
+@media (prefers-reduced-motion: reduce) {
+  .tabs-enhanced .tabs-tab { transition: none; }
+}
+
+/* 打印：标签页展开成顺序段落（否则未选中的面板会被 hidden 吞掉）。
+   步骤/标签页都要避免跨页断开。 */
+@media print {
+  .tabs-nav { display: none !important; }
+  .tabs-panel, .tabs-panel[hidden] { display: block !important; page-break-inside: avoid; }
+  .tabs-enhanced .tabs-panel { border: 1px solid #ddd; border-radius: 0; padding: 8px 10px; margin-bottom: 8px; }
+  .tabs-panel-title {
+    position: static; width: auto; height: auto;
+    clip: auto; margin: 0 0 6px; overflow: visible;
+    font-size: 10.5pt; color: #000;
+  }
+  .steps, .step { page-break-inside: avoid; }
+  .step-body::before { background: #000 !important; color: #fff !important; }
+  .step::before { background: #999 !important; }
+}

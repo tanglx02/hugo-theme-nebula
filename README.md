@@ -31,6 +31,9 @@
 - 💡 **Markdown 提示块**：GitHub / Obsidian 风格的 `> [!NOTE]` 五种语义类型（Note/Tip/Important/Warning/Caution），
   纯 Render Hook + CSS、**零 JavaScript**；默认标题走 i18n，可自定义标题；未知类型自动退化为普通引用（**不会让构建失败**）；
   非提示块的普通引用与历史输出**逐字节相同**
+- 🗂️ **标签页**：`{{< tabs >}}` / `{{< tab >}}`，服务端渲染 WAI-ARIA tablist；**无 JS 时全部面板顺序展开、内容零丢失**；
+  面板内代码块自动带语言标签与一键复制；可与其他组件**互相嵌套**
+- 🪜 **步骤**：`{{< steps >}}` / `{{< step >}}`，输出 `<ol>` 语义 + CSS 计数器编号（**零 JavaScript**），标题可选
 - 🖼️ **灯箱**：`role=dialog` + Focus Trap（Tab 循环、背景 inert、Esc 关闭、焦点归还）
 - 🌍 **i18n**：内置 `zh-CN` / `zh-TW` / `en`
 - 🔀 **多 Section**：内容范围通过 `params.content.sections` 配置，不写死 `posts`
@@ -483,6 +486,72 @@ showFocusMode: false      # 专注模式入口（可选，默认取 params.readi
 
 演示页：`exampleSite/content/posts/alerts-and-callouts.md`（英文：`content-en/posts/alerts-and-callouts.md`）。
 
+## 标签页与步骤
+
+同一件事的多种做法（多平台命令、多种安装方式）用**标签页**并列；一次完整流程用**步骤**。两者都是 shortcode，
+**服务端渲染标记、零第三方请求**，且**无 JavaScript 时内容不丢失**。
+
+### 标签页 tabs / tab
+
+```markdown
+{{< tabs >}}
+{{< tab "Linux" >}}
+```bash
+sudo apt install nginx
+```
+{{< /tab >}}
+{{< tab "macOS" >}}
+```bash
+brew install nginx
+```
+{{< /tab >}}
+{{< /tabs >}}
+```
+
+- **服务端就写好 WAI-ARIA 语义**（`role=tablist/tab/tabpanel` + `aria-selected/controls/labelledby`），
+  `assets/js/tabs.js` 只负责“切换”这一动作，**不生成结构**；
+- **无 JS 时全部面板顺序展开**（导航条隐藏，避免“点了没反应”的按钮），因此**内容零丢失**；
+  脚本生效后给容器加 `.tabs-enhanced` 才收成标签页；
+- 脚本按需加载：页面用了 `tabs` 才会注入 `tabs.js`（带 fingerprint `integrity`）；
+- 键盘遵循 WAI-ARIA APG：`←/→`（窄屏纵向时 `↑/↓`）移动并激活、`Home/End` 跳首尾、整条标签栏只占**一个** Tab 位；
+- 打印时全部面板展开；`prefers-reduced-motion` 下取消切换过渡。
+
+> ⚠ 只支持 `{{< >}}` 形式，**不要**写成 `{{% %}}`（后者会破坏嵌套输出）。
+
+### 步骤 steps / step
+
+```markdown
+{{< steps >}}
+{{< step "准备环境" >}}
+先确认系统与版本。
+{{< /step >}}
+{{< step >}}
+标题可以省略，此时只显示序号。
+{{< /step >}}
+{{< /steps >}}
+```
+
+- 输出 `<ol class="steps">`，序号由 CSS `counter` 生成 —— **零 JavaScript**，无脚本时与有脚本时**完全一致**；
+- 步骤标题**可选**（不写就只有序号圆点）；读屏软件按“第 N 步 / 共 M 步”朗读；
+- 圆点用 `--brand-solid` 承载白字，对比度 ≥ 4.5:1；打印时改为高对比度黑白。
+
+### 互相嵌套与代码块
+
+`tabs` 与 `steps` 可以**互相嵌套**（标签页里放步骤，或步骤里放标签页）。嵌套时子组件的 HTML 通过
+**占位符 token** 机制登记到父组件，避免在 `unsafe = false`（主题默认）下被父级 `markdownify` 当作
+原始 HTML 丢弃 —— 这是本功能实现中修掉的一个真实缺陷，回归断言见 `tools/check_content_components.py`
+的 C4/C11 小节（含"去掉该机制后内容必须真的丢失"的反证）。
+
+面板/步骤内的代码块走主题**统一的代码块渲染管线**，自动获得语言标签与一键复制按钮，无需任何额外配置。
+
+行为约定（均有测试断言，见 `tools/check_content_components.py`）：
+
+- **默认外观不变**：未使用这两个组件时页面产物与开启前一致；
+- **零 JS / 零第三方请求**：`tabs.js` 仅在本页用到标签页时注入，且是主题自有静态资源；
+- **版本兼容**：`tabs/tab/steps/step` 在 **Hugo 0.128.0 ~ 0.167.0** 上产物结构签名完全一致（CI 逐版本断言）。
+
+演示页：`exampleSite/content/posts/tabs-and-steps.md`（英文：`content-en/posts/tabs-and-steps.md`）。
+
 ## 代码块
 
 ````markdown
@@ -548,7 +617,7 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价/Hugo 0.128–0.167 矩阵/alias 空值回归）** | 1 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + Hugo 0.128–0.167 矩阵 + alias 空值回归 + 嵌套机制反证）** | 1 |
 | Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 

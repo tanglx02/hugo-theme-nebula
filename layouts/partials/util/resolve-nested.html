@@ -1,0 +1,17 @@
+{{- /* 把 util/nested-block.html 登记过的 token 换回真正的 HTML。
+
+     两种形态都要处理，因为 markdownify 对 token 的处理取决于它是否独占一行：
+       * 独占一行 -> `<p>NEBULABLOCKTOKEN0END</p>`
+       * 与文字同行 -> `<p>前文 NEBULABLOCKTOKEN0END 后文</p>`
+     先替换"独占一行"的形态（连 <p> 一起去掉，避免 <p> 里套块级元素造成
+     非法嵌套），再兜底替换裸 token。
+
+     用法（父组件侧）：
+       {{ $html = partial "util/resolve-nested.html" (dict "html" $html "scratch" .Scratch) }}
+     返回 template.HTML。 */ -}}
+{{- $html := printf "%s" .html -}}
+{{- range $b := (.scratch.Get "nebula_nested" | default slice) -}}
+  {{- $html = replace $html (printf "<p>%s</p>" $b.token) $b.html -}}
+  {{- $html = replace $html $b.token $b.html -}}
+{{- end -}}
+{{- $html | safeHTML -}}

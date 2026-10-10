@@ -1,0 +1,25 @@
+{{- /* 步骤：单步。必须嵌套在 {{< steps >}} 内。
+
+     用法（只支持 {{< >}} 形式，理由同 tab.html）：
+       {{< step "安装依赖" >}} ... 内容 ... {{< /step >}}
+
+     标题可选：{{< step >}}...{{< /step >}} 时只显示序号。
+     序号由 CSS counter 生成（零 JavaScript），因此无 JS 时编号照常可见。
+
+     嵌套组件：与 tab.html 同理，本组件整体也是一个"可被嵌套的组件"——
+     它把自己渲染好的 HTML 通过占位符 token 登记到父组件的 Scratch，
+     避免在 `unsafe = false` 下被父级的 markdownify 当作原始 HTML 丢弃。 */ -}}
+{{- $parent := .Parent -}}
+{{- if $parent -}}
+  {{- $prev := $parent.Scratch.Get "steps" | default slice -}}
+  {{- $idx := len $prev -}}
+  {{- $title := .Get 0 | default (.Get "title") -}}
+  {{- $raw := .InnerDeindent | markdownify -}}
+  {{- /* 解析用**自己的** .Scratch：直接嵌在本步骤里的子组件（tabs 等）
+         执行时把占位符登记到 `tabs.Parent.Scratch`，而本步骤就是那个 Parent。 */ -}}
+  {{- $html := partial "util/resolve-nested.html" (dict "html" $raw "scratch" .Scratch) -}}
+  {{- $parent.Scratch.Add "steps" (slice (dict "title" $title "html" $html "idx" $idx)) -}}
+{{- else -}}
+  {{- warnf "shortcode step: 必须嵌套在 {{< steps >}} 内；位置 %s" .Position -}}
+  {{ .InnerDeindent | markdownify }}
+{{- end -}}

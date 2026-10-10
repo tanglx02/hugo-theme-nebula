@@ -10,6 +10,7 @@ nav:
 common:
   close: Close
   copy: Copy
+  copyCode: Copy code
   copied: Copied
   copyFailed: Copy failed, please copy manually
   retry: Retry
@@ -143,3 +144,10 @@ alert:
   important: Important
   warning: Warning
   caution: Caution
+
+# Technical content components (feature 3): tabs / steps helper strings
+tabs:
+  label: Content switch
+  untitled: Untitled
+steps:
+  label: Steps

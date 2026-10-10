@@ -10,6 +10,7 @@ nav:
 common:
   close: 關閉
   copy: 複製
+  copyCode: 複製程式碼
   copied: 已複製
   copyFailed: 複製失敗，請手動複製
   retry: 重試
@@ -143,3 +144,10 @@ alert:
   important: 重要
   warning: 警告
   caution: 注意
+
+# 技術內容元件（功能三）：標籤頁 / 步驟的輔助文案
+tabs:
+  label: 內容切換
+  untitled: 未命名
+steps:
+  label: 操作步驟

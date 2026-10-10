@@ -11,6 +11,7 @@ nav:
 common:
   close: 关闭
   copy: 复制
+  copyCode: 复制代码
   copied: 已复制
   copyFailed: 复制失败，请手动复制
   retry: 重试
@@ -144,3 +145,10 @@ alert:
   important: 重要
   warning: 警告
   caution: 注意
+
+# 技术内容组件（功能三）：标签页 / 步骤的辅助文案
+tabs:
+  label: 内容切换
+  untitled: 未命名
+steps:
+  label: 操作步骤

@@ -1,0 +1,36 @@
+{{- /* 标签页的**标记渲染**（功能三）。由 layouts/shortcodes/tabs.html 调用。
+
+     拆成 partial 的原因：shortcode 需要根据"自己是否被嵌套"决定是直接输出
+     这段标记，还是把它交给父组件登记为占位符（见 util/nested-block.html）。
+     partial 的返回值就是渲染结果，正好能拿来做这个二选一。
+
+     参数（dict）：
+       uid    — 页内唯一的 id 前缀（由 util/uid.html 生成）
+       panels — [{label, html, idx}]，来自子 shortcode 写入的 Scratch 累积
+
+     输出：`<div class="tabs">` 整块（含 role=tablist/tab/tabpanel 与 aria-*）。 */ -}}
+{{- $uid := .uid -}}
+{{- $panels := .panels -}}
+<div class="tabs" id="{{ $uid }}">
+  <div class="tabs-nav" role="tablist" aria-label="{{ i18n "tabs.label" }}">
+    {{- range $i, $p := $panels }}
+    <button type="button" class="tabs-tab" role="tab"
+            id="{{ $uid }}-tab-{{ $i }}"
+            aria-controls="{{ $uid }}-panel-{{ $i }}"
+            aria-selected="{{ if eq $i 0 }}true{{ else }}false{{ end }}"
+            tabindex="{{ if eq $i 0 }}0{{ else }}-1{{ end }}">{{ $p.label }}</button>
+    {{- end }}
+  </div>
+  <div class="tabs-panels">
+    {{- range $i, $p := $panels }}
+    <div class="tabs-panel" id="{{ $uid }}-panel-{{ $i }}" role="tabpanel"
+         aria-labelledby="{{ $uid }}-tab-{{ $i }}"
+         data-index="{{ $p.idx }}"{{ if ne $i 0 }} hidden{{ end }}>
+      <p class="tabs-panel-title">{{ $p.label }}</p>
+      {{ $p.html }}
+    </div>
+    {{- end }}
+  </div>
+</div>
+{{- /* 去掉渲染产生的首尾空白：嵌套时这段字符串会以 token 形式插回正文，
+       多余空行会在 markdown 里变成 <br>。 */ -}}

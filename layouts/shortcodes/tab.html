@@ -1,0 +1,39 @@
+{{- /* 标签页：单个面板。必须嵌套在 {{< tabs >}} 内。
+
+     用法（只支持 {{< >}} 形式，**不支持** {{% %}}）：
+       {{< tab "Linux" >}} ... 内容 ... {{< /tab >}}
+
+     为什么只支持 {{< >}}：
+        {{% %}} 形式会先把内层交给 Markdown 渲染器，输出里出现 <!-- raw HTML omitted -->
+        且外层标签错位 —— 实测会在页面留下空的 <blockquote>（正文语义被污染），
+        且面板顺序不再可靠。{{< >}} 形式下由本模板显式调用 markdownify，
+        渲染时机与结果都受控。
+
+     为什么用 Scratch 累积而不是直接输出：
+        父 shortcode 的导航条必须**先**知道所有面板的标题，而子 shortcode 在
+        `.Inner` 求值时才逐个执行。因此子把「标签 + 已渲染的 HTML」写进父的
+        Scratch，父在 `.Inner` 之后统一渲染。实测 0.128.0 ~ 0.167.0 行为一致。
+
+     嵌套组件（如标签页里再放一个步骤组件）：
+        子组件的 HTML 会被登记为占位符 token，而不是直接出现在 markdown 里 ——
+        否则 `unsafe = false` 下 markdownify 会把这段原始 HTML 整段丢弃
+        （详见 layouts/partials/util/nested-block.html 的说明）。 */ -}}
+{{- $parent := .Parent -}}
+{{- if $parent -}}
+  {{- $prev := $parent.Scratch.Get "panels" | default slice -}}
+  {{- $idx := len $prev -}}
+  {{- $label := .Get 0 | default (.Get "label") | default (i18n "tabs.untitled") -}}
+  {{- /* markdownify 会走主题的代码块 Render Hook，因此面板内的 ``` 代码块
+         自动获得语言标签与「一键复制」按钮（第六节明确要求"可复制命令块"）。
+         用 .InnerDeindent 而非 .Inner：把 shortcode 写在列表项里时（内容会带
+         缩进），Markdown 会把缩进当代码块；deindent 后行为与顶格书写一致。
+         实测 0.128.0 ~ 0.167.0 行为完全一致。 */ -}}
+  {{- $raw := .InnerDeindent | markdownify -}}
+  {{- /* 解析用**自己的** .Scratch：直接嵌在本面板里的子组件（steps 等）
+         执行时把占位符登记到 `step.Parent.Scratch`，而本面板就是那个 Parent。 */ -}}
+  {{- $html := partial "util/resolve-nested.html" (dict "html" $raw "scratch" .Scratch) -}}
+  {{- $parent.Scratch.Add "panels" (slice (dict "label" $label "html" $html "idx" $idx)) -}}
+{{- else -}}
+  {{- warnf "shortcode tab: 必须嵌套在 {{< tabs >}} 内；位置 %s" .Position -}}
+  {{ .InnerDeindent | markdownify }}
+{{- end -}}
