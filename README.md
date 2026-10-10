@@ -702,7 +702,7 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + Hugo 0.128–0.167 矩阵 + alias 空值回归 + 嵌套机制反证）** | 1 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
 | Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
