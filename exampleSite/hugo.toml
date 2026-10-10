@@ -3,8 +3,21 @@ locale = 'zh-CN'
 title = '星云技术笔记'
 theme = 'hugo-theme-nebula'
 hasCJKLanguage = true
-defaultContentLanguage = 'zh'
+# ⚠ 语言键**必须**与 i18n 文件名一致（这里对应 i18n/zh-CN.yaml）。
+#   写成 'zh' 在 Hugo ≥ 0.162 上会被宽松解析为 zh-CN 而"看起来正常"，
+#   但在 0.128 / 0.148 上找不到 i18n/zh.yaml，于是**全部 UI 文案变空字符串**
+#   （导航、aria-label、按钮、日期格式一起失效，且构建不报错）。
+#   已由 tools/check_features.py 的 i18n 一致性断言与 build job 的
+#   verify_i18n 门禁双重守住，详见 README「多语言（i18n）」。
+defaultContentLanguage = 'zh-CN'
 enableRobotsTXT = true
+
+[languages]
+  [languages.zh-CN]
+    label = '简体中文'
+    weight = 1
+    languageCode = 'zh-CN'
+    contentDir = 'content'
 [pagination]
   pagerSize = 8            # 每页文章数（Hugo >= 0.128 使用 pagination.pagerSize）
 rssLimit = 20
