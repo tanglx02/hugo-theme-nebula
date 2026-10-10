@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 THEME = os.path.join(ROOT, "hugo-theme-nebula")

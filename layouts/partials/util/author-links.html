@@ -1,0 +1,40 @@
+{{- /* 作者链接解析（功能四 / M16）—— 把"作者姓名"解析为"姓名 + 可选档案页 URL"。
+
+     为什么不能直接用 `urlize` + `site.GetPage`（**实测踩坑，勿回退**）：
+       Hugo 的 urlize 对 CJK 返回 **percent-encoded** 字符串：
+           urlize "张伟"        -> "%E5%BC%A0%E4%BC%9F"
+           urlize "C++ 工程师"  -> "c&#43;&#43;-%E5%B7%A5%E7%A8%8B%E5%B8%88"（+ 被 HTML 转义）
+       而 taxonomy term 页的目录名是**未编码**的原始形式（`/authors/张伟/`）。
+       实测（0.128.0 / 0.148.0 / 0.167.0 一致）：`site.GetPage "/authors/%E5%BC%A0%E4%BC%9F"`
+       **返回 NONE** —— 用 urlize 结果拼路径会静默丢链。
+       因此本 partial 改为**遍历 site.Taxonomies 按 title 大小写不敏感匹配**，
+       对 ASCII / CJK / 含 `+` 等特殊字符一律可靠。
+
+     语义边界（**必须写进文档**）：
+       作者档案页由 Hugo 的 **taxonomy** 驱动。Hugo 只把 Front Matter 的
+       **复数键 `authors`（列表）** 计入 taxonomy；单数 `author: "X"` 只是"署名回退"，
+       **不会**建立 term。故：
+         * `authors: ["Tanglx"]`      -> 建立 /authors/tanglx/，且本文与该页互链
+         * `author: "Tanglx"`         -> 仅署名；若其它文章已用列表建立同名 term，
+                                          则本页仍会链接到该档案页（按名匹配），
+                                          但**不会**为该名新建档案页
+       这是 Hugo 的既有机制，主题不改变它，只做如实映射。
+
+     返回：[]dict，每项 { name: string, url: string }（url 为空表示无档案页）。
+     未启用作者档案页时，url 恒为空 —— 调用方输出与历史逐字节一致。 */ -}}
+{{- $page := .page -}}
+{{- $cfg := partial "util/author-config.html" (dict) -}}
+{{- $names := (partial "util/authors.html" (dict "page" $page)).names -}}
+{{- $out := slice -}}
+{{- range $n := $names -}}
+  {{- $url := "" -}}
+  {{- if $cfg.enabled -}}
+    {{- range $term, $wp := index site.Taxonomies $cfg.taxonomy -}}
+      {{- if and (not $url) (eq (lower (printf "%v" $wp.Page.Title)) (lower $n)) -}}
+        {{- $url = $wp.Page.RelPermalink -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $out = $out | append (dict "name" $n "url" $url) -}}
+{{- end -}}
+{{- return $out -}}

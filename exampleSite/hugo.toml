@@ -87,6 +87,28 @@ rssLimit = 20
     contentDir = 'exampleSite/content'
     provider = 'github'
 
+  # 作者档案页（功能四 / M16）：**可选启用**，默认关闭。
+  # 启用条件（两者同时满足）：
+  #   1) [taxonomies] 注册了作者 taxonomy（见文件下方 `authors = 'authors'`）
+  #   2) 这里 pages = true
+  # 不配置 / pages = false 时，主题**不输出任何作者档案相关结构**，
+  # 所有站点 URL 结构与历史完全一致（可选启用的向后兼容保证）。
+  # profiles 为可选资料：作者名 -> { bio, role, location, avatar, url, links }
+  [params.authors]
+    pages = true
+    [params.authors.profiles]
+      [params.authors.profiles.Tanglx]
+        role = '网络安全工程师'
+        location = '中国 · 杭州'
+        bio = '长期折腾渗透测试、主机加固与自动化运维，喜欢把踩过的坑写成可复用的清单。'
+        url = 'https://github.com/tanglx02'
+        [[params.authors.profiles.Tanglx.links]]
+          name = 'GitHub'
+          url = 'https://github.com/tanglx02'
+      [params.authors.profiles."Nebula Bot"]
+        role = '自动化助手'
+        bio = '主题演示用的虚拟作者，用于展示多作者与作者档案页联动。'
+
   # Mermaid 图表（功能四 / 6.2）：**自托管**（exampleSite 已内置 js/vendor/mermaid.min.js），
   # 不依赖任何 CDN，离线可用。默认按需加载：只有含 ```mermaid 围栏的页面才注入脚本。
   # 若要改用 CDN，请同时提供 integrity（SRI），见 README「Mermaid / 数学公式」。
@@ -152,6 +174,12 @@ rssLimit = 20
 [taxonomies]
   category = 'categories'
   tag = 'tags'
+  # 作者档案页（功能四 / M16）：**可选启用**。
+  # 注册 author taxonomy 后，front matter 里 `authors = ["A", "B"]`（列表）
+  # 会生成 /authors/<name>/ 档案页与 /authors/ 索引页。
+  # ⚠ 只有**列表形式 authors** 会建立 term；单数 `author: "X"` 仅作署名回退
+  #   （Hugo 既有机制，主题不改），详见 README「作者档案页」。
+  authors = 'authors'
 
 [outputs]
   home = ['HTML', 'RSS', 'JSON']

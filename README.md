@@ -58,6 +58,9 @@
   支持逐文章关闭（`editUrl: false`）；未配置时**不输出任何元素**
 - 👥 **多作者**：`authors`（列表）→ `author` → `site.Params.author` 逐级回退，**空不虚构**；
   贯通 `<meta>`、JSON-LD（单人 Person / 多人 Person 数组）、RSS（每位作者一个 `<author>`）、卡片与正文
+- 🗂️ **作者档案页（可选启用）**：`params.authors.pages = true` + 注册 `authors` taxonomy 后生成
+  `/authors/` 索引与 `/authors/<名称>/` 档案页（含资料卡、文章互链）；**默认关闭时 URL 结构与历史逐字节一致**，
+  支持 CJK/特殊字符作者名、多语言 hreflang/canonical/RSS/sitemap
 - 🔗 **外链文章**：Front Matter 写 `externalUrl` 即成为"推荐阅读"——
   卡片带徽标与 `target="_blank" rel="noopener"`、canonical 指向站外、RSS `guid isPermaLink="false"`、
   搜索索引 `external:true`；scheme 白名单（`javascript:` 等危险 scheme 视为普通文章）
@@ -279,6 +282,22 @@ hugo server -D      # 打开 http://localhost:1313
     # urlTemplate = 'https://git.example.com/{repo}/-/edit/{branch}/{path}'
                                          # provider='custom' 时使用
                                          # 占位符：{repo} {branch} {path} {file}
+
+  # ---------- 作者档案页（功能四 · 可选启用） ----------
+  # 默认关闭：不输出任何作者档案结构，URL 与历史版本逐字节一致。
+  # 启用需同时注册 [taxonomies] authors（见下方）并设 pages = true。
+  [params.authors]
+    pages = false                        # true = 生成 /authors/ 与 /authors/<名称>/
+    taxonomy = 'authors'                 # 自定义 taxonomy 键名时同步指定（默认 authors）
+    [params.authors.profiles.Tanglx]     # 键名 = 作者名（全部字段可缺省）
+      bio = '作者简介'
+      role = 'Author'
+      location = 'China'
+      avatar = '/images/avatar.png'      # 站内路径；缺失/非法则不渲染
+      url = 'https://example.com'        # 仅接受 http(s)
+      links = [
+        { name = 'GitHub', url = 'https://github.com/you' },
+      ]
 
   # ---------- Mermaid（功能三） ----------
   [params.mermaid]
@@ -826,6 +845,69 @@ authors: ["Tanglx", "Co-author"]   # 优先于 author
 作者信息会贯通 `<meta name="author">`（逗号并列）、JSON-LD（单人 Person / 多人 Person 数组）、
 RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息，全文一致。
 
+### 作者档案页（功能四 · 可选启用）
+
+> **默认关闭，URL 结构零改变。** 作者档案页是一个**可选启用**功能：不配置时主题
+> **不输出任何作者档案结构**，站点 URL、页面数量、HTML 均与历史版本**逐字节一致**。
+> 只有你显式开启后，才会额外生成 `/authors/` 与 `/authors/<名称>/` 页面。
+
+**启用方法（两个条件必须同时满足）**：
+
+```toml
+# 1) 注册一个作者 taxonomy（键名 = Front Matter 字段名，值 = URL 路径）
+[taxonomies]
+  tag = 'tags'
+  category = 'categories'
+  authors = 'authors'          # ← 新增：注册作者 taxonomy
+
+# 2) 显式打开档案页
+[params.authors]
+  pages = true                 # ← 默认 false；不写或写 false 即为关闭
+  # taxonomy = 'authors'       # 可选：自定义 taxonomy 键名时同步指定（默认 authors）
+```
+
+**URL 行为对照**：
+
+| 状态 | 生成页面 | 说明 |
+| --- | --- | --- |
+| 默认（`pages` 未设 / `false`） | 无任何 `/authors/...` | URL 结构与历史版本一致，页面数不变 |
+| 已启用 | `/authors/`（作者列表索引）+ `/authors/<名称>/`（作者档案页） | 索引页复用列表布局；档案页展示该作者全部文章 + 资料卡 |
+
+**单数 `author` 与复数 `authors` 的语义差异（重要）**：
+
+- 只有**复数列表**会在 Hugo taxonomy 中建立 term，例如 `authors: ["Tanglx", "Co-author"]`
+  → 生成 `/authors/tanglx/` 与 `/authors/co-author/` 两个档案页；
+- **单数** `author: "Tanglx"` 仅作**署名回退**（用于 meta / JSON-LD / RSS），
+  **不会**建立 taxonomy term，因此**不会**凭空生成档案页。
+
+**作者资料卡（可选，全部字段可缺省）**：
+
+```toml
+[params.authors.profiles.Tanglx]      # 键名 = 作者名（与 Front Matter 中的写法对应）
+  bio = '独立开发者，关注网络空间安全。'
+  role = 'Author'
+  location = 'China'
+  avatar = '/images/avatar-tanglx.png' # 站内资源路径；走尺寸校验，缺失/非法则不渲染
+  url = 'https://example.com/about'    # 仅接受 http(s)
+  links = [
+    { name = 'GitHub', url = 'https://github.com/you' },
+    { name = 'RSS', url = '/index.xml' },   # 相对链接不受 scheme 限制
+  ]
+```
+
+档案页中每位作者的资料卡来自 `params.authors.profiles.<作者名>`；**无任何资料时不输出空卡片**。
+文章页作者处会渲染为指向档案页的链接（`class="author-link"`）。
+
+**国际化与中文作者名**：档案页标题直接取 taxonomy term 的 **Title**（保留原始写法，如「张伟」），
+因此中文/CJK/特殊字符（`张伟`、`C++ 工程师`、`José` 等）均正常生成；URL 由 Hugo 规范化
+（CJK 为 percent-encoded，如 `/authors/%E5%BC%A0%E4%BC%9F/`），文章页↔档案页链接经
+`site.Taxonomies` 按标题匹配，**不依赖 `urlize`**（后者对 CJK 会返回 NONE）。
+多语言站点下档案页会随当前语言生成，`hreflang`、`canonical`、RSS 与 sitemap 一并生效。
+
+> 示例：`exampleSite` 已启用本功能（作者 `Tanglx` 与 `Nebula Bot`），
+> 构建后访问 `/authors/` 查看索引、`/authors/tanglx/` 查看档案页。
+> 可用门禁 `python tools/check_author_pages.py` 复现全部断言（含"未启用时与历史逐字节一致"）。
+
 ## 外链文章（功能四）
 
 ```yaml
@@ -923,8 +1005,8 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**作者档案页（可选启用 / 索引页+档案页+文章互链 / CJK 与特殊字符 / 多语言 hreflang·canonical / 搜索索引不含 taxonomy / 默认关闭与 HEAD 逐字节一致 / 构建产物 CSS 触控目标契约，43 项）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
+| Browser tests (chromium / firefox / webkit) | 响应式**抽样**审计（chromium 320–1440 共 7 视口；firefox / webkit 375/768/1440 共 3 视口）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
 **job 数量不手写**：`tools/check_ci_jobs.py` 按 GitHub matrix 展开规则算出每个 job 的

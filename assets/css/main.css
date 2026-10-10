@@ -1054,6 +1054,75 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
 .term-card h2 { margin: 0 0 6px; font-size: 16.5px; }
 .term-card p { margin: 0; font-size: 13.5px; color: var(--text-muted); }
 
+/* ---------- 12.2 Author archive pages (feature 4 / M16) ----------
+   仅在启用作者档案页时才有 DOM（默认站点不输出这些元素，无额外字节）。
+   链接触控目标 ≥24px（WCAG 2.5.8）：与 R4-007 同因 —— `min-height` 对
+   **inline 元素无效**，必须先把 display 变成 inline-flex/inline-block 才生效。
+   故此处显式 `display:inline-flex; align-items:center; min-height:26px`
+   （R5-001：首版只写了 color/text-decoration，`<a>` 仍是 inline，
+   在 320–430px 实测 40×24px 被 audit 的 small-tap-target 判红 —— 已修正）。 */
+.author-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;          /* ≥24px（WCAG 2.5.8） */
+  color: var(--brand-ink);
+  text-decoration: none;
+}
+.author-link:hover { text-decoration: underline; }
+
+.author-profile {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+.author-profile-avatar {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.author-profile-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--brand-ink);
+}
+.author-profile-body { min-width: 0; }
+.author-profile-name { margin: 0 0 6px; font-weight: 700; color: var(--text-strong); font-size: 16px; }
+.author-profile-role {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.author-profile-bio { margin: 0 0 8px; font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+.author-profile-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13.5px; }
+.author-profile-loc { color: var(--text-muted); }
+.author-profile-meta a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;          /* 触控目标 ≥24px（WCAG 2.5.8） */
+  color: var(--brand-ink);
+  text-decoration: none;
+}
+.author-profile-meta a:hover { text-decoration: underline; }
+
+@media (max-width: 560px) {
+  .author-profile { flex-direction: column; align-items: center; text-align: center; }
+  .author-profile-meta { justify-content: center; }
+}
+
 /* ---------- 13. Search modal ---------- */
 .search-overlay {
   position: fixed;

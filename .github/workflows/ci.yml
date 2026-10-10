@@ -293,6 +293,12 @@ jobs:
       - name: "New features - fault injection self-proof (4 injections must turn red)"
         run: python3 tools/check_new_features.py --selftest
 
+      # 功能四 / M16：作者档案页（可选启用）。真实产物断言 —— 默认关闭不改变 URL 结构；
+      # 启用后验证索引页/档案页/文章互链/CJK/特殊字符/多语言/分页/sitemap/搜索索引，
+      # 并做"未启用时与 HEAD 逐字节一致"的向后兼容对比。
+      - name: "Author archive pages (opt-in taxonomy / cross-links / CJK / i18n / back-compat)"
+        run: python3 tools/check_author_pages.py
+
       - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
         env:
           DOC_VERSION: '1.0.9'

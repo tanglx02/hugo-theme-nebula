@@ -17,6 +17,11 @@
 - **作者工作流（功能四 / 6.5）**：`util/authors.html` 统一来源，贯通 meta / JSON-LD /
   RSS / 卡片 / 正文；**外链文章（6.6）**：正文页顶部提示条 + 卡片/搜索/RSS 按站外地址直达；
   **编辑此页（6.4）**：`editURL` 模板函数安全拼装（禁 javascript: 等 scheme）。
+- **作者档案页（功能四 / M16，可选启用）**：`util/author-config.html` 单点配置；
+  默认 `params.authors.pages=false`，**不输出任何作者结构，URL 与历史逐字节一致**；
+  启用（注册 `authors` taxonomy + `pages=true`）后生成 `/authors/` 索引与 `/authors/<term>/`
+  档案页并打通文章互链。CJK/特殊字符走 `site.Taxonomies` 按标题匹配（**不用 `urlize`**，规避 CJK `GetPage` NONE）。
+  门禁 `check_author_pages.py` 40 项（多版本矩阵 44 项）。**原「M16 接受为限制」的顾虑（破坏默认 URL 结构）已由可选启用设计化解**，M16 转为已实现。
 - **外观配置完善（功能五 / 6.1）**：`util/appearance.html`，主题色/圆角/字体等外观参数
   收敛为单一生效链，避免配置互相覆盖。
 - **exampleSite 完整功能展示站**：新增「作者与外观」「外链阅读」「媒体与图表」演示文章
@@ -24,6 +29,11 @@
 
 ### 修复（本轮自测暴露，R4 系列）
 
+- **R5-001（产品 · M16 引入的可访问性回归）**：新增的 `.author-link` 首版只写 `color`/`text-decoration`，
+  `<a>` 仍是 **inline** —— `min-height` 对 inline 元素无效（同 R4-007 根因），320–430px 实测 40×24px，
+  被 `audit.py` 的 `small-tap-target`（WCAG 2.5.8）报 24 处。改为 `display:inline-flex; align-items:center;
+  min-height:26px`；并在 `check_author_pages.py` 新增 ON22–ON24 断言**构建产物 CSS** 的触控目标契约。
+  复验：chromium 7 视口 `TOTAL PROBLEMS: 0`；故障注入（退回 inline）→ ON23/ON24 变红。
 - **R4-007（产品）**：外链提示条 flex 块级化导致链接触控目标 98×23px 低于 24px（WCAG 2.5.8），
   `.article-external-notice a` 改 `inline-flex + min-height:26px`。
 - **R4-008（测试）**：`verify_search_shard.py` 断言双读 DOM 造成 firefox 偶发假红，
@@ -34,8 +44,13 @@
 ### 测试与文档
 
 - 故障注入自证：7 组关键门禁全部证明"能失败"（见 tracker §10.5）。
-- 六版本构建矩阵（0.128/0.148/0.162/0.166/0.167）全绿；三浏览器（chromium/firefox/webkit）
-  全量门禁回归通过。
+- 五版本固定矩阵构建全绿（`0.128.0 / 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0`）；
+  三浏览器（chromium/firefox/webkit）全量门禁回归通过。
+  > 更正：此前写作"六版本"，但本地矩阵脚本（`tools/check_content_components.py`
+  > `HUGO_VERSIONS`、`tools/check_author_pages.py` MX 断言）实际只跑 **5 个固定版本**。
+  > CI `build` job 的 matrix 确实有 **6 个条目**，第 6 个是 `latest`（由
+  > `peaceiris/actions-hugo` 动态解析，非固定版本号，无法给出具体版本号/原始日志）。
+  > 两者不可混为一谈，故此处统一更正为"五版本固定矩阵 + CI 含 latest 动态条目"。
 - README 重写（含功能一~五独立小节与完整配置参考）、10 张正式截图（JPG，共 2.75 MB）、
   `theme.toml` 同步。
 

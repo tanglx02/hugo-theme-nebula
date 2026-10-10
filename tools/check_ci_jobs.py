@@ -103,6 +103,8 @@ REQUIRED_STEP_TOKENS = {
         # 末尾的 --selftest 单独登记，保证"故障注入自证"本身不能被悄悄摘掉。
         "check_home_layouts.py", "check_reading_experience.py",
         "check_new_features.py public", "check_new_features.py --selftest",
+        # 功能四 / M16 作者档案页：真实产物门禁（可选启用 / 互链 / CJK / 多语言）。
+        "check_author_pages.py",
     ],
     "browser-tests": [
         "audit.py", "interactions.py", "verify_copy.py", "verify_lightbox.py",

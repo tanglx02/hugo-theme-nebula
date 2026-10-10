@@ -1,0 +1,40 @@
+{{- /* 列表/术语页主体（从 layouts/_default/list.html 抽取，供 term.html 复用）。
+
+     抽取目的：作者档案页（M16）需要"通用列表 + 作者信息头"，直接复制 list.html
+     会造成两处维护。抽成 partial 后，**未启用作者档案页时输出与历史逐字节一致**。
+
+     作者资料头通过 Page.Store 传入（键 nebula_author_name）：
+       调用方（term.html）先 .Store.Set "nebula_author_name" .Title，
+       本 partial 读 .Store.Get；未设置时为空 —— 不输出任何资料区块。
+     用 Store 而非改签名，是为了让 list.html 的调用点保持 `partial ... .` 不变。 */ -}}
+{{- $authorName := .Store.Get "nebula_author_name" | default "" -}}
+{{- $title := .Title -}}
+{{- $sub := "" -}}
+{{- if eq .Kind "taxonomy" -}}
+  {{- $title = printf "%s：%s" (.Data.Singular | title) .Title -}}
+  {{- $sub = i18n "list.taxonomyCount" (dict "n" (len .Pages)) -}}
+{{- else -}}
+  {{- $sub = i18n "list.count" (dict "n" (len .Pages)) -}}
+{{- end -}}
+
+<div class="card page-head">
+  <nav class="breadcrumb">
+    <a href="{{ site.Home.RelPermalink }}">{{ i18n "common.home" }}</a><span>/</span><span>{{ $title }}</span>
+  </nav>
+  <h1>{{ $title }}</h1>
+  <p>{{ $sub }}{{ with .Params.description }} · {{ . }}{{ end }}</p>
+  {{- with $authorName }}{{ partial "author-profile.html" (dict "page" $ "name" .) }}{{ end -}}
+</div>
+
+<div class="layout">
+  <div>
+    <div class="post-list">
+      {{ range .Paginator.Pages }}
+        {{ partial "post-card.html" . }}
+      {{ end }}
+    </div>
+    {{ partial "pagination.html" . }}
+  </div>
+
+  <aside class="sidebar">{{ partial "sidebar.html" . }}</aside>
+</div>

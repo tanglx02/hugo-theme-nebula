@@ -35,6 +35,7 @@ common:
   pagination: 分頁導覽
   prevPage: 上一頁
   nextPage: 下一頁
+  listSep: '、'
 
 search:
   hint: 輸入關鍵字開始搜尋，支援標題 / 標籤 / 內文全文比對

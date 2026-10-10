@@ -159,7 +159,7 @@
 | **M13 KaTeX** | | **✅ 已实现** | `layouts/partials/math.html` + `assets/js/katex-init.js` + `util/detect-math.html`；按需（`nebula_has_math`）、逐页 `<!-- nebula:no-math -->` 关闭、三项资源可 CDN/本地。门禁 M6–M11 |
 | **M14 编辑此页** | | **✅ 已实现** | `layouts/partials/util/edit-url.html`（provider github/gitlab/gitee/custom；源路径逐段 `urlquery`；Windows 反斜杠归一；未配置不输出；文章级 `editUrl: false` 关闭）。门禁 E1–E4 |
 | **M15 多作者 Front Matter** | | **✅ 已实现** | `layouts/partials/util/authors.html`（`authors` 列表 → `author` → `site.Params.author` → 空，**不虚构**）；接入 head/meta、JSON-LD（1 人 Person / 多人 Person 数组）、RSS 多 `<author>`、卡片与正文。门禁 A1–A5 |
-| **M16 独立作者档案页** | | **✅ 已实现（轻量）** | 作者以元信息贯通（卡片/正文/meta/JSON-LD/RSS/索引）；**未建 taxonomies.authors 档案页**——理由见 §11「接受为限制」条目（避免强制开启 taxonomy 改变默认站点结构） |
+| **M16 独立作者档案页** | | **✅ 已实现（可选启用 · 默认不变）** | 单点配置解析 `layouts/partials/util/author-config.html`（**默认 `params.authors.pages=false`**：不输出任何作者结构，URL 与历史**逐字节一致**）；启用后新增 `layouts/_default/term.html` + `layouts/partials/author-profile.html` + `util/author-links.html` / `util/author-inline.html`，生成 `/authors/` 索引与 `/authors/<term>/` 档案页并打通文章↔档案页互链。CJK/特殊字符走 `site.Taxonomies` 按 `Title` 大小写不敏感匹配（**刻意不用 `urlize`**：`urlize "张伟"` 返回 percent-encoded，`site.GetPage` 对 CJK 返回 NONE）。门禁 `tools/check_author_pages.py`（40 条断言，多版本矩阵 44/44）。**原「接受为限制」的核心顾虑——担心新增 taxonomy 破坏默认 URL 结构——已由可选启用设计完全化解**，详见 §11.3 |
 | **M17 外链文章** | | **✅ 已实现** | `layouts/partials/util/external-url.html`（scheme 白名单 http/https/协议相对）；卡片 `.post-card-external` + 徽标 + `target=_blank rel=noopener`；canonical 指向站外；RSS `guid isPermaLink="false"`；索引 `external:true` + 站外 url。门禁 X1–X9 |
 | **M18 嵌套菜单** | | **❌ 未实现** | 价值较低 → **ACCEPTED-LIMITATION**（差距分析 §6 已声明本轮不改；仅做现状核对） |
 | **M19 外观配置** | | **✅ 已实现** | `layouts/partials/util/appearance.html`（`accent/accentColor/contentWidth/lineHeight/fontFamily/cardDensity`；预设白名单 + hex 校验 + 亮度感知压深；**未配置时不输出任何 `<style>`**——默认外观逐字节不变）。门禁 P1–P3 |
@@ -172,9 +172,10 @@
 | `tools/check_home_layouts.py` | 功能一：四种首页布局 + 非法值回退 + 布局切换不影响 feeds/索引 + 多语言 | 是 |
 | `tools/check_reading_experience.py` | 功能二：进度条/返回顶部/专注模式/打印 + 真实浏览器行为 | 是（B 小节真机断言） |
 | `tools/check_new_features.py` | 功能三/四/五：G/X/A/E/P/M 共 **40 项** | 是（`--selftest`：4 类注入 + 基线，5/5） |
+| `tools/check_author_pages.py` | M16 作者档案页：启用/索引页/档案页/资料卡/互链/缺失字段/CJK/特殊字符/canonical/sitemap/RSS/搜索索引/分页/多语言 + **ON22–ON24 构建产物 CSS 触控目标契约** 共 **43 条**；未启用时与 HEAD **逐字节一致** | 是（①站点开关恒假 → 6 条红；②`.author-link` 退回 inline → ON23/ON24 红，见 §10.5） |
 
-三者均已写入 `.github/workflows/ci.yml` 的 `static-checks` job，并登记进 `check_ci_jobs.py`
-的 `REQUIRED_STEP_TOKENS`（删除步骤或改成空命令即判红）。
+三者（外加 `check_author_pages.py` 共四项）均已写入 `.github/workflows/ci.yml` 的 `static-checks` job，
+并登记进 `check_ci_jobs.py` 的 `REQUIRED_STEP_TOKENS`（删除步骤或改成空命令即判红）。
 
 ### 10.2 本轮清理阶段**新发现并修复**的缺陷
 
@@ -188,9 +189,12 @@
 | R4-006 | **P2（测试缺陷）** | 本表 R4-005 新增的两条断言**首版是假守卫**：用子串 `功能五` / `params.mermaid` 匹配，而它们在 README 中出现 3 处 / 2 处 → 故障注入（删标题 / 改配置表名）**仍然全绿** | 改为**结构级判据**：`### 功能N` 标题行精确匹配；配置表须在 `## 完整配置参考` 的 ```toml 代码块内以行首 `[params.x]` 出现 | **故障注入自证（修正后）**：改掉 `### 功能五` → 变红；改掉配置块内 `[params.mermaid]` → 变红。**首版未做注入时看不出来 —— 正是第五节要求"必须证明测试能失败"的直接价值** |
 | R4-007 | **P2（新功能引入的可访问性回归）** | 本轮新增「外链文章」(M17) 的正文页顶部提示条 `.article-external-notice` 使用 `display:flex`；其中的外链主机名链接（如 `attack.mitre.org`）被 flex 上下文**块级化**，失去"正文内联链接"的 WCAG 豁免，在 320–430px 窄视口实测渲染为 **98×23px**，恰好低于 24px 触控目标阈值 → `audit.py` 的 `small-tap-target` 在 4 个窄视口各报 1 处（共 4 处） | `.article-external-notice a` 显式改为 `display:inline-flex; align-items:center; min-height:26px`（≥24px），并保留原配色 | **修复后复验**：同一审计（chromium × 320/375/390/430）由 `3/7 PASSED（4 处问题）` 转为 **`4/4 PASSED，TOTAL PROBLEMS: 0`** |
 | R4-008 | **P2（测试缺陷·假红／flaky）** | `verify_search_shard.py` 的每个断言 lambda 把 `count_items(pg)` / `status_text(pg)` **各自读取两次**（判定一次、拼详情串再各读一次）。异步搜索在两次读取之间改变状态时，出现**自相矛盾的假红**：判定时 `status` 尚为"部分失败"→判红，打印详情时已恢复为 `""`（详情显示 `1 条, status=""`，看起来完全正常）。firefox 上以约 1/几 概率偶发（首轮 firefox 全量跑即命中 1 次 14→13） | 改为**一次快照 + 有界稳定重试**：新增 `read_state(pg)` 一次性读全 `count/status/empty/retry`，判定与详情取自同一时刻；`run_case` 首判失败后等 UI 稳定再判，最多 3 次。真实缺陷是**稳定地坏**的，重试仍判红 → 断言强度不变，仅消除"读得太早" | **修复后复验**：firefox 连跑 3 次均 **14/14 PASSED**；chromium 与 webkit 亦全绿。**这是第五节"重要测试必须证明能失败、不能偶发假红"的直接产物** |
+| **R5-001** | **P2（本轮 M16 引入的可访问性回归）** | M16 新增的 `.author-link`（文章页作者链接）CSS 首版只写了 `color`/`text-decoration`，`<a>` 仍是 **inline** 元素 —— 而 **`min-height` 对 inline 元素无效**（与 R4-007 同根因）。结果在 320–430px 实测渲染为 **40×24px / 69×24px**，被 `audit.py` 的 `small-tap-target`（WCAG 2.5.8）在 4 个窄视口各报 6 处（共 **24 处** `TOTAL PROBLEMS`）。**M16 的静态门禁 `check_author_pages.py` 当时只断言"链接存在/指向正确"，抓不到像素高度 —— 正是第五节"不得只增加字符串断言、要验证真实产物"的直接体现（该缺陷由真实浏览器审计发现）** | `.author-link` 显式改为 `display:inline-flex; align-items:center; min-height:26px`；并在 `check_author_pages.py` 新增 **ON22–ON24**：直接断言**构建产物打包 CSS**（`main.min.<hash>.css`）中的 `.author-link` 规则必须含 `display:inline-flex/inline-block` 且 `min-height ≥ 24px` | **修复后复验**：同一审计（chromium × 320/375/390/430/768/1024/1440）由 `3/7 PASSED（24 处问题）` 转为 **`7/7 PASSED，TOTAL PROBLEMS: 0`**；**故障注入自证**：把 `.author-link` 改回 inline（去掉 display/min-height）→ **ON23/ON24 变红（41/43）**，还原后 47/47 |
 
 > 编号说明：R4-007/R4-008 均在本轮**最终自测阶段**由真实运行发现（前者为产品缺陷、后者为测试缺陷），
 > 与 R4-001~006（清理阶段发现）连续编号，共同构成本轮"自测暴露并当场修复"的闭环。
+> **R5-001** 为本轮**独立验收前收尾阶段**（M16 引入后重跑三浏览器审计）发现的产品缺陷，
+> 是"真实浏览器审计 > 静态字符串断言"的又一实证。
 
 ---
 
@@ -209,6 +213,8 @@
 | `check_reading_experience.py` | `assets/css/main.css` 将 5 处 `@media print` 破坏为 `@media printzz` | 77/79（B4 打印隐藏 2 条红，真实浏览器 emulate print 捕获），EXIT=1 | 5 处还原核验存在 |
 | `audit.py`（tap-target） | 即 R4-007 真实产品缺陷（flex 块级化 23px 触控目标） | 4 处 small-tap-target | CSS 修复后 TOTAL PROBLEMS: 0 |
 | `verify_search_shard.py`（firefox） | 即 R4-008 真实测试缺陷（双读 DOM 假红） | firefox 13/14 假红 | 快照+重试修复后 3 连跑 14/14 |
+| `check_author_pages.py` | `layouts/partials/util/author-links.html` 的站点开关 `if $cfg.enabled` 改 `if false` | 34/40（ON15/16/17/18/20 互链 + ML6 多语言链接共 **6 条变红**），EXIT=1 | 还原回读核验，40/40，EXIT=0 |
+| `check_author_pages.py`（R5-001） | `assets/css/main.css` 的 `.author-link` 去掉 `display:inline-flex` 与 `min-height`（退回 inline） | 41/43（**ON23 + ON24** 变红：inline 元素 min-height 无效），EXIT=1 | 还原后 47/47，EXIT=0 |
 
 > 备注：对 `check_home_layouts` 首次尝试用 `home-profile-BROKEN` 注入**未变红**——因为
 > `contains()` 是子串匹配，`home-profile-BROKEN` 仍包含 `home-profile`。属注入方法问题而非
@@ -220,18 +226,24 @@
 
 - 历史 44 项（P1×3 / P2×5 / P3×7 / TEST-DEFECT×20 / SEC×4 / DOC×5）：**除 P3-003/P3-004/SEC-02 为 ACCEPTED-LIMITATION、019/020 归并入 R2 系列外，全部 FIXED**。
 - R2 系列 13 项 + R3 系列 6 项：**全部 FIXED**（R2-001/002/003/006 需本轮重跑故障注入复核）。
-- 功能缺口 M1~M10 已实现；**M11~M15、M17、M19 已实现**；M16 为轻量实现（见下）；
-  M18 接受为限制；M20 随文档补齐。
+- 功能缺口 M1~M10 已实现；**M11~M17、M19 已实现**；**M16 本轮由「轻量实现 / 接受为限制」
+  升级为可选启用完整实现**（默认行为不变，见 §11.3）；M18 接受为限制；M20 随文档补齐。
 
 ### 11.1 明确保留的限制（不做，且写明原因与用户影响）
 
 | 项 | 状态 | 为什么不做 | 用户影响 |
 | --- | --- | --- | --- |
-| M16 作者档案页 | **ACCEPTED-LIMITATION** | 需要新增 `taxonomies.authors`，会改变**默认站点 URL 结构**（所有站点凭空多出 `/authors/...` 页面），属于破坏性默认值变更，主题不应替用户决定。作者信息已通过 meta / JSON-LD / RSS / 卡片 / 正文全部贯通，搜索引擎与聚合器可正常识别。 | 无独立作者列表页；需要者可按 README 自行加 taxonomy |
 | M18 嵌套菜单 | **ACCEPTED-LIMITATION** | 差距分析 §6 已评估价值较低，且会显著增加菜单模板复杂度与回归面 | 两级以内菜单可用 |
 | BUG-P3-003 / SEC-02 第三方 SRI/CSP | **ACCEPTED-LIMITATION** | 不预置哈希（会随上游版本漂移而失效并误伤用户）、不写死 CSP（需按用户实际启用的服务定制）。默认**全部第三方功能关闭** | 启用第三方服务者需自行配置 integrity / CSP，README 已给模板 |
 | BUG-P3-004 正文外链图无尺寸 | **ACCEPTED-LIMITATION** | 外链图片尺寸在构建期不可知 | 有 CLS 风险，已在 README「图片处理」提示；本轮画廊复用 Pipeline 已尽量补尺寸 |
 | OBS-R2-001 弹窗无关闭按钮 | **ACCEPTED-LIMITATION** | 界面已有 Esc 提示，加按钮会与极简设计冲突 | 非缺陷 |
+
+> **历史记录保留（不删除已处理项）**：**M16 作者档案页**曾在本表登记为 `ACCEPTED-LIMITATION`，
+> 当时理由为「新增 `taxonomies.authors` 会改变默认站点 URL 结构，属破坏性默认值变更」。
+> 本轮经项目所有者要求重新评估：该顾虑通过**可选启用**设计（默认 `params.authors.pages=false`，
+> 未启用时产物与历史**逐字节一致**）已完全化解，**并非技术障碍**（跨 Hugo 0.128.0/0.148.0/0.167.0
+> 探针实测 taxonomy 作者页含 CJK/特殊字符行为一致）。M16 因此**转为已实现**，从「保留限制」
+> 移出——**此处保留原判定与撤销原因，供后续追溯**，详见 §11.3。
 
 ### 11.2 本轮未做验证的路径（诚实登记，不冒充已验）
 
@@ -239,5 +251,43 @@
   关闭态零请求，**未连真实后端发帖**（需账号，非主题能力范围）。
 - **hugo server 实时预览（livereload）**：只验生产产物**不含** livereload，未做长时预览会话。
 - **超大规模站点**（>2000 篇）：压力数据到 2000 篇已验证索引与搜索，未做更大规模。
+
+### 11.3 M16 作者档案页——实现记录与验证证据（本轮新增）
+
+**范围变更**：M16 由「轻量实现（仅元信息贯通）+ ACCEPTED-LIMITATION」变更为
+**可选启用完整实现**。原限制理由（担心破坏默认 URL 结构）不成立——用可选启用即可保证默认零改变。
+
+**设计要点（向后兼容）**：
+
+- **单点配置**：`layouts/partials/util/author-config.html` 是主题**唯一**作者档案配置入口，
+  返回 `dict {enabled, taxonomy, profiles}`。默认（未配置或 `params.authors.pages=false`）返回
+  `enabled=false`，**模板不输出任何作者结构**。
+- **启用条件（须同时满足）**：`[taxonomies]` 注册了作者 taxonomy（默认键名 `authors`，
+  可经 `params.authors.taxonomy` 改名）**且** `params.authors.pages=true`。
+  若声明启用但 taxonomy 未真正注册 → 自动降级 `enabled=false`（避免死链）。
+- **URL 行为**：默认**零改变**（无 `/authors/...`，页面数不变）；启用后生成
+  `/authors/`（索引，复用 `list.html`）与 `/authors/<term>/`（档案页，`term.html`）。
+- **单数/复数语义（Hugo 既有机制，非主题行为）**：只有复数列表 `authors: ["A","B"]` 建立
+  taxonomy term；单数 `author: "X"` 仅作署名回退，**不建立 term**（因此不会凭空生成档案页）。
+- **CJK/特殊字符**：**刻意不用 `urlize` 拼路径**——`urlize "张伟"` 返回 percent-encoded
+  （`%E5%BC%A0%E4%BC%9F`）、`+` 会被转义为 `&#43;`，且 `site.GetPage "/authors/<urlize>"`
+  对 CJK 返回 NONE。改为遍历 `site.Taxonomies` 按 `Page.Title` **大小写不敏感**匹配 RelPermalink。
+- **资料卡**：`layouts/partials/author-profile.html`，字段全可选（`bio/role/location/avatar/url/links`）；
+  `avatar` 走 `util/avatar-url.html` 校验，`url`/`links` 只接受 `http(s)`；无资料时**不输出空区块**。
+
+**验证证据**（门禁 `tools/check_author_pages.py`）：
+
+| 证据 | 结果 |
+| --- | --- |
+| 门禁断言 | **43/43**（设置 `HUGO_MATRIX_DIR` 时 **47/47**，含 MX 多版本断言） |
+| 触控目标契约（R5-001） | ON22–ON24 断言**构建产物 CSS** 中 `.author-link` 必须 `display:inline-flex/inline-block` 且 `min-height ≥ 24px`；audit 实测 7/7、`TOTAL PROBLEMS: 0` |
+| 向后兼容（BC1） | 同一份内容分别挂 HEAD 主题与当前主题构建，规范化 CSS 指纹与 `lastBuildDate` 后 **131 页逐字节一致（差异 0）** |
+| 跨版本一致 | 0.128.0 / 0.148.0 / 0.167.0 均 `pages=291 / authors=5 / author-link=2` |
+| 多语言 | 中文作者页 `/authors/张伟/` 资料卡正常；文章页链到 `/authors/%E5%BC%A0%E4%BC%9F/`；hreflang zh-CN↔en-US 双向；canonical 各语言正确 |
+| SEO/索引 | sitemap 收录作者页；taxonomy RSS 生成；**搜索索引 47 条不变且不含** taxonomy 页 |
+| 故障注入自证 | ①令 `author-links.html` 站点开关恒假 → 互链/多语言共 **6 条断言变红**；②令 `.author-link` 退回 inline → **ON23/ON24 变红（41/43）** |
+| CI 接入 | `static-checks` job 新增步骤 + `check_ci_jobs.py` `REQUIRED_STEP_TOKENS` 登记 token |
+
+> 说明：上述均为**开发方自测**（本地真实构建产物断言 + 故障注入），**尚未经独立第三方验收**。
 
 > 更新记录：本表随本轮开发进展持续更新；最终版本以 `feat/theme-feature-completion` 分支 tip 上的文件为准。

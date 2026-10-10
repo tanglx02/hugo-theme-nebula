@@ -38,9 +38,16 @@
 {{- $showTOC := (partial "util/bool-param.html" (dict "page" . "key" "toc" "default" $d.toc)).value -}}
 
 {{- /* 作者（功能四 / 6.5）：统一走 util/authors.html，与卡片 / RSS / JSON-LD 同源。
-     .primary 用于"作者：X"，.csv 用于多作者并列展示。 */ -}}
+     .primary 用于"作者：X"，.csv 用于多作者并列展示。
+     作者档案页（M16）：启用时每个作者名链接到其档案页（util/author-links.html
+     按名匹配 term，兼容 CJK / 特殊字符）；未启用时 .url 恒为空，
+     输出纯文本 —— 与历史逐字节一致。 */ -}}
 {{- $authors := partial "util/authors.html" (dict "page" .) -}}
 {{- $authorText := $authors.csv -}}
+{{- $authorLinks := partial "util/author-links.html" (dict "page" .) -}}
+{{- /* 是否存在任一可链接作者：在块外判定，使"无链接"分支的空白与历史逐字节一致。 */ -}}
+{{- $anyAuthorLink := false -}}
+{{- range $authorLinks -}}{{ if .url }}{{ $anyAuthorLink = true }}{{ end }}{{ end -}}
 
 {{- /* 外链文章（功能四 / 6.6）：front matter `externalUrl` 合法时，正文页顶部给出
      明确跳转提示，标题/主链接指向站外。scheme 校验在 util/external-url.html 内完成。 */ -}}
@@ -117,11 +124,14 @@
           </span>
           {{ end }}
           {{- /* 作者展示（功能四 / 6.5）：有作者时显示；多作者并列（.csv）。
-               空不虚构 —— 无作者则整段不输出。 */ -}}
+               空不虚构 —— 无作者则整段不输出。
+               作者档案页（M16）：启用且有档案页的作者名渲染为 <a>；
+               否则 util/author-inline.html 原样输出 $authorText（.csv），
+               与历史逐字节一致。空白由 partial 内部 trim 收口，不额外增删。 */ -}}
           {{ with $authorText }}
           <span class="stat stat-author">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0113 0"/></svg>
-            {{ . }}
+            {{ partial "util/author-inline.html" (dict "text" $authorText "links" $authorLinks) }}
           </span>
           {{ end }}
           {{ with .Params.categories }}
