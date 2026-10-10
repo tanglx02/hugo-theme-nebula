@@ -137,6 +137,46 @@ def run(h):
     # ⓹ Release 全站审计表述一致性
     check_truth_wording(h)
 
+    # ⑤b README 引用的本地图片必须真实存在
+    # 背景：截图本轮从 .png 改为 .jpg 并重命名（如 03-post-dark → 05-post-dark），
+    # 若只改一处引用就会得到 GitHub 上的破图 —— 静态检查应能立刻发现。
+    # 注意：必须先剥掉 ``` 围栏代码块 —— 里面的 `![x](photo.png)` 是**示例文本**，
+    # 不是真实引用（否则会误判为破图）。
+    readme_prose = re.sub(r'```.*?```', '', readme, flags=re.S)
+    readme_prose = re.sub(r'`[^`\n]*`', '', readme_prose)      # 行内 code
+    refs = re.findall(r'!\[[^\]]*\]\((?!https?://)([^)\s]+)\)', readme_prose)
+    pic_missing = [r for r in refs if not os.path.isfile(os.path.join(ROOT, r))]
+    h.record("README 引用的本地图片全部存在（防破图）",
+             not pic_missing and bool(refs),
+             f"缺失: {pic_missing[:5]}" if pic_missing
+             else f"{len(refs)} 个本地图片引用均可解析")
+
+    # ⑤c README 必须覆盖本轮五个新功能分组
+    # 用**标题行**匹配而非子串："功能五"在正文里还会以注释、章节名出现，
+    # 子串匹配会让"删掉标题"这类注入静默通过（实测过：假守卫）。
+    FEATURE_HEADINGS = [f"### 功能{n}" for n in ("一", "二", "三", "四", "五")]
+    absent_groups = [g for g in FEATURE_HEADINGS if g not in readme]
+    h.record("README 特性含功能一~五的独立小标题",
+             not absent_groups, f"缺少: {absent_groups}" if absent_groups
+             else "五个分组标题齐全")
+
+    # ⑤d 新功能的配置必须出现在配置参考里
+    # 同样按 **TOML 表头**（行首 `[params.x]`）匹配 —— 正文里提到配置名不算文档化。
+    # 且必须在"完整配置参考"的代码块区间内，避免正文散落提及就蒙混过关。
+    cfg_block = re.search(r'## 完整配置参考\s*```toml(.*?)```', readme, re.S)
+    if not cfg_block:
+        h.record("README 配置参考含新功能配置项", False, "找不到「完整配置参考」的 toml 代码块")
+    else:
+        cfg_body = cfg_block.group(1)
+        REQUIRED_CONFIG_TABLES = ["[params.home]", "[params.reading]", "[params.appearance]",
+                                 "[params.editUrl]", "[params.mermaid]", "[params.math]"]
+        absent_keys = [k for k in REQUIRED_CONFIG_TABLES
+                       if not re.search(r'^\s*' + re.escape(k) + r'\s*$',
+                                        cfg_body, re.M)]
+        h.record("README 配置参考含新功能配置表（TOML 表头级匹配）",
+                 not absent_keys, f"缺少: {absent_keys}" if absent_keys
+                 else f"{len(REQUIRED_CONFIG_TABLES)} 组配置表均在配置参考代码块内")
+
     # ⑤ CHANGELOG 存在且有当前版本
     # TEST-DEFECT-011：旧实现把默认版本硬编码为 1.0.7，不设 DOC_VERSION 时
     # 校验的是"两个版本之前"的条目 -> 本地/其它调用方必然假绿。

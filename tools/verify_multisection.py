@@ -6,8 +6,8 @@
 用法（CI 与本地一致）：
     python tools/verify_multisection.py
 环境变量：
-    SITE_DIR   站点目录（默认 ../myblog）
-    HUGO_ARGS  传给 hugo 的额外参数（CI 用 '--source . --themesDir ../..'）
+    SITE_DIR   站点目录（默认仓库自带 `exampleSite`；兼容旧的 `myblog` 布局）
+    HUGO_ARGS  传给 hugo 的额外参数（用 exampleSite 时自动补 `--source . --themesDir ../..`）
     HUGO_BIN   hugo 可执行文件（默认 PATH 中的 hugo）
     KEEP_TMP=1 保留本次临时目录以便排查（默认不保留）
 
@@ -30,9 +30,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _testlib import Harness, guard, TempWorkspace, fresh_dir  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-SITE = os.path.abspath(os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog"))
+
+# 站点目录解析（BUG：旧默认指向仓库内 `myblog`，该目录早已移出仓库 ->
+# 本地直接运行必然 FileNotFoundError，而 CI 因显式传 SITE_DIR 侥幸通过，
+# 属于"只在 CI 里能跑"的隐性缺陷）。
+# 现在：显式 SITE_DIR 优先；否则用仓库自带的 exampleSite；都不存在才回退 myblog
+# （兼容仍按旧结构组织站点的使用者）。
+def _resolve_site():
+    env = os.environ.get("SITE_DIR")
+    if env:
+        return os.path.abspath(env)
+    for cand in (os.path.join(ROOT, "exampleSite"),
+                 os.path.join(ROOT, "myblog")):
+        if os.path.isdir(cand):
+            return os.path.abspath(cand)
+    return os.path.abspath(os.path.join(ROOT, "exampleSite"))
+
+
+SITE = _resolve_site()
 HUGO = os.environ.get("HUGO_BIN", "hugo")
 HUGO_ARGS = os.environ.get("HUGO_ARGS", "").split() if os.environ.get("HUGO_ARGS") else []
+# 用仓库自带 exampleSite 时必须显式给出主题目录（它不通过 themes/ 子目录引用主题），
+# 否则 `hugo` 会找不到主题而构建失败 —— 这正是 CI 里写死 HUGO_ARGS 的原因。
+if not HUGO_ARGS and os.path.basename(SITE) == "exampleSite":
+    HUGO_ARGS = ["--source", ".", "--themesDir", "../.."]
 CONFIG_NAME = "ms-verify.toml"
 
 SECTIONS = ["posts", "tutorials", "notes", "projects"]
@@ -140,8 +161,43 @@ def _checks(ws, cfg_name):
 
     # ---------------- 1. 首页 ----------------
     home = read(multi, "index.html") or ""
-    for sec, (title, marker) in MARKERS.items():
-        H.record(f"首页包含 {sec} 的文章", title in home, title)
+    home_default = read(default, "index.html") or ""
+
+    # 首页**按设计**只展示最新 homePostCount(8) 篇并按日期排序。因此"每个 section 都必须
+    # 出现在首页"是一个**错误断言**：它会随夹具日期先后偶发射穿（实测：projects 夹具
+    # date 2026-09-27/28 较新而入选，tutorials 09-24 与 notes 09-26 被挤出最新窗口）。
+    #
+    # 正确的可证伪断言是校验首页的**数据源**是否跟随 `params.content.sections`：
+    #   * 默认（sections=posts）：首页卡片**不得**越出 posts；
+    #   * 多 section：首页卡片**必须**出现 posts 之外的配置 section
+    #     （若模板把 posts 写死，此项立即变红），且不得越出配置集合。
+    # 判据与夹具日期先后无关，只要 sections 配置被遵守即恒成立。
+    def card_hrefs(html):
+        out = []
+        for c in re.findall(r'<article class=["\']?post-card.*?</article>', html, re.S):
+            m = re.search(r'href=["\']?([^"\'> ]+)', c)
+            if m:
+                out.append(m.group(1))
+        return out
+
+    def section_of(href):
+        if href.startswith(("http://", "https://", "//")):
+            return None            # 外链文章没有站内 section
+        m = re.match(r'^/([^/]+)/', href)
+        return m.group(1) if m else None
+
+    configured = set(SECTIONS)
+
+    d_secs = {s for s in (section_of(h) for h in card_hrefs(home_default)) if s}
+    H.record("[默认配置] 首页卡片只来自 posts（不泄漏其它 section）",
+             d_secs <= {"posts"}, f"实际出现: {sorted(d_secs)}")
+
+    m_secs = {s for s in (section_of(h) for h in card_hrefs(home)) if s}
+    H.record("[多section] 首页出现 posts 之外的配置 section（数据源非写死 posts）",
+             bool(m_secs - {"posts"}), f"实际出现: {sorted(m_secs)}")
+    H.record("[多section] 首页卡片不越出配置的 sections",
+             m_secs <= configured, f"实际出现: {sorted(m_secs)}")
+
     # 首页本身不翻页（设计如此：固定展示 homePostCount 篇 + "浏览更多"），
     # 因此这里验证：首页卡片数量符合配置、存在进入全量列表的入口、区块列表页分页可用。
     cards = len(re.findall(r'class=["\']?post-card', home))

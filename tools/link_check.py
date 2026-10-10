@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""静态死链与资源检查：扫描 public/ 下所有 HTML，校验站内链接与静态资源是否存在。
+"""静态死链与资源检查：扫描构建产物目录下所有 HTML，校验站内链接与静态资源是否存在。
+
+用法：
+    python tools/link_check.py [构建产物目录]
+
+缺省产物目录统一为 `<repo>/public`（见 `_testlib.default_build_dir`）。
+此前缺省写死为 `<repo>/myblog/public` —— 该目录早已不在仓库里，**裸跑必然
+"目录不存在"**，而 CI 因显式传参侥幸通过（属"只在 CI 里能跑"的隐性缺陷）。
 
 退出码约定（见 tools/_testlib.py）：
   * 发现死链                    -> exit 1
@@ -12,8 +19,10 @@ import re
 import sys
 from urllib.parse import unquote, urlparse
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "myblog", "public")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _testlib import default_build_dir  # noqa: E402
+
+ROOT = default_build_dir()
 ROOT = os.path.normpath(ROOT)
 
 # 已知的"故意断链"白名单（压力测试数据）：用于验证图片缺失时的降级渲染，
@@ -38,6 +47,13 @@ if not os.path.isdir(ROOT):
 
 # 兼容 hugo --minify 输出（属性可能不带引号）
 HREF_RE = re.compile(r'(?:href|src)=(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))')
+# 兼容性修补（本轮）：扫描前**剥离**代码如下文与注释。
+# 原因：行内 code span（单反引号）里的示例文本如 `href="{{ .Get 1 }}"`
+# 会被裸正则当作真实链接，进而被判为死链 —— 这是**假红**，不是产品缺陷。
+# `<pre>` / `<code>` 内的内容是供人阅读的示例，不是可导航链接；HTML 注释同理。
+# 剥离后仍保留"扫描到 0 条链接即失败"的保护，避免检查失去对象后假绿。
+CODE_OR_COMMENT_RE = re.compile(r'<code\b[^>]*>.*?</code>|<pre\b[^>]*>.*?</pre>|<!--.*?-->',
+                                re.S | re.I)
 HTML_FILES = []
 
 for dirpath, _, files in os.walk(ROOT):
@@ -75,6 +91,8 @@ for html in HTML_FILES:
         content = open(html, encoding="utf-8", errors="ignore").read()
     except Exception:
         continue
+    # 剥离 code/pre/注释后再提取链接（见 CODE_OR_COMMENT_RE 注释：避免代码示例被当链接）
+    content = CODE_OR_COMMENT_RE.sub(" ", content)
     for match in set(HREF_RE.findall(content)):
         u = (match[0] or match[1] or match[2] or "").strip()
         if not u or u.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):

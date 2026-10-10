@@ -27,8 +27,29 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-SITE = os.environ.get("SITE_DIR") or os.path.join(ROOT, "myblog")
+
+
+def _resolve_site():
+    """站点目录：显式 SITE_DIR 优先，其次仓库自带 exampleSite，最后兼容旧的 myblog。
+
+    与 verify_multisection / subdir_test 同一处理 —— 旧默认写死 `<repo>/myblog`，
+    该目录早已移出仓库，**裸跑必然失败**（CI 因显式传 SITE_DIR 侥幸通过）。
+    """
+    env = os.environ.get("SITE_DIR")
+    if env:
+        return os.path.abspath(env)
+    for cand in (os.path.join(ROOT, "exampleSite"),
+                 os.path.join(ROOT, "myblog")):
+        if os.path.isdir(cand):
+            return os.path.abspath(cand)
+    return os.path.abspath(os.path.join(ROOT, "exampleSite"))
+
+
+SITE = _resolve_site()
 HUGO_ARGS = shlex.split(os.environ.get("HUGO_ARGS", ""))
+# 用仓库自带 exampleSite 时须显式给出主题目录（不经 themes/ 子目录引用主题）。
+if not HUGO_ARGS and os.path.basename(SITE) == "exampleSite":
+    HUGO_ARGS = ["--source", ".", "--themesDir", "../.."]
 HUGO = os.environ.get("HUGO_BIN", "hugo")   # CI 中 hugo 已在 PATH；本地可用 HUGO_BIN 指定
 # 引擎参数（TEST-DEFECT-R2-002）：baseURL 路径解析在不同引擎下有差异，
 # 支持在 chromium / firefox / webkit 上运行（默认 chromium 保持向后兼容）。

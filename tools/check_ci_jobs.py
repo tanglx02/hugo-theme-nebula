@@ -99,6 +99,10 @@ REQUIRED_STEP_TOKENS = {
         "check_html_quality.py", "security_baseline.py",
         "test_pagination_retry.py", "test_inventory.py", "check_seo.py",
         "check_comments.py", "check_pagination.py", "verify_multilingual.py",
+        # 功能一 / 二 / 三·四·五 的产物门禁：删除或改空命令即判红。
+        # 末尾的 --selftest 单独登记，保证"故障注入自证"本身不能被悄悄摘掉。
+        "check_home_layouts.py", "check_reading_experience.py",
+        "check_new_features.py public", "check_new_features.py --selftest",
     ],
     "browser-tests": [
         "audit.py", "interactions.py", "verify_copy.py", "verify_lightbox.py",

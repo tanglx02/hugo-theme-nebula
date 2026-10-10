@@ -52,6 +52,10 @@ ALLOWED_LINK_HOSTS = {
     # IANA 保留的示例域名：tools/gen_testdata.py 用它构造"链接包裹的图片"等
     # 刻意外链样本（修好 minify 漏检后（TEST-DEFECT-002）该真实外链才被看见）
     "example.com", "example.org", "example.net",
+    # exampleSite 的"外链文章"演示（content/posts/external-reading.md 用 externalUrl
+    # 指向 MITRE ATT&CK 知识库）：这是**内容里的普通外链**，不是主题加载的资源，
+    # 属于正常引用，列入可见白名单（每次命中都会打印，仍可审计）。
+    "attack.mitre.org",
 }
 
 
