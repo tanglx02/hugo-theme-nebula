@@ -30,7 +30,7 @@
 | M16 引入前基线 | — | `37c3da646cce27be789c1a9f9060b25615c72cdb`（BC1 对照） |
 | `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动，仍指向 `bc152c8`） | 同左，**未移动** |
 | 已含 | `origin/main`、`fix/third-party-audit-v1.0.9-r2`、第二轮修复（`b2d2c71`）、R2-009 修复（`59e7f30`） | 另含 M16 实现与口径纠正（`2593ead`）+ 交接一致性核验（`897f1e0`） |
-| 领先 `origin/main` | 26 提交 | **33** 提交（`origin/main..HEAD` = 33，`HEAD..origin/main` = 0） |
+| 领先 `origin/main` | 26 提交 | 内容冻结提交 `897f1e0…` 领先 **33** 提交、落后 **0**（归属固定提交，不随 tip 漂移） |
 | 分支是否已推送 | 否 | **是**（`origin/feat/theme-feature-completion`，内容冻结提交 `897f1e0…`，快进推送；远端 tip 以 `git ls-remote` 为准） |
 
 ---
