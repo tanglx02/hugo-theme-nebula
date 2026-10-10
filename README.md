@@ -59,7 +59,8 @@
 - 👥 **多作者**：`authors`（列表）→ `author` → `site.Params.author` 逐级回退，**空不虚构**；
   贯通 `<meta>`、JSON-LD（单人 Person / 多人 Person 数组）、RSS（每位作者一个 `<author>`）、卡片与正文
 - 🗂️ **作者档案页（可选启用）**：`params.authors.pages = true` + 注册 `authors` taxonomy 后生成
-  `/authors/` 索引与 `/authors/<名称>/` 档案页（含资料卡、文章互链）；**默认关闭时 URL 结构与历史逐字节一致**，
+  `/authors/` 索引与 `/authors/<名称>/` 档案页（含资料卡、文章互链）；**未注册 `authors` taxonomy 时
+  不生成任何 `/authors/` 页面，产物与历史版本一致（规范化打包 CSS 指纹与 RSS 时间戳后逐字节相同，BC1）**，
   支持 CJK/特殊字符作者名、多语言 hreflang/canonical/RSS/sitemap
 - 🔗 **外链文章**：Front Matter 写 `externalUrl` 即成为"推荐阅读"——
   卡片带徽标与 `target="_blank" rel="noopener"`、canonical 指向站外、RSS `guid isPermaLink="false"`、
@@ -284,7 +285,7 @@ hugo server -D      # 打开 http://localhost:1313
                                          # 占位符：{repo} {branch} {path} {file}
 
   # ---------- 作者档案页（功能四 · 可选启用） ----------
-  # 默认关闭：不输出任何作者档案结构，URL 与历史版本逐字节一致。
+  # 默认关闭：不输出任何作者档案结构；未注册 authors taxonomy 时 URL 与历史版本一致（BC1 规范化后逐字节相同）。
   # 启用需同时注册 [taxonomies] authors（见下方）并设 pages = true。
   [params.authors]
     pages = false                        # true = 生成 /authors/ 与 /authors/<名称>/
@@ -848,7 +849,8 @@ RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息�
 ### 作者档案页（功能四 · 可选启用）
 
 > **默认关闭，URL 结构零改变。** 作者档案页是一个**可选启用**功能：不配置时主题
-> **不输出任何作者档案结构**，站点 URL、页面数量、HTML 均与历史版本**逐字节一致**。
+> **不输出任何作者档案结构**；只要站点**不注册 `authors` taxonomy**，站点 URL 结构与页面数量
+> 就与历史版本一致（门禁 BC1：规范化打包 CSS 指纹与 RSS 时间戳后**逐字节一致**）。
 > 只有你显式开启后，才会额外生成 `/authors/` 与 `/authors/<名称>/` 页面。
 
 **启用方法（两个条件必须同时满足）**：
@@ -889,9 +891,9 @@ RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息�
   location = 'China'
   avatar = '/images/avatar-tanglx.png' # 站内资源路径；走尺寸校验，缺失/非法则不渲染
   url = 'https://example.com/about'    # 仅接受 http(s)
-  links = [
+  links = [                            # ⚠ links.url 仅接受 http(s)；相对链接（如 '/index.xml'）会被忽略
     { name = 'GitHub', url = 'https://github.com/you' },
-    { name = 'RSS', url = '/index.xml' },   # 相对链接不受 scheme 限制
+    { name = 'Blog', url = 'https://blog.example.com' },
   ]
 ```
 
@@ -906,7 +908,8 @@ RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息�
 
 > 示例：`exampleSite` 已启用本功能（作者 `Tanglx` 与 `Nebula Bot`），
 > 构建后访问 `/authors/` 查看索引、`/authors/tanglx/` 查看档案页。
-> 可用门禁 `python tools/check_author_pages.py` 复现全部断言（含"未启用时与历史逐字节一致"）。
+> 可用门禁 `python tools/check_author_pages.py` 复现全部断言（含 BC1："不注册 taxonomy 时与
+> 「无本功能」基线主题 `37c3da6` 规范化后逐字节一致"，43 项；设 `HUGO_MATRIX_DIR` 时 47 项）。
 
 ## 外链文章（功能四）
 
@@ -1005,7 +1008,7 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**作者档案页（可选启用 / 索引页+档案页+文章互链 / CJK 与特殊字符 / 多语言 hreflang·canonical / 搜索索引不含 taxonomy / 默认关闭与 HEAD 逐字节一致 / 构建产物 CSS 触控目标契约，43 项）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**作者档案页（可选启用 / 索引页+档案页+文章互链 / CJK 与特殊字符 / 多语言 hreflang·canonical / 搜索索引不含 taxonomy / 不注册 taxonomy 时与「无本功能」基线主题规范化后逐字节一致（BC1）/ 构建产物 CSS 触控目标契约，43 项）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
 | Browser tests (chromium / firefox / webkit) | 响应式**抽样**审计（chromium 320–1440 共 7 视口；firefox / webkit 375/768/1440 共 3 视口）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
@@ -1160,7 +1163,7 @@ CI 结构 / 测试工具 / inventory / 分页 / 搜索 / Modal / i18n / 图片 /
 
 - 抽取 `createModalA11y` 轻量工厂（零依赖），**灯箱与搜索共用同一份契约**：
   焦点移入 / Tab 循环 / 背景 inert / Escape / 遮罩关闭 / 焦点恢复 / 幂等开关
-- 新增 `verify_search_modal.py`（14 类断言 19 项），含 zh-CN / en / zh-TW 可访问名称
+- 新增 `verify_search_modal.py`（19 项断言），含 zh-CN / en / zh-TW 可访问名称
 - 改进 `/` 快捷键：原先要求焦点恰为 body，关闭搜索后快捷键会失效
 
 **日期格式统一到 i18n**

@@ -21,7 +21,9 @@
   默认 `params.authors.pages=false`，**不输出任何作者结构，URL 与历史逐字节一致**；
   启用（注册 `authors` taxonomy + `pages=true`）后生成 `/authors/` 索引与 `/authors/<term>/`
   档案页并打通文章互链。CJK/特殊字符走 `site.Taxonomies` 按标题匹配（**不用 `urlize`**，规避 CJK `GetPage` NONE）。
-  门禁 `check_author_pages.py` 40 项（多版本矩阵 44 项）。**原「M16 接受为限制」的顾虑（破坏默认 URL 结构）已由可选启用设计化解**，M16 转为已实现。
+  门禁 `check_author_pages.py` **43 项（设 `HUGO_MATRIX_DIR` 时 47 项）**。**原「M16 接受为限制」的顾虑（破坏默认 URL 结构）已由可选启用设计化解**，M16 转为已实现。
+  （口径澄清：默认 URL 零改变由"站点**不注册 `authors` taxonomy**"保证；仅设 `params.authors.pages=false`
+  而 taxonomy 仍注册时 Hugo 依旧生成 `/authors/`，页数不变。详见交接报告 §8.1。）
 - **外观配置完善（功能五 / 6.1）**：`util/appearance.html`，主题色/圆角/字体等外观参数
   收敛为单一生效链，避免配置互相覆盖。
 - **exampleSite 完整功能展示站**：新增「作者与外观」「外链阅读」「媒体与图表」演示文章
@@ -290,7 +292,7 @@ Release 全站 inventory、pagination crawler、search / modal / i18n / image / 
   焦点移入 / Tab·Shift+Tab 循环 / 背景 `inert`+`aria-hidden` / Escape /
   遮罩关闭 / 焦点恢复 / 幂等开关 / 深链无触发元素时退化为聚焦 dialog 自身
 - 移除两个组件各自重复的键盘处理（避免双重触发），灯箱行为无回归（21/21）
-- 新增 `tools/verify_search_modal.py`：14 类断言共 19 项，含 zh-CN / en / zh-TW
+- 新增 `tools/verify_search_modal.py`：19 项断言，含 zh-CN / en / zh-TW
   可访问名称（en 站不得出现硬编码中文）
 - 改进 `/` 快捷键：原先要求焦点**恰为** body，实际关闭搜索后焦点停在触发器上导致
   快捷键失效；改为「非输入上下文」判断

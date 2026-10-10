@@ -21,16 +21,17 @@
 
 ---
 
-## 1. 基线（本表建立时）
+## 1. 基线（本表建立时 → 当前候选）
 
-| 项 | 值 |
-| --- | --- |
-| 分支 | `feat/theme-feature-completion` |
-| HEAD | `ca0c51b0aec0896e102e66d2f5f143261dac2691` |
-| `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动，仍指向 `bc152c8`） |
-| 已含 | `origin/main`、`fix/third-party-audit-v1.0.9-r2`、第二轮修复（`b2d2c71`）、R2-009 修复（`59e7f30`） |
-| 领先 `origin/main` | 26 提交；`origin/main..HEAD` = 26，`HEAD..origin/main` = 0 |
-| 分支是否已推送 | **否**（远程无该分支） |
+| 项 | 本表建立时 | **当前候选（功能冻结候选）** |
+| --- | --- | --- |
+| 分支 | `feat/theme-feature-completion` | 同名（**已推送** `origin`） |
+| HEAD | `ca0c51b0aec0896e102e66d2f5f143261dac2691` | `2593ead325e72a1851ff03e48ce7ccae7b38cff9` |
+| M16 引入前基线 | — | `37c3da646cce27be789c1a9f9060b25615c72cdb`（BC1 对照） |
+| `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动，仍指向 `bc152c8`） | 同左，**未移动** |
+| 已含 | `origin/main`、`fix/third-party-audit-v1.0.9-r2`、第二轮修复（`b2d2c71`）、R2-009 修复（`59e7f30`） | 另含 M16 实现与口径纠正（`2593ead`） |
+| 领先 `origin/main` | 26 提交 | **32** 提交（`origin/main..HEAD` = 32，`HEAD..origin/main` = 0） |
+| 分支是否已推送 | 否 | **是**（`origin/feat/theme-feature-completion` = `2593ead…`） |
 
 ---
 
@@ -159,7 +160,7 @@
 | **M13 KaTeX** | | **✅ 已实现** | `layouts/partials/math.html` + `assets/js/katex-init.js` + `util/detect-math.html`；按需（`nebula_has_math`）、逐页 `<!-- nebula:no-math -->` 关闭、三项资源可 CDN/本地。门禁 M6–M11 |
 | **M14 编辑此页** | | **✅ 已实现** | `layouts/partials/util/edit-url.html`（provider github/gitlab/gitee/custom；源路径逐段 `urlquery`；Windows 反斜杠归一；未配置不输出；文章级 `editUrl: false` 关闭）。门禁 E1–E4 |
 | **M15 多作者 Front Matter** | | **✅ 已实现** | `layouts/partials/util/authors.html`（`authors` 列表 → `author` → `site.Params.author` → 空，**不虚构**）；接入 head/meta、JSON-LD（1 人 Person / 多人 Person 数组）、RSS 多 `<author>`、卡片与正文。门禁 A1–A5 |
-| **M16 独立作者档案页** | | **✅ 已实现（可选启用 · 默认不变）** | 单点配置解析 `layouts/partials/util/author-config.html`（**默认 `params.authors.pages=false`**：不输出任何作者结构，URL 与历史**逐字节一致**）；启用后新增 `layouts/_default/term.html` + `layouts/partials/author-profile.html` + `util/author-links.html` / `util/author-inline.html`，生成 `/authors/` 索引与 `/authors/<term>/` 档案页并打通文章↔档案页互链。CJK/特殊字符走 `site.Taxonomies` 按 `Title` 大小写不敏感匹配（**刻意不用 `urlize`**：`urlize "张伟"` 返回 percent-encoded，`site.GetPage` 对 CJK 返回 NONE）。门禁 `tools/check_author_pages.py`（40 条断言，多版本矩阵 44/44）。**原「接受为限制」的核心顾虑——担心新增 taxonomy 破坏默认 URL 结构——已由可选启用设计完全化解**，详见 §11.3 |
+| **M16 独立作者档案页** | | **✅ 已实现（可选启用 · 默认不变）** | 单点配置解析 `layouts/partials/util/author-config.html`（**默认 `params.authors.pages=false`**：不输出任何作者结构；**当站点不注册 `authors` taxonomy 时**产物与「无本功能」基线主题 `37c3da6` **规范化后逐字节一致**，见 BC1）；启用后新增 `layouts/_default/term.html` + `layouts/partials/author-profile.html` + `util/author-links.html` / `util/author-inline.html`，生成 `/authors/` 索引与 `/authors/<term>/` 档案页并打通文章↔档案页互链。CJK/特殊字符走 `site.Taxonomies` 按 `Title` 大小写不敏感匹配（**刻意不用 `urlize`**：`urlize "张伟"` 返回 percent-encoded，`site.GetPage` 对 CJK 返回 NONE）。门禁 `tools/check_author_pages.py`（**43 条断言；设 `HUGO_MATRIX_DIR` 时 47/47**）。**原「接受为限制」的核心顾虑——担心新增 taxonomy 破坏默认 URL 结构——已由可选启用设计完全化解**，详见 §11.3 |
 | **M17 外链文章** | | **✅ 已实现** | `layouts/partials/util/external-url.html`（scheme 白名单 http/https/协议相对）；卡片 `.post-card-external` + 徽标 + `target=_blank rel=noopener`；canonical 指向站外；RSS `guid isPermaLink="false"`；索引 `external:true` + 站外 url。门禁 X1–X9 |
 | **M18 嵌套菜单** | | **❌ 未实现** | 价值较低 → **ACCEPTED-LIMITATION**（差距分析 §6 已声明本轮不改；仅做现状核对） |
 | **M19 外观配置** | | **✅ 已实现** | `layouts/partials/util/appearance.html`（`accent/accentColor/contentWidth/lineHeight/fontFamily/cardDensity`；预设白名单 + hex 校验 + 亮度感知压深；**未配置时不输出任何 `<style>`**——默认外观逐字节不变）。门禁 P1–P3 |
@@ -172,7 +173,7 @@
 | `tools/check_home_layouts.py` | 功能一：四种首页布局 + 非法值回退 + 布局切换不影响 feeds/索引 + 多语言 | 是 |
 | `tools/check_reading_experience.py` | 功能二：进度条/返回顶部/专注模式/打印 + 真实浏览器行为 | 是（B 小节真机断言） |
 | `tools/check_new_features.py` | 功能三/四/五：G/X/A/E/P/M 共 **40 项** | 是（`--selftest`：4 类注入 + 基线，5/5） |
-| `tools/check_author_pages.py` | M16 作者档案页：启用/索引页/档案页/资料卡/互链/缺失字段/CJK/特殊字符/canonical/sitemap/RSS/搜索索引/分页/多语言 + **ON22–ON24 构建产物 CSS 触控目标契约** 共 **43 条**；未启用时与 HEAD **逐字节一致** | 是（①站点开关恒假 → 6 条红；②`.author-link` 退回 inline → ON23/ON24 红，见 §10.5） |
+| `tools/check_author_pages.py` | M16 作者档案页：启用/索引页/档案页/资料卡/互链/缺失字段/CJK/特殊字符/canonical/sitemap/RSS/搜索索引/分页/多语言 + **ON22–ON24 构建产物 CSS 触控目标契约** 共 **43 条**（设 `HUGO_MATRIX_DIR` 时 47 条）；未启用时与「无本功能」基线主题 `37c3da6` **规范化后逐字节一致（BC1）** | 是（①站点开关恒假 → **37/43，6 条红**；②`.author-link` 退回 inline → **41/43，ON23/ON24 红**，见 §10.5） |
 
 三者（外加 `check_author_pages.py` 共四项）均已写入 `.github/workflows/ci.yml` 的 `static-checks` job，
 并登记进 `check_ci_jobs.py` 的 `REQUIRED_STEP_TOKENS`（删除步骤或改成空命令即判红）。
@@ -213,7 +214,7 @@
 | `check_reading_experience.py` | `assets/css/main.css` 将 5 处 `@media print` 破坏为 `@media printzz` | 77/79（B4 打印隐藏 2 条红，真实浏览器 emulate print 捕获），EXIT=1 | 5 处还原核验存在 |
 | `audit.py`（tap-target） | 即 R4-007 真实产品缺陷（flex 块级化 23px 触控目标） | 4 处 small-tap-target | CSS 修复后 TOTAL PROBLEMS: 0 |
 | `verify_search_shard.py`（firefox） | 即 R4-008 真实测试缺陷（双读 DOM 假红） | firefox 13/14 假红 | 快照+重试修复后 3 连跑 14/14 |
-| `check_author_pages.py` | `layouts/partials/util/author-links.html` 的站点开关 `if $cfg.enabled` 改 `if false` | 34/40（ON15/16/17/18/20 互链 + ML6 多语言链接共 **6 条变红**），EXIT=1 | 还原回读核验，40/40，EXIT=0 |
+| `check_author_pages.py` | `layouts/partials/util/author-links.html` 的站点开关 `if $cfg.enabled` 改 `if false` | **37/43**（ON15/16/17/18/20 互链 + ML6 多语言链接共 **6 条变红**），EXIT=1 | 还原回读核验，43/43（矩阵 47/47），EXIT=0 |
 | `check_author_pages.py`（R5-001） | `assets/css/main.css` 的 `.author-link` 去掉 `display:inline-flex` 与 `min-height`（退回 inline） | 41/43（**ON23 + ON24** 变红：inline 元素 min-height 无效），EXIT=1 | 还原后 47/47，EXIT=0 |
 
 > 备注：对 `check_home_layouts` 首次尝试用 `home-profile-BROKEN` 注入**未变红**——因为
@@ -226,8 +227,8 @@
 
 - 历史 44 项（P1×3 / P2×5 / P3×7 / TEST-DEFECT×20 / SEC×4 / DOC×5）：**除 P3-003/P3-004/SEC-02 为 ACCEPTED-LIMITATION、019/020 归并入 R2 系列外，全部 FIXED**。
 - R2 系列 13 项 + R3 系列 6 项：**全部 FIXED**（R2-001/002/003/006 需本轮重跑故障注入复核）。
-- 功能缺口 M1~M10 已实现；**M11~M17、M19 已实现**；**M16 本轮由「轻量实现 / 接受为限制」
-  升级为可选启用完整实现**（默认行为不变，见 §11.3）；M18 接受为限制；M20 随文档补齐。
+- 功能缺口：**M1~M15、M17、M19、M20 共 18 项原有功能均已实现**；**M16 本轮由「轻量实现 / 接受为限制」
+  升级为可选启用完整实现**（默认行为不变，见 §11.3）；M18 接受为限制。**合计 19 项实现 + 1 项接受限制（M18）**。
 
 ### 11.1 明确保留的限制（不做，且写明原因与用户影响）
 
@@ -281,8 +282,8 @@
 | --- | --- |
 | 门禁断言 | **43/43**（设置 `HUGO_MATRIX_DIR` 时 **47/47**，含 MX 多版本断言） |
 | 触控目标契约（R5-001） | ON22–ON24 断言**构建产物 CSS** 中 `.author-link` 必须 `display:inline-flex/inline-block` 且 `min-height ≥ 24px`；audit 实测 7/7、`TOTAL PROBLEMS: 0` |
-| 向后兼容（BC1） | 同一份内容分别挂 HEAD 主题与当前主题构建，规范化 CSS 指纹与 `lastBuildDate` 后 **131 页逐字节一致（差异 0）** |
-| 跨版本一致 | 0.128.0 / 0.148.0 / 0.167.0 均 `pages=291 / authors=5 / author-link=2` |
+| 向后兼容（BC1） | 以「无本功能」基线主题（`37c3da6`）**自带 exampleSite** 为同一份内容，分别挂基线主题与当前主题构建：`.html/.xml/.json` 产物 **190 vs 190**，文件集合双向差集 **0**，规范化（打包 CSS 文件名哈希 / SRI / RSS `lastBuildDate`）后内容差异 **0** |
+| 跨版本一致 | 五版本（0.128.0 / 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0）exampleSite 构建均 `rc=0 / ERROR=0 / HTML=291`、作者 term 目录 **2** 个（`tanglx` / `nebula-bot`）、`author-link` 出现 **56** 次；另有合成探针站（`check_author_pages` MX 断言）文章页 `author-link` = **2** |
 | 多语言 | 中文作者页 `/authors/张伟/` 资料卡正常；文章页链到 `/authors/%E5%BC%A0%E4%BC%9F/`；hreflang zh-CN↔en-US 双向；canonical 各语言正确 |
 | SEO/索引 | sitemap 收录作者页；taxonomy RSS 生成；**搜索索引 47 条不变且不含** taxonomy 页 |
 | 故障注入自证 | ①令 `author-links.html` 站点开关恒假 → 互链/多语言共 **6 条断言变红**；②令 `.author-link` 退回 inline → **ON23/ON24 变红（41/43）** |

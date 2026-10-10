@@ -22,7 +22,7 @@
   9. 搜索索引：**不**把 taxonomy 页塞进搜索索引（避免重复内容）
  10. 多语言：各语言各自生成 /authors/ 与 /<lang>/authors/，hreflang 交叉引用正确
  11. 分页：作者文章数超过 pagerSize 时档案页分页正常
- 12. 向后兼容：未启用时输出与"无本功能"逐字节一致（忽略 CSS 指纹）
+  12. 向后兼容：未启用时输出与「无本功能基线主题」**规范化后**逐字节一致（规范化 = 打包 CSS 文件名哈希 / SRI integrity / RSS lastBuildDate 三项）
 
 **为什么不能只做字符串断言**：本门禁对每条都检查"文件是否真实存在 / 页面间链接
 是否真实指向存在的产物"，而非"模板里出现了某个字符串"。
@@ -416,29 +416,78 @@ def _norm(path):
     return s
 
 
-def check_backcompat(h):
-    """用同一份内容、分别以 HEAD 主题与当前主题构建，规范化后逐字节对比。
+def _git_stdout(*args):
+    p = subprocess.run(["git", *args], cwd=REPO, capture_output=True)
+    if p.returncode != 0:
+        return None
+    return p.stdout.decode("utf-8", "ignore")
 
-    HEAD 主题从 git 导出（`git archive HEAD`），因此本断言在无 git 或浅克隆时
-    会退化为 SKIP（记录为 PASS 但给出说明），不阻塞 CI。
+
+def _no_feature_baseline():
+    """自动推导「无本功能基线」提交。
+
+    取「首次新增 `layouts/partials/util/author-config.html` 的提交」的父提交 ——
+    即**真正没有本功能**的那一版主题。
+
+    为什么不能直接用 `git archive HEAD`：本功能一旦提交入库，工作区干净时
+    HEAD 就是"含本功能"的版本，与当前工作树逐字节相同，断言会退化为**自比**
+    （永远 0 差异，证明不了任何向后兼容性）。用父提交作基线才是有效对照。
+
+    浅克隆 / 无 git 历史 / 找不到该文件时返回 None -> 退化为 SKIP，不阻塞 CI。
+    """
+    out = _git_stdout("log", "--diff-filter=A", "--format=%H", "-1", "--",
+                      "layouts/partials/util/author-config.html")
+    if not out:
+        return None
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    parent = _git_stdout("rev-parse", lines[0] + "^")
+    if not parent or not parent.strip():
+        return None
+    return parent.strip()
+
+
+def check_backcompat(h):
+    """用**同一份「无本功能内容」**、分别以【无本功能基线主题】与【当前主题】构建，
+    对比结果。基线主题由 git 历史自动推导（见 `_no_feature_baseline`）。
+
+    **实际执行的比较规则（精确，勿夸大）**：
+      * 只纳入 `.html` / `.xml` / `.json` 三类产物（图片、CSS、JS 等静态资源
+        不在比较范围内）；
+      * **文件集合双向比较**：基线独有与当前独有的路径都必须为空；
+      * 共有文件的内容，先做 **3 项规范化**再做「逐字节」比较：
+          - 打包 CSS 文件名哈希 `main.min.<hash>.css` -> `CSS`
+          - SRI `integrity="sha256-…"` -> `INTEGRITY`
+          - RSS `<lastBuildDate>…</lastBuildDate>` -> `DATE`
+        （这三项因构建时间/文件名而变化，非本功能引入的差异。）
+      * 因此结论是「**规范化后逐字节一致**」，不是"原始字节完全一致"。
+
+    浅克隆 / 无 git 时退化为 SKIP（记为 PASS 并说明），不阻塞 CI。
     """
     with TempWorkspace("authors-compat") as ws:
-        head = ws.path("themes", "head")
+        base_sha = _no_feature_baseline()
+        if not base_sha:
+            h.record("BC1 未启用作者档案页时，输出与「无本功能」基线主题逐字节一致",
+                     True, "无 git / 浅克隆 / 找不到基线：SKIP（不影响其它断言）")
+            return
+
+        base = ws.path("themes", "base")
         cur = ws.path("themes", "cur")
-        os.makedirs(head, exist_ok=True)
+        os.makedirs(base, exist_ok=True)
         os.makedirs(cur, exist_ok=True)
-        # HEAD 版本
-        p = subprocess.run(["git", "archive", "HEAD"], cwd=REPO,
+        # 无本功能基线主题
+        p = subprocess.run(["git", "archive", base_sha], cwd=REPO,
                            capture_output=True)
         if p.returncode != 0 or not p.stdout:
-            h.record("BC0 git 可用（HEAD 导出成功，否则跳过逐字节对比）",
-                     True, "无 git：跳过（不影响其它断言）")
+            h.record("BC1 未启用作者档案页时，输出与「无本功能」基线主题逐字节一致",
+                     True, f"基线 {base_sha[:9]} 导出失败：SKIP")
             return
         import tarfile
         import io as _io
         with tarfile.open(fileobj=_io.BytesIO(p.stdout)) as tf:
-            tf.extractall(head)
-        # 当前工作树（排除构建产物）
+            tf.extractall(base)
+        # 当前工作树（排除构建产物 / 站点内容）
         for name in os.listdir(REPO):
             if name in (".git", "tmp", "exampleSite", "__pycache__"):
                 continue
@@ -450,10 +499,12 @@ def check_backcompat(h):
             else:
                 shutil.copy2(src, dst)
 
-        # 同一份内容（HEAD 的 exampleSite 内容）分别构建
-        content_src = os.path.join(head, "exampleSite")
+        # 同一份内容：基线自带 exampleSite（其 hugo.toml **无** 作者档案页配置，
+        # 因此两个主题都是"本功能关闭"状态，对照才成立）。
+        content_src = os.path.join(base, "exampleSite")
         if not os.path.isdir(content_src):
-            h.record("BC0 HEAD exampleSite 存在", True, "缺失：跳过")
+            h.record("BC1 未启用作者档案页时，输出与「无本功能」基线主题逐字节一致",
+                     True, "基线 exampleSite 缺失：SKIP")
             return
 
         def build(theme_dir, out):
@@ -463,35 +514,42 @@ def check_backcompat(h):
                                encoding="utf-8", errors="ignore", timeout=600)
             return r.returncode
 
-        # head 与 cur 都以 theme 名 "head" 挂载，分别换 themesDir
-        hd = ws.path("t_head")
+        # 两个主题都以 theme 名 "head" 挂载，仅切换 themesDir
+        hd = ws.path("t_base")
         cd = ws.path("t_cur")
         os.makedirs(hd, exist_ok=True)
         os.makedirs(cd, exist_ok=True)
-        shutil.copytree(head, os.path.join(hd, "head"), dirs_exist_ok=True,
+        shutil.copytree(base, os.path.join(hd, "head"), dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("exampleSite", "tmp"))
         shutil.copytree(cur, os.path.join(cd, "head"), dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("exampleSite", "tmp"))
-        out_head, out_cur = ws.path("out_head"), ws.path("out_cur")
-        rc1 = build(hd, out_head)
-        rc2 = build(cd, out_cur)
+        out_b, out_c = ws.path("out_base"), ws.path("out_cur")
+        rc1 = build(hd, out_b)
+        rc2 = build(cd, out_c)
         if rc1 != 0 or rc2 != 0:
-            h.fatal_error("BC 基线/当前构建均成功", f"head rc={rc1} cur rc={rc2}")
+            h.fatal_error("BC 基线/当前构建均成功", f"base rc={rc1} cur rc={rc2}")
             return
-        diffs = []
-        for root_, _, files in os.walk(out_head):
-            for f in files:
-                if not f.endswith((".html", ".xml", ".json")):
-                    continue
-                rp = os.path.relpath(os.path.join(root_, f), out_head)
-                cp = os.path.join(out_cur, rp)
-                if not os.path.exists(cp):
-                    diffs.append(rp)
-                    continue
-                if _norm(os.path.join(root_, f)) != _norm(cp):
-                    diffs.append(rp)
-        h.record("BC1 未启用作者档案页时，输出与 HEAD（无本功能）逐字节一致",
-                 not diffs, f"差异 {len(diffs)} 个：{diffs[:5]}")
+
+        def listing(root):
+            got = set()
+            for r_, _, files in os.walk(root):
+                for f in files:
+                    if f.endswith((".html", ".xml", ".json")):
+                        got.add(os.path.relpath(os.path.join(r_, f), root))
+            return got
+
+        fb, fc = listing(out_b), listing(out_c)
+        only_b = sorted(fb - fc)
+        only_c = sorted(fc - fb)
+        diffs = [rp for rp in sorted(fb & fc)
+                 if _norm(os.path.join(out_b, rp)) != _norm(os.path.join(out_c, rp))]
+        ok = not only_b and not only_c and not diffs
+        detail = (f"基线 {base_sha[:9]} | 产物 {len(fb)} vs {len(fc)} | "
+                  f"仅基线 {len(only_b)} | 仅当前 {len(only_c)} | 内容差异 {len(diffs)}")
+        if not ok:
+            detail += f" | 例: {(only_b[:2] + only_c[:2] + diffs[:2])}"
+        h.record("BC1 未启用作者档案页时，输出与「无本功能」基线主题逐字节一致（规范化后）",
+                 ok, detail)
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""搜索弹窗 Modal 无障碍专项测试（14 项）。
+"""搜索弹窗 Modal 无障碍专项测试（实测 19 项断言）。
 
 契约（由 assets/js/main.js 的 createModalA11y 提供，搜索与灯箱共用）：
     role=dialog / aria-modal / 可访问名称 / 焦点移入 / Tab 循环 /
