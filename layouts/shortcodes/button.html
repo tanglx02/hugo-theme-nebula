@@ -1,3 +1,51 @@
+{{- /* 按钮：正文里的行动号召（下载、外链、邮件…）。
+
+     用法：
+       {{< button "GitHub 主页" "https://github.com/tanglx02" >}}
+       {{< button "邮箱联系" "mailto:tanglx@aliyun.com" >}}
+       {{< button "查看文档" "/posts/" >}}
+
+     URL scheme 白名单（第六节明确要求「按钮 URL scheme 校验」）：
+       * 放行  http://  https://  //（协议相对）  mailto:  tel:
+       * 放行  **不含** scheme 的相对路径 / 根路径 / 锚点（如 `posts/x/`、`/about/`、`#sec`）
+       * **拒绝** javascript: / vbscript: / data: / file: / ftp: 等一切其它 scheme，
+         以及空值 —— 此时**不输出 <a>**，改为不可点击的 <span class="btn btn-disabled">。
+
+     为什么必须显式校验：
+       旧实现是 `href="{{ $href }}"` 直出。虽然 Hugo 的 html/template 会给 URL
+       上下文加一道过滤，但（a）过滤规则随 Go 版本变化，（b）无法表达"只允许这几个
+       scheme"，（c）**校验判定必须发生在模板层**才能在产物里断言（security_baseline
+       扫的是产物，那里一旦出现 javascript: 就已经晚了）。
+       判定前先去掉所有空白与控制字符再转小写，因为浏览器会忽略
+       `java\tscript:` / `java\nscript:` 里的空白（经典绕过手法）。
+
+     空值/被拒时**不留 href=""**：
+       空 href 会让浏览器重新加载当前页（用户看到"点了没反应"），同时违反
+       check_html_quality 的 empty-href 断言。改成 <span> 后既有 disabled 语义，
+       又不会污染产物（外链 rel 也自然不再适用）。
+
+     外链 rel（第六节「外链 rel」）：
+       仅对 http/https/协议相对的外链加 `target="_blank" rel="noopener"`；
+       mailto: / tel: 与站内链接**不加** target —— 保持旧实现的行为，也符合"邮件/
+       电话由系统处理，不该被当新窗口"的预期。
+
+     站内路径规范化：非外链、非 mailto/tel、非锚点的链接统一走
+     util/rel-url.html（与 header/footer/图片一致），因此**子目录 baseURL**
+     （baseURL = '.../blog/'）部署下同样正确。 */ -}}
 {{- $text := .Get 0 -}}
-{{- $href := .Get 1 -}}
-<a class="btn" href="{{ $href }}" {{ if hasPrefix $href "http" }}target="_blank" rel="noopener"{{ end }}>{{ $text }}</a>
+{{- $href := .Get 1 | default "" -}}
+{{- $probe := replaceRE `[\x00-\x20]+` "" (lower (printf "%v" $href)) -}}
+{{- $scheme := findRE `^[a-z][a-z0-9+.\-]*:` $probe 1 -}}
+{{- $ext := or (hasPrefix $probe "http://") (hasPrefix $probe "https://") (hasPrefix $probe "//") -}}
+{{- $direct := or (hasPrefix $probe "mailto:") (hasPrefix $probe "tel:") -}}
+{{- $safe := and (ne $probe "") (or (not $scheme) $ext $direct) -}}
+{{- if $safe -}}
+  {{- $out := $href -}}
+  {{- if and (not $ext) (not $direct) (not (hasPrefix $probe "#")) -}}
+    {{- $out = partial "util/rel-url.html" $href -}}
+  {{- end -}}
+  <a class="btn" href="{{ $out | safeURL }}"{{ if $ext }} target="_blank" rel="noopener"{{ end }}>{{ $text }}</a>
+{{- else -}}
+  {{- warnf "shortcode button: 已阻止不安全或为空的链接 %q（%s）" (printf "%v" $href) .Position -}}
+  <span class="btn btn-disabled" aria-disabled="true" title="{{ i18n "components.linkBlocked" }}">{{ $text }}</span>
+{{- end -}}

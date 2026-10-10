@@ -34,6 +34,11 @@
 - 🗂️ **标签页**：`{{< tabs >}}` / `{{< tab >}}`，服务端渲染 WAI-ARIA tablist；**无 JS 时全部面板顺序展开、内容零丢失**；
   面板内代码块自动带语言标签与一键复制；可与其他组件**互相嵌套**
 - 🪜 **步骤**：`{{< steps >}}` / `{{< step >}}`，输出 `<ol>` 语义 + CSS 计数器编号（**零 JavaScript**），标题可选
+- 🗃️ **文件树**：`{{< filetree >}}`，目录结构原样渲染；**不做 Markdown 解析 + 显式转义**，文件名特殊字符安全（零 JS）
+- 🏷️ **徽标**：`{{< badge >}}` 行内小标签，六个变体，未知变体回退 `default`（变体白名单防 class 注入）
+- 🔘 **按钮**：`{{< button >}}` 带 **URL scheme 白名单校验**（拦截 `javascript:`/`data:` 等的**空白绕过**，
+  被拒时输出不可点击占位而非空 `href`；外链自动 `rel="noopener"`）
+- 📂 **折叠块**：`{{< details >}}` 原生 `<details>`（零 JS），替代会被 goldmark 丢弃的裸 `<details>`；打印自动展开
 - 🖼️ **灯箱**：`role=dialog` + Focus Trap（Tab 循环、背景 inert、Esc 关闭、焦点归还）
 - 🌍 **i18n**：内置 `zh-CN` / `zh-TW` / `en`
 - 🔀 **多 Section**：内容范围通过 `params.content.sections` 配置，不写死 `posts`
@@ -551,6 +556,86 @@ brew install nginx
 - **版本兼容**：`tabs/tab/steps/step` 在 **Hugo 0.128.0 ~ 0.167.0** 上产物结构签名完全一致（CI 逐版本断言）。
 
 演示页：`exampleSite/content/posts/tabs-and-steps.md`（英文：`content-en/posts/tabs-and-steps.md`）。
+
+## 文件树 / 徽标 / 按钮 / 折叠块
+
+另外四个轻量内容组件，全部**零 JavaScript、零第三方请求**，输出语义化 HTML：
+
+### 文件树 filetree
+
+```markdown
+{{< filetree "项目结构" >}}
+my-app/
+├── package.json
+├── src/
+│   └── index.ts
+└── README.md
+{{< /filetree >}}
+```
+
+- 把目录结构**原样**渲染成等宽树块，解决 Markdown 里"缩进被吞 / 换行被合并 / 多空格被折叠"三个痛点；
+- **不做 Markdown 解析**，并对内容显式转义：文件名里的 `` ` `` `*` `_` `[` `]` `&` `<` `>` 引号
+  **要么逐字保留、要么转义为实体**，绝不变成标签，也绝不被当 Markdown 标记解析（路径特殊字符安全）；
+- 标题可选（第一参数）；可嵌套进 tabs / steps。
+
+### 徽标 badge
+
+```markdown
+{{< badge "v1.0.9" >}}                  {{/* 默认样式 */}}
+{{< badge "稳定" "success" >}}           {{/* 指定变体 */}}
+{{< badge text="已弃用" type="danger" >}} {{/* 具名参数 */}}
+```
+
+- 行内小标签，六个变体：`default` / `info` / `success` / `warning` / `danger` / `muted`；
+- **未知变体静默回退 `default`**（不让笔误中断构建），变体值受白名单约束，
+  越界值一律归一 —— 从根上断掉借 class 属性注入脚本的路径。
+
+### 按钮 button（含 URL scheme 校验）
+
+```markdown
+{{< button "GitHub 主页" "https://github.com/tanglx02" >}}
+{{< button "邮箱联系" "mailto:tanglx@aliyun.com" >}}
+{{< button "查看文档" "/posts/" >}}
+```
+
+- **白名单**：`http` / `https` / 协议相对 `//` / `mailto:` / `tel:`，以及**无 scheme** 的相对路径、根路径、锚点；
+- **拒绝** `javascript:` / `vbscript:` / `data:` / `file:` / `ftp:` 等一切其它 scheme 与空值，
+  此时**不输出 `<a>`**，改为 `<span class="btn btn-disabled" aria-disabled="true">` 并给出 i18n 提示；
+- **空白绕过防御**：判定前剥离所有空白与控制字符，`java<TAB>script:` 同样被拦；
+- **外链**自动加 `target="_blank" rel="noopener"`；`mailto:` / `tel:` 与站内链接不加 `target`；
+  站内路径统一规范化，**子目录 baseURL** 下亦正确。
+
+> ⚠ ⚠️ 裸换行绕过无法构造：Hugo 的词法分析器**拒绝**带裸换行的引号参数
+> （`unterminated quoted string`），因此 `java<NL>script:` 这类 URL 从短代码入口根本送不进来
+> （见 `tools/check_content_components.py` 的 D9b 断言）。
+
+### 折叠块 details
+
+```markdown
+{{< details "为什么默认折叠？" >}}
+补充说明……
+{{< /details >}}
+
+{{< details title="默认展开" open="true" >}}   {{/* 展开时必须全用具名参数 */}}
+正文……
+{{< /details >}}
+```
+
+- 基于原生 `<details>` / `<summary>`，**零 JavaScript**，键盘与读屏天然可用；
+- `open` 只接受真值（`true` / `1` / `yes` / `on`）；打印时**自动展开正文**（否则内容漏印）；
+- **用来替代裸 `<details>`**：主题默认 `unsafe = false`，直接写在 Markdown 里的裸 `<details>`
+  会被 goldmark **整段丢弃**（内容静默消失、构建却成功）。这是本功能修掉的一个真实内容丢失缺陷。
+
+> ⚠ **Hugo 短代码不允许混用位置参数与具名参数**（对所有 shortcode 生效，不只本组件）：
+> `{{< details "标题" open="true" >}}` 会构建失败（`Cannot mix named and positional parameters`），
+> 要指定 `open` 必须全部用具名写法。回归断言见 `tools/check_content_components.py` 的 D9 小节。
+
+行为约定（均有断言，见 `tools/check_content_components.py`）：
+
+- **零 JS / 零第三方请求 / 可嵌套**；
+- **版本兼容**：`filetree` / `badge` / `button` / `details` 在 **Hugo 0.128.0 ~ 0.167.0** 上结构签名一致（CI 逐版本断言）。
+
+演示页：`exampleSite/content/posts/content-components.md`（英文：`content-en/posts/content-components.md`）。
 
 ## 代码块
 

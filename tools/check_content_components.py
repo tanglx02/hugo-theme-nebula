@@ -208,6 +208,88 @@ verify NESTED-VERIFY
 {{< /tabs >}}
 """
 
+# 功能三:文件树 / 徽标 / 按钮 scheme 校验 / 折叠块 的探针。
+#
+# 特意塞进正文的「危险输入」——全部必须在产物层被安全处理：
+#   * 文件名里的 <x> / & / 引号 / 反引号（HTML 与 Markdown 双重敏感）
+#   * badge 变体的 class 逃逸尝试（x" onmouseover="alert(1)）
+#   * button 的 javascript: / 空白绕过 / vbscript: / data:text/html / file: / 空值
+#
+# ⚠ `@@TAB@@` / `@@NL@@` 是**占位符**，由 probe_media() 在写入探针时替换成
+#   真实的制表符与换行符（见函数说明）。为什么不直接把控制字符写在源码里：
+#   （a）编辑器/工具链容易在保存时把制表符转成空格，让"空白绕过"用例静默失效；
+#   （b）源码里出现裸换行会破坏这个多行字符串本身的缩进语义。
+#   这同时提醒我们：`java\<TAB>script:` 才是浏览器真正会执行的绕过形态，
+#   而 `java\tscript:`（字面反斜杠）只是一个普通相对路径（已验证会被安全编码）。
+#
+# 期望计数（供 D 段断言）：
+#   filetree 2；badge 5；a.btn 4（外链 / mailto / 站内相对 / tel）；
+#   span.btn-disabled 6（javascript: / TAB 空白绕过 / vbscript: /
+#   data:text/html / file: / 空值）；
+#   nb-details 2（1 闭合 1 open）。
+#
+# ⚠ 关于"换行绕过"：Hugo 的 shortcode **词法分析器**拒绝带裸换行的引号参数
+#   （`unterminated quoted string in shortcode parameter-argument`），因此
+#   `java<NL>script:` 这类绕过在本主题的短代码入口**根本无法构造**。这一点由
+#   run_newline_arg_check() 单独断言（构建必须失败）。可构造的空白绕过只有
+#   制表符，由下面的 TAB 用例覆盖（必须在模板层被"先剥空白再判定"拦下）。
+PROBE_MEDIA_MD = """---
+title: "CC Media"
+date: 2024-05-08
+draft: false
+---
+
+## 1 文件树（含特殊字符文件名）
+
+{{< filetree "示例项目结构" >}}
+my-app/
+├── package.json
+├── src/
+│   ├── a&b.ts
+│   ├── <x>.ts
+│   └── "q" 'r' `s`.ts
+└── README.md
+{{< /filetree >}}
+
+无标题的文件树（属性式 title）：
+
+{{< filetree title="属性标题" >}}
+root/
+└── only.txt
+{{< /filetree >}}
+
+## 2 徽标
+
+默认 {{< badge "v1.0.9" >}}
+指定变体 {{< badge "稳定" "success" >}}
+具名参数 {{< badge text="已弃用" type="danger" >}}
+未知变体 {{< badge "草稿" "bogus" >}}
+注入尝试 {{< badge "坏" "x\\" onmouseover=\\"alert(1)" >}}
+
+## 3 按钮（URL scheme 校验）
+
+{{< button "外链" "https://example.com/a?x=1&y=2" >}}
+{{< button "邮件" "mailto:hi@example.com" >}}
+{{< button "站内" "posts/other/" >}}
+{{< button "电话" "tel:+8610000000000" >}}
+{{< button "JS" "javascript:alert(1)" >}}
+{{< button "TAB 绕过" "java@@TAB@@script:alert(1)" >}}
+{{< button "VB" "vbscript:msgbox(1)" >}}
+{{< button "DATA" "data:text/html,<script>alert(1)</script>" >}}
+{{< button "文件" "file:///etc/passwd" >}}
+{{< button "空" "" >}}
+
+## 4 折叠块
+
+{{< details "默认闭合" >}}
+折叠正文 DETAILS-CLOSED-TEXT
+{{< /details >}}
+
+{{< details title="默认展开" open="true" >}}
+展开正文 DETAILS-OPEN-TEXT
+{{< /details >}}
+"""
+
 HUGO_VERSIONS = ("0.128.0", "0.148.0", "0.162.0", "0.166.0", "0.167.0")
 # 可执行文件名随平台变化：Windows 是 hugo.exe，CI（Linux）是 hugo。
 HUGO_EXE = "hugo.exe" if os.name == "nt" else "hugo"
@@ -232,6 +314,20 @@ H = Harness("content_components")
 # --------------------------------------------------------------------------- #
 # 工具
 # --------------------------------------------------------------------------- #
+def probe_media(body):
+    """把 PROBE_MEDIA_MD 里的占位符替换成真实控制字符。
+
+    为什么需要占位符（而不是直接把制表符写进源码）：
+      * 编辑器/格式化工具很容易在保存时把制表符改成空格，而"空白绕过"用例
+        一旦失去那个制表符就**静默失效**（依然构建成功、断言依然通过，
+        但实际什么都没测到）；
+      * 源码中出现裸换行还会破坏多行字符串自身的缩进。
+    因此统一在写出探针文件的那一刻把 @@TAB@@ / @@NL@@ 还原成真实字符。
+    """
+    return (body.replace("@@TAB@@", "\t")
+                .replace("@@NL@@", "\n"))
+
+
 def build_probe(tag, lang=None, extra_toml="", hugo=HUGO, pages=None, minify=False,
                 theme_dir=None):
     """在 tmp 下搭一个最小站点（不写 exampleSite），返回 (out_dir, log, rc)。
@@ -255,7 +351,7 @@ def build_probe(tag, lang=None, extra_toml="", hugo=HUGO, pages=None, minify=Fal
             f.write(PROBE_MD)
         for name, body in (pages or {}).items():
             with io.open(os.path.join(root, d, name), "w", encoding="utf-8") as f:
-                f.write(body)
+                f.write(probe_media(body))
     out = os.path.join(root, "public")
     # themesDir 直接用**真实的主题父目录**（与 exampleSite 的 `--themesDir ../..` 等价）。
     # 不要用符号链接/junction 造 themes/ 目录：Hugo 0.128.0 / 0.148.0 不解析符号链接，
@@ -495,11 +591,23 @@ def build_nohook_copy():
     """
     d = os.path.join(OUT_ROOT, "_cc_nohook")
     safe_rmtree(d)
-    shutil.copytree(REPO, d, ignore=shutil.ignore_patterns(
-        "tmp", "public", "public-*", ".git", "myblog", "__pycache__", "resources"))
+
+    # ⚠ 不要在复制后再 os.remove 掉钩子文件 —— 某些执行环境把单文件删除
+    #   重定向到系统回收站（SHFileOperationW），在 tmp 目录下会失败并中断测试。
+    #   改为在 copytree 阶段就**排除**该文件：既避开删除操作，语义也更明确
+    #   （"对照组从来没有过这个钩子"，而不是"复制完再删掉"）。
+    def _skip_blockquote_hook(dirpath, names):
+        skip = set(shutil.ignore_patterns(
+            "tmp", "public", "public-*", ".git", "myblog", "__pycache__",
+            "resources")(dirpath, names))
+        if os.path.basename(dirpath.replace("\\", "/")) == "_markup":
+            skip |= {n for n in names if n == "render-blockquote.html"}
+        return skip
+
+    shutil.copytree(REPO, d, ignore=_skip_blockquote_hook)
     hook = os.path.join(d, "layouts/_default/_markup/render-blockquote.html")
-    if os.path.exists(hook):
-        os.remove(hook)
+    if os.path.exists(hook):          # 兜底：万一 copytree 的 ignore 未生效
+        raise RuntimeError("对照组里仍存在 render-blockquote.html，A6 前提被破坏")
 
     # 用同样的探针站点构建（主题换成这个副本）
     root = os.path.join(OUT_ROOT, "_cc_nohook_site")
@@ -799,6 +907,282 @@ def run_component_matrix():
              len(sigs) >= 2 and len(set(sigs.values())) == 1, f"{sigs}")
 
 
+def run_media_checks():
+    """D 段：文件树 / 徽标 / 按钮 scheme 校验 / 折叠块。
+
+    全部断言都指向**真实产物**：要么证明危险输入被安全处理，要么证明特殊字符
+    没有破坏 HTML 结构。`--minify` 会去掉属性引号，故正则一律"引号可选"。
+    """
+    out, log, rc = build_probe(
+        "media", pages={"p3.md": PROBE_MEDIA_MD}, minify=True)
+    if rc != 0:
+        H.fatal_error("媒体组件探针站点构建失败", log[-800:])
+        return None
+    html = page(out, "p3/index.html")
+    if html is None:
+        H.fatal_error("媒体组件探针页面未生成", out)
+        return None
+    css = css_norm(css_text(out))
+
+    # ---------- D1 文件树：结构与"不解析 Markdown" ----------
+    H.record("D1 文件树 render 为 <figure class=filetree> ×2",
+             count(r'<figure class="?filetree"?', html) == 2,
+             f"{count(r'filetree', html)}")
+    H.record("D1 有标题的用 <figcaption>（位置参数）",
+             "示例项目结构" in html and count(r'<figcaption class="?filetree-title"?', html) == 2, "")
+    H.record("D1 属性式 title 也生效（属性标题）", "属性标题" in html, "")
+    H.record("D1 树形缩进与 box-drawing 字符原样保留（在 <pre> 内）",
+             bool(re.search(r'<pre class="?filetree-body"?>\s*my-app/', html))
+             and "├──" in html and "└──" in html, "")
+    # 关键：文件名里的 Markdown 敏感字符必须**不被解析**（逐字保留）
+    H.record("D1 文件名里的反引号未被 Markdown 解析（逐字保留，无 <code> 包裹）",
+             "`s`.ts" in html and '<code>`s`' not in html, "")
+    # 关键：文件名里的引号被转义成实体（证明真的走了转义，而不是原样输出）
+    H.record("D1 文件名里的双/单引号被转义为实体（不破坏属性与文本）",
+             "&#34;q&#34;" in html and "&#39;r&#39;" in html, "")
+    # 关键：文件名里的 <x> 必须被转义，不得变成真实标签
+    H.record("D1 文件名里的 <x> 被转义为实体（未变成标签）",
+             "&lt;x&gt;" in html and "<x>" not in html, "")
+    H.record("D1 文件名里的 & 被转义（未变成实体起始符）",
+             "a&amp;b.ts" in html, "")
+    # 零 JS：只在 filetree 的 <figure> 内部检查（不能跨块匹配到别处的 script）
+    fig = re.search(r'<figure class="?filetree"?.*?</figure>', html, re.S)
+    H.record("D1 文件树内部不含任何 script（零 JS）",
+             bool(fig) and "<script" not in fig.group(0), "")
+
+    # ---------- D2 徽标 ----------
+    H.record("D2 徽标 render 为 <span class=badge> ×5",
+             count(r'<span class="?badge badge-', html) == 5,
+             f"{count(r'badge-', html)}")
+    H.record("D2 默认变体（无第二参数）", count(r'badge badge-default', html) >= 1, "")
+    H.record("D2 具名参数 text= / type= 生效（danger）", "badge-danger" in html, "")
+    H.record("D2 未知变体静默回退 default（不报错、不产生 bogus 类）",
+             count(r'badge badge-default', html) == 3 and "badge-bogus" not in html,
+             f"default={count(r'badge badge-default', html)}")
+    # 安全：变体值里的 class 逃逸尝试必须被消灭
+    H.record("D2 变体值里的 class 逃逸尝试被消灭（无 onmouseover / 无额外类）",
+             "onmouseover" not in html and 'x" ' not in html, "")
+    H.record("D2 徽标全部是 <span>（行内语义，不用 div/button 污染结构）",
+             count(r'<span class="?badge badge-', html) == 5, "")
+
+    # ---------- D3 按钮 URL scheme 校验（第六节明确要求） ----------
+    # 探针里前 4 个是安全链接：外链 / mailto / 站内相对 / tel。
+    a_btns = re.findall(r'<a class="?btn"?([^>]*)>', html)
+    sp_btns = re.findall(r'<span class="?btn btn-disabled"?', html)
+    H.record("D3 放行 4 个安全链接（外链 / mailto / 站内相对 / tel）",
+             len(a_btns) == 4, f"a.btn={len(a_btns)}")
+    H.record("D3 拦截不安全链接（javascript: / TAB 空白绕过 / vbscript: / "
+             "data:text/html / file:）与 1 个空值 → 输出 span.btn-disabled",
+             len(sp_btns) == 6, f"span.btn-disabled={len(sp_btns)}")
+    # 最关键的断言：危险 scheme 不得出现在任何 href 里
+    bad = re.findall(r'href="?(?:javascript|vbscript|data:text/html|file):?', html, re.I)
+    H.record("D3 产物里不出现任何危险 scheme 的 href", not bad, f"{bad[:3]}")
+    # 空白绕过：`java<TAB>script:` 是浏览器会执行的形态，必须在**模板层**就被识破
+    # （判定前先剥掉所有空白与控制字符再比对）。真正的裸换行在短代码入口无法构造，
+    # 由 run_newline_arg_check() 单独断言构建失败。
+    H.record("D3 制表符绕过（java\\t script:）被拦截，未进入 href",
+             "java" not in html or not re.search(r"java[\s\u0000-\u0020]*script\s*:", html, re.I),
+             "")
+    H.record("D3 被拦截的按钮不含 href（不留 href=\"\" 空链接）",
+             not re.search(r'<span class="?btn btn-disabled"?[^>]*href=', html), "")
+    H.record("D3 被拦截按钮带 aria-disabled（语义上明确不可用）",
+             count(r'btn-disabled"?[^>]*aria-disabled="?true', html) == 6, "")
+    H.record("D3 被拦截按钮带 title 提示（i18n components.linkBlocked 生效，非空属性）",
+             bool(re.search(r'btn-disabled"?[^>]*title="?[^" >]+', html)), "")
+    # 外链 rel 约定（只在 <a class="btn"> 的标签内部检查，不跨块）
+    H.record("D3 仅外链加 target=_blank + rel=noopener",
+             len([t for t in a_btns if "target" in t]) == 1
+             and bool(re.search(r'class="?btn"?[^>]*target="?_blank"?[^>]*rel="?noopener', html)), "")
+    H.record("D3 mailto:/tel: 不加 target（交给系统处理）",
+             bool(re.search(r'href="?mailto:hi@example\.com"?>', html))
+             and bool(re.search(r'href="?tel:\+8610000000000"?>', html))
+             and not [t for t in a_btns if ("mailto:" in t or "tel:" in t) and "target" in t], "")
+    H.record("D3 站内相对路径被规范化为根相对（rel-url 生效）",
+             bool(re.search(r'href="?/posts/other/?', html)), "")
+    H.record("D3 外链 URL 的查询串完整保留（& 转义为实体且不丢失）",
+             "https://example.com/a?x=1&amp;y=2" in html, "")
+
+    # ---------- D4 折叠块 ----------
+    fig_d = re.search(r'<details class="?nb-details"?.*?</details>', html, re.S)
+    H.record("D4 折叠块 render 为原生 <details class=nb-details> ×2",
+             count(r'<details class="?nb-details"?', html) == 2, "")
+    H.record("D4 默认闭合：只有 1 个 details 带 open",
+             count(r'<details class="?nb-details"? open', html) == 1, "")
+    H.record("D4 open=\"true\" 时展开（DETAILS-OPEN-TEXT 在内）",
+             "DETAILS-OPEN-TEXT" in html, "")
+    H.record("D4 标题走 <summary>，内容完整（DETAILS-CLOSED-TEXT 未丢，"
+             "回归：裸 <details> 被 goldmark 丢弃）",
+             "DETAILS-CLOSED-TEXT" in html and count(r'<summary', html) == 2, "")
+    H.record("D4 折叠块内部零 JS（原生元素，无 script / 无 aria 补丁）",
+             bool(fig_d) and "<script" not in fig_d.group(0), "")
+
+    # ---------- D5 CSS：三组样式齐全且复用设计变量 ----------
+    H.record("D5 .filetree 基础样式存在且等宽保留空白",
+             ".filetree{" in css and "white-space:pre" in css, "")
+    H.record("D5 .badge 六个变体样式齐全",
+             all(f".badge-{x}" in css for x in
+                 ("default", "info", "success", "warning", "danger", "muted")), "")
+    H.record("D5 .badge-default 用 --brand-solid 承载白字（AA 约定）",
+             bool(re.search(r'\.badge-default\{background:var\(--brand-solid\);color:#fff', css)), "")
+    H.record("D5 其余徽标变体用 *-ink 文字（不用鲜亮 --brand 当文字）",
+             "color:var(--brand-ink)" in css and "color:var(--accent-ink)" in css, "")
+    H.record("D5 有暗色主题下的徽标配色",
+             bool(re.search(r'html\[data-theme="?dark"?\] \.badge-', css)), "")
+    H.record("D5 .btn-disabled 有独立样式（不再继承可点击外观）",
+             ".btn-disabled{" in css and "cursor:not-allowed" in css, "")
+    H.record("D5 .nb-details 有自定义展开标记（+/−）且隐藏原生三角",
+             ".nb-details-summary::before" in css
+             and "-webkit-details-marker" in css, "")
+    H.record("D5 打印时折叠块强制展开正文（否则内容漏印）",
+             bool(re.search(r"@media print.*?\.nb-details-body\{display:block\s*!important",
+                            css, re.S)), "")
+
+    # ---------- D6 零第三方请求 ----------
+    ext = re.findall(r'<(?:script|link|img|iframe)[^>]*(?:src|href)="?(https?://[^" >]+)"?', html)
+    ext = [u for u in ext if not u.startswith("https://z.example/")]
+    H.record("D6 媒体组件页不含第三方 http(s) 资源", not ext, f"{ext[:3]}")
+
+    return {"out": out, "html": html}
+
+
+def run_media_matrix():
+    """D7：五版本上 filetree/badge/button/details 的行为一致性。"""
+    ver_dirs = hugo_matrix()
+    if not ver_dirs:
+        H.fatal_error("未找到 Hugo 版本矩阵目录（媒体组件）", HUGO_ROOT)
+        return
+    sigs = {}
+    for v, exe in sorted(ver_dirs.items()):
+        out, log, rc = build_probe(f"media_v{v}", pages={"p3.md": PROBE_MEDIA_MD},
+                                   hugo=exe, minify=True)
+        if rc != 0:
+            H.record(f"D7 Hugo {v} 媒体组件页构建成功", False, log[-300:])
+            continue
+        html = page(out, "p3/index.html") or ""
+        sig = (count(r'<figure class="?filetree"?', html),
+               count(r'<span class="?badge badge-', html),
+               len(re.findall(r'<a class="?btn"?', html)),
+               count(r'<span class="?btn btn-disabled"?', html),
+               count(r'<details class="?nb-details"?', html))
+        sigs[v] = sig
+        H.record(f"D7 Hugo {v} 结构计数正确（2/5/4/6/2）", sig == (2, 5, 4, 6, 2), f"{sig}")
+        H.record(f"D7 Hugo {v} 危险 scheme 未泄漏到 href",
+                 not re.search(r'href="?(?:javascript|vbscript|data:text/html|file):?', html, re.I), "")
+        H.record(f"D7 Hugo {v} 空白绕过（java<TAB>script:）被拦截",
+                 not re.search(r"java[\s\u0000-\u0020]*script\s*:", html, re.I), "")
+        H.record(f"D7 Hugo {v} 折叠块内容完整（裸 <details> 被丢弃的回归）",
+                 "DETAILS-CLOSED-TEXT" in html, "")
+    H.record("D7 五个 Hugo 版本产物结构签名完全一致",
+             len(sigs) >= 2 and len(set(sigs.values())) == 1, f"{sigs}")
+
+
+def run_media_regression():
+    """D8 反证：去掉 scheme 校验后，危险 scheme 必须真的泄漏 —— 证明 D3 有区分力。
+
+    注意坏副本必须**保留 safeURL**：真实模板正是用 `safeURL` 放行白名单与相对路径的，
+    而 `safeURL` 会**绕过 Go html/template 自带的 urlFilter**。因此"只要不写 scheme
+    校验，危险 scheme 就会原样进入 href"——这正是校验存在的原因。若坏副本不写
+    safeURL，Go 的 urlFilter 会把危险 scheme 替换成 `#ZgotmplZ`，反证就测不出差异。
+    """
+    holder = os.path.join(OUT_ROOT, "_cc_media_broken_themes")
+    safe_rmtree(holder)
+    os.makedirs(holder, exist_ok=True)
+    dst = os.path.join(holder, "hugo-theme-nebula")
+    shutil.copytree(REPO, dst, ignore=shutil.ignore_patterns(
+        "tmp", "public", "public-*", ".git", "myblog", "__pycache__", "resources"))
+    # 修复前行为：URL 直出 safeURL，不做任何 scheme 判定
+    with io.open(os.path.join(dst, "layouts", "shortcodes", "button.html"),
+                 "w", encoding="utf-8") as f:
+        f.write('<a class="btn" href="{{ .Get 1 | safeURL }}"'
+                '{{ if hasPrefix (.Get 1) "http" }} target="_blank" rel="noopener"{{ end }}>'
+                '{{ .Get 0 }}</a>\n')
+    out, log, rc = build_probe("media_broken", pages={"p3.md": PROBE_MEDIA_MD},
+                               theme_dir=holder)
+    if rc != 0:
+        H.record("D8 反证：坏副本也能构建（差异只在是否被拦截）", False, log[-300:])
+        return
+    html = page(out, "p3/index.html") or ""
+    leaked = re.search(r'href="?(?:javascript|vbscript|data:text/html|file):?', html, re.I)
+    H.record("D8 反证：去掉 scheme 校验后危险 scheme 泄漏（证明 D3 有区分力）",
+             bool(leaked), f"泄漏={leaked.group(0)[:60] if leaked else None}")
+    H.record("D8 反证：坏副本不再输出 span.btn-disabled（拦截确实来自校验）",
+             count(r'btn-disabled', html) == 0, f"{count(r'btn-disabled', html)}")
+
+
+def run_mixed_args_check():
+    """D9 回归：Hugo **不允许**混用位置参数与具名参数（跨全版本一致）。
+
+    这条不是主题的选择，而是 Hugo shortcode 的硬性规则：
+
+        {{< details "标题" open="true" >}}    ->  ERROR:
+            got named parameter 'open'. Cannot mix named and positional parameters
+        {{< details title="标题" open="true" >}}  -> OK
+
+    为什么要专门测它：本轮写文档与探针时都踩过 —— 因为旧版 Hugo 在某些写法下
+    **不报错**，很容易让人以为"位置参数 + 具名参数"是可用的，于是文档给出一个
+    会让用户构建失败的示例。把它固化成断言，就再也不会写出这样的示例。
+
+    这里同时验证**后果**：混用时是"构建失败"，而不是"静默忽略其中一个参数"——
+    后者才是真正危险的（内容会悄悄丢标题）。
+    """
+    mixed = """---
+title: "CC Mixed"
+date: 2024-05-09
+draft: false
+---
+
+{{< details "位置标题" open="true" >}}
+混合参数正文 MIXED-ARGS-TEXT
+{{< /details >}}
+"""
+    out, log, rc = build_probe("mixed", pages={"p4.md": mixed})
+    H.record("D9 混用位置参数与具名参数时构建**失败**（Hugo 硬性规则）",
+             rc != 0, f"rc={rc}（若为 0 说明该版本静默容忍，文档示例会误导用户）")
+    H.record("D9 失败原因是明确的 'Cannot mix named and positional parameters'",
+             "Cannot mix named and positional parameters" in log,
+             log[-200:] if "Cannot mix" not in log else "")
+    H.record("D9 未把混合参数的页面悄悄产出（不是静默忽略参数）",
+             page(out, "p4/index.html") is None, "")
+    safe_rmtree(out)
+
+    # 对照组：全具名写法必须成功 —— 证明"失败"来自混用，而不是组件本身有问题
+    ok_cfg = mixed.replace('{{< details "位置标题" open="true" >}}',
+                           '{{< details title="具名标题" open="true" >}}')
+    out2, log2, rc2 = build_probe("named", pages={"p4.md": ok_cfg})
+    H.record("D9 对照组：全具名写法构建成功（归因正确）", rc2 == 0,
+             "" if rc2 == 0 else log2[-260:])
+    if rc2 == 0:
+        h = page(out2, "p4/index.html") or ""
+        H.record("D9 对照组的 title 与 open 都生效",
+                 "具名标题" in h and re.search(r'<details class="?nb-details"? open', h) is not None, "")
+        H.record("D9 对照组正文完整（MIXED-ARGS-TEXT）", "MIXED-ARGS-TEXT" in h, "")
+    safe_rmtree(out2)
+
+
+def run_newline_arg_check():
+    """D9b 结构性事实：Hugo 词法层拒绝"引号参数内裸换行"，故换行绕过无法构造。
+
+    `java<NL>script:alert(1)` 曾是按钮 scheme 校验里的一个用例，但实测发现：
+    把裸换行塞进短代码的引号参数，Hugo **词法分析器**直接报
+
+        unterminated quoted string in shortcode parameter-argument: 'java
+
+    也就是说，从本主题的 shortcode 入口**根本无法把带换行的 URL 送进来**；能
+    送进来的空白绕过只有制表符（已由 D3 覆盖）。这里把它固化为断言，是为了避免
+    未来有人"想当然"地再加一个无法构造的换行用例，导致探针站点整站构建失败
+    （本脚本曾经的 8 项失败就是这么来的）。
+    """
+    md = ('---\ntitle: "CC NL"\ndate: 2024-05-10\ndraft: false\n---\n\n'
+          '{{< button "NL" "java\nscript:alert(1)" >}}\n')
+    out, log, rc = build_probe("nl", pages={"p5.md": md})
+    H.record("D9b 带裸换行的引号参数导致构建失败（词法层拒绝，绕过不可构造）",
+             rc != 0, f"rc={rc}")
+    H.record("D9b 失败原因是 'unterminated quoted string'",
+             "unterminated quoted string" in log, log[-200:] if "unterminated" not in log else "")
+    H.record("D9b 未产出该页面（不是静默容忍）", page(out, "p5/index.html") is None, "")
+    safe_rmtree(out)
+
+
 def run_nested_regression():
     """反证：去掉 token 占位符机制后，嵌套内容必须**真的**丢失 —— 证明 C4 有区分力。
 
@@ -839,6 +1223,11 @@ def main():
         guard(H, run_hugo_matrix)
         guard(H, run_component_checks)
         guard(H, run_component_matrix)
+        guard(H, run_media_checks)
+        guard(H, run_media_matrix)
+        guard(H, run_media_regression)
+        guard(H, run_mixed_args_check)
+        guard(H, run_newline_arg_check)
         guard(H, run_nested_regression)
         guard(H, run_alias_defense)
     H.finish()

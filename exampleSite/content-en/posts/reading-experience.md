@@ -75,13 +75,10 @@ showFocusMode: true    # show the focus-mode button on this page
 ---
 ```
 
-<details>
-<summary>Why does <code>false</code> actually work here?</summary>
-
+{{< details "Why does `false` actually work here?" >}}
 The common Hugo idiom `.Params.flag | default true` returns **true** when `flag: false`,
 because `default` only treats zero values as empty and `false` *is* the zero value of
 `bool`. This theme resolves such flags through `util/bool-param.html` (based on `isset`),
 so an explicit `false` is never swallowed. The same fix covers the long-standing
 `showDate` / `toc` / `comments` / `breadcrumb` switches.
-
-</details>
+{{< /details >}}

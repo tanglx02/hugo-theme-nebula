@@ -74,13 +74,10 @@ showFocusMode: true    # 本页显示专注模式按钮
 ---
 ```
 
-<details>
-<summary>为什么这里的 false 一定生效？</summary>
-
+{{< details "为什么这里的 false 一定生效？" >}}
 Hugo 模板里常见的 `.Params.flag | default true` 写法在 `flag: false` 时
 **会返回 true**——`default` 只判断零值，而 `false` 恰好是 bool 的零值。
 本主题统一改用内部 `util/bool-param.html`（基于 `isset` 语义），
 显式 `false` 不再被吞掉。这条修复同时覆盖 `showDate` / `toc` / `comments` /
 `breadcrumb` 等历史开关。
-
-</details>
+{{< /details >}}

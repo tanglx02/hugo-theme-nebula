@@ -152,3 +152,7 @@ tabs:
   untitled: 未命名
 steps:
   label: 操作步骤
+
+# 技术内容组件（功能三）：按钮被拦截时的占位提示
+components:
+  linkBlocked: 链接不可用（已拦截不安全地址）

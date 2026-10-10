@@ -1751,3 +1751,140 @@ html[data-theme="dark"] .md-alert-warning .md-alert-icon { color: #f0b860; }
   .step-body::before { background: #000 !important; color: #fff !important; }
   .step::before { background: #999 !important; }
 }
+
+/* ---------- 26. 文件树 / 徽标 / 禁用按钮（功能三：filetree / badge / button） ----------
+   全部零 JavaScript、零第三方请求。
+   对比度约定（见 §1 Tokens 的注释）：
+     * 承载文字的**实心**背景用 --brand-solid（白字 5.42:1）；
+     * 浅底上的**彩色文字**用 *-ink 变量（AA 4.5:1），绝不用鲜亮的 --brand 当文字。 */
+
+/* --- 文件树：等宽 + 保留空白 ---
+   行首空格是树形结构的一部分，必须用 pre 并显式 white-space:pre；
+   横向可滚动而不是换行（换行会让层级关系彻底错乱）。 */
+.filetree {
+  margin: 1.5em 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-code);
+  overflow: hidden;
+}
+.filetree-title {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.filetree-body {
+  margin: 0;
+  padding: 13px 16px;
+  background: none;
+  border: 0;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre;
+  tab-size: 2;
+}
+/* 面板/步骤里的文件树收掉首尾外边距，避免双倍留白 */
+.tabs-panel .filetree:last-child, .step .filetree:last-child { margin-bottom: 0; }
+.tabs-panel .filetree:first-child, .step .filetree:first-child { margin-top: 8px; }
+
+/* --- 徽标：行内小标签 --- */
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+/* default：实心蓝 + 白字（唯一"承载白字"的变体，故用 --brand-solid） */
+.badge-default { background: var(--brand-solid); color: #fff; }
+/* 其余变体一律"浅底 + *-ink 文字"，保证 AA */
+.badge-info    { background: var(--brand-soft);      color: var(--brand-ink);  border-color: var(--brand); }
+.badge-danger  { background: rgba(245, 108, 108, .14); color: var(--accent-ink); border-color: var(--accent); }
+.badge-warning { background: rgba(230, 162, 60, .18);  color: #8a5a00;          border-color: #e6a23c; }
+.badge-success { background: rgba(40, 200, 64, .16);   color: #1a7f37;          border-color: #28c840; }
+.badge-muted   { background: var(--bg-soft);         color: var(--text-muted); border-color: var(--border); }
+.badge + .badge { margin-left: 6px; }
+/* 暗色主题：浅底变体需加深文字亮度，否则深底上不可读 */
+html[data-theme="dark"] .badge-default { background: #2f6fa8; color: #fff; }
+html[data-theme="dark"] .badge-info    { background: rgba(79, 163, 255, .18); color: #9ccaff; border-color: #4fa3ff; }
+html[data-theme="dark"] .badge-danger  { background: rgba(245, 108, 108, .18); color: #ffb3b3; border-color: #f56c6c; }
+html[data-theme="dark"] .badge-warning { background: rgba(230, 162, 60, .20); color: #ffc978; border-color: #e6a23c; }
+html[data-theme="dark"] .badge-success { background: rgba(40, 200, 64, .18); color: #86e29b; border-color: #28c840; }
+html[data-theme="dark"] .badge-muted   { background: var(--bg-soft); color: var(--text-muted); border-color: var(--border); }
+
+/* --- 按钮被拦截时的占位（无 href，不算链接，故不参与外链 rel 规则） --- */
+.btn-disabled {
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.btn-disabled:hover { background: var(--bg-soft); color: var(--text-muted); transform: none; }
+
+/* 打印：文件树与徽标保持可读；徽标去掉浅底改为描边，省墨且更清晰 */
+@media print {
+  .filetree, .filetree-body { break-inside: avoid; page-break-inside: avoid; }
+  .filetree { border-color: #999; }
+  .filetree-body { overflow: visible !important; white-space: pre-wrap; word-break: break-word; font-size: 9.5pt; line-height: 1.5; }
+  .badge { background: none !important; color: #000 !important; border-color: #666 !important; }
+  .badge-default { background: #000 !important; color: #fff !important; }
+}
+
+/* ---------- 27. 折叠块（功能三：details shortcode，零 JS） ----------
+   原生 <details>/<summary>，键盘与读屏天然可用，无需脚本补丁。 */
+.nb-details {
+  margin: 1.5em 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+.nb-details-summary {
+  padding: 11px 16px;
+  color: var(--text-strong);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+/* 自定义标记：默认的三角形在不同浏览器差异较大，这里统一成 +/− */
+.nb-details-summary::-webkit-details-marker { display: none; }
+.nb-details-summary::before {
+  content: "+";
+  display: inline-block;
+  width: 1.1em;
+  color: var(--brand-ink);
+  font-weight: 700;
+}
+.nb-details[open] .nb-details-summary::before { content: "\2212"; }
+.nb-details-summary:hover { background: var(--bg-elev); }
+.nb-details-summary:focus-visible { outline: 2px solid var(--brand-solid); outline-offset: -2px; }
+.nb-details-body {
+  padding: 2px 16px 14px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 14.5px;
+}
+.nb-details-body > *:first-child { margin-top: 10px; }
+.nb-details-body > *:last-child { margin-bottom: 0; }
+.nb-details-body pre { overflow-x: auto; }
+/* 面板/步骤里的折叠块收掉首尾外边距 */
+.tabs-panel .nb-details:last-child, .step .nb-details:last-child { margin-bottom: 0; }
+.tabs-panel .nb-details:first-child, .step .nb-details:first-child { margin-top: 8px; }
+
+/* 打印：折叠块**强制展开**，否则未展开的补充说明会被整段漏印 */
+@media print {
+  .nb-details { break-inside: avoid; page-break-inside: avoid; border-color: #999; }
+  .nb-details-body { display: block !important; }
+  .nb-details-summary::before { content: ""; width: 0; }
+}

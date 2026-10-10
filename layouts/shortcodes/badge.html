@@ -1,0 +1,24 @@
+{{- /* 徽标：行内小标签（版本号、平台、状态、语言…），零 JavaScript。
+
+     用法（三种等价写法）：
+       {{< badge "v1.0.9" >}}                 -> 默认样式
+       {{< badge "稳定" "success" >}}          -> 指定变体
+       {{< badge text="已弃用" type="danger" >}} -> 具名参数
+       {{< badge "草稿" "bogus" >}}            -> 未知变体回退 default（不报错）
+
+     变体白名单：default / info / success / warning / danger / muted。
+
+     为什么白名单而不是直接拼 class（第六节：不得为功能数量牺牲安全）：
+       变体值来自正文作者，若直接拼进 class 属性，`a" onmouseover="alert(1)`
+       这类输入就能**逃出属性**注入事件处理器（inline handler 是主题明令禁止的，
+       check_html_quality 与 security_baseline 都会拦）。这里把任意非白名单值
+       归一为 default，从根上断掉这条注入路径 —— 有专门的回归断言。
+
+     未知变体**静默回退**而不是让构建失败：与提示块（[!BOGUS]）和 button 的既有
+     约定一致 —— 内容作者的笔误不该中断整站构建。 */ -}}
+{{- $text := .Get 0 | default (.Get "text") -}}
+{{- $variant := lower (printf "%v" (.Get 1 | default (.Get "type") | default "default")) -}}
+{{- if not (in (slice "default" "info" "success" "warning" "danger" "muted") $variant) -}}
+  {{- $variant = "default" -}}
+{{- end -}}
+<span class="badge badge-{{ $variant }}">{{ $text }}</span>

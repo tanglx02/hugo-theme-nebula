@@ -151,3 +151,7 @@ tabs:
   untitled: 未命名
 steps:
   label: 操作步驟
+
+# 技術內容元件（功能三）：按鈕被攔截時的佔位提示
+components:
+  linkBlocked: 連結無法使用（已攔截不安全位址）

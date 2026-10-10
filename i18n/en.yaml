@@ -151,3 +151,7 @@ tabs:
   untitled: Untitled
 steps:
   label: Steps
+
+# Technical content components (feature 3): placeholder when a button URL is blocked
+components:
+  linkBlocked: Link unavailable (unsafe address blocked)
