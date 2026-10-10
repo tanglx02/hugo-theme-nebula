@@ -80,6 +80,35 @@ rssLimit = 20
     backToTop = true
     focusMode = true
 
+  # 编辑此页（功能四 / 6.4）：配置了才输出，且逐文章可用 `editUrl: false` 关闭。
+  [params.editUrl]
+    repo = 'https://github.com/tanglx02/hugo-theme-nebula'
+    branch = 'main'
+    contentDir = 'exampleSite/content'
+    provider = 'github'
+
+  # Mermaid 图表（功能四 / 6.2）：**自托管**（exampleSite 已内置 js/vendor/mermaid.min.js），
+  # 不依赖任何 CDN，离线可用。默认按需加载：只有含 ```mermaid 围栏的页面才注入脚本。
+  # 若要改用 CDN，请同时提供 integrity（SRI），见 README「Mermaid / 数学公式」。
+  [params.mermaid]
+    enable = true
+    local = 'js/vendor/mermaid.min.js'
+
+  # KaTeX 数学公式（功能四 / 6.3）：同样自托管（static/vendor/katex/），按需加载。
+  [params.math]
+    enable = true
+    css = 'vendor/katex/katex.min.css'
+    js = 'vendor/katex/katex.min.js'
+    autoRender = 'vendor/katex/contrib/auto-render.min.js'
+
+  # 外观配置（功能五 / 6.7）：演示"强调色预设 + 正文宽度 + 行高 + 卡片密度"。
+  # 全部可选；**留空即为主题默认外观**（浅蓝 #409eff / 1220px / 1.85 / 舒适）。
+  # 非法值一律安全回退（不产生破坏性输出）。可用 accent = 'teal' / 'violet' 等切换配色。
+  [params.appearance]
+    accent = 'blue'
+    contentWidth = '1220px'
+    cardDensity = 'comfortable'
+
   [params.views]
     enable = false
 

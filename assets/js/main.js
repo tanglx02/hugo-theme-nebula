@@ -769,7 +769,8 @@
           return '<span class="search-item' + (i === 0 ? ' sel' : '') +
                  ' no-link" title="blocked by scheme allowlist">' + inner + '</span>';
         }
-        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(href) + '">' +
+        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(href) + '"' +
+          (it.external ? ' target="_blank" rel="noopener"' : '') + '>' +
           inner + '</a>';
       }).join('');
       bindHover();

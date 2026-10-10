@@ -1888,3 +1888,167 @@ html[data-theme="dark"] .badge-muted   { background: var(--bg-soft); color: var(
   .nb-details-body { display: block !important; }
   .nb-details-summary::before { content: ""; width: 0; }
 }
+
+/* ---------- 28. 响应式图片画廊（功能三 / 6.1） ----------
+   纯 CSS grid，零 JavaScript、零第三方请求。
+   每张图仍由 util/image-figure.html 渲染（复用图片 Pipeline 与灯箱）：
+   图**不被 <a> 包裹**，因此 main.js 的灯箱逻辑（选择 .post-content img）自动接管。 */
+.nb-gallery {
+  margin: 1.5em 0;
+  --nb-gallery-gap: 10px;
+}
+.nb-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--nb-gallery-gap);
+  align-items: start;
+}
+.nb-gallery-cols-2 .nb-gallery-grid { grid-template-columns: repeat(2, 1fr); }
+.nb-gallery-cols-3 .nb-gallery-grid { grid-template-columns: repeat(3, 1fr); }
+.nb-gallery-cols-4 .nb-gallery-grid { grid-template-columns: repeat(4, 1fr); }
+.nb-gallery-cols-5 .nb-gallery-grid { grid-template-columns: repeat(5, 1fr); }
+.nb-gallery-cols-6 .nb-gallery-grid { grid-template-columns: repeat(6, 1fr); }
+/* 画廊内的图片：去掉普通正文 figure 的上下外边距，改由 grid gap 控制间距 */
+.nb-gallery .nb-gallery-item { margin: 0; }
+.nb-gallery .nb-gallery-item img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.nb-gallery .nb-gallery-item figcaption {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+/* 缺图占位：保留 alt 文本，避免破损图与横向溢出 */
+.nb-gallery-missing .nb-gallery-ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+  word-break: break-word;
+}
+.nb-gallery-missing .nb-gallery-ph svg { width: 28px; height: 28px; opacity: .7; }
+
+/* ---------- 29. 外链文章（功能四 / 6.6） ---------- */
+/* 卡片：外链文章带一枚"外链"徽标 + 轻微视觉区分 */
+.post-card-external .post-thumb { position: relative; }
+.ext-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  letter-spacing: .02em;
+}
+/* 正文页顶部的外链提示条 */
+.article-external-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-solid);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+.article-external-notice .ext-badge {
+  position: static;
+  background: var(--brand-solid);
+  color: #fff;
+}
+.article-external-notice a {
+  color: var(--brand-ink);
+  font-weight: 600;
+  /* 触控目标 ≥24px（WCAG 2.5.8）：该链接在 flex 提示条内被当成非内联元素，
+     不享受"正文内联链接"豁免，故显式补足最小高度，
+     避免实际渲染高度 23px 恰好低于 24px 阈值。 */
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+/* ---------- 30. 编辑此页（功能四 / 6.4） ---------- */
+.article-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.edit-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.edit-page:hover { color: var(--brand-ink); border-color: var(--brand); background: var(--brand-soft); }
+.edit-page svg { width: 15px; height: 15px; }
+
+/* 正文元信息里的作者 */
+.article-meta .stat-author { font-weight: 600; }
+
+/* ---------- 31. Mermaid 图表（功能四 / 6.2，按需加载） ----------
+   未启用时页面不含 mermaid 容器；启用后若渲染失败，下面的规则保证**原始代码仍可读**
+   （不空白、不崩版）。<pre> 是空白敏感元素，--minify 不会压缩其换行，图表语法得以保留。 */
+pre.mermaid {
+  margin: 1.5em 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  overflow-x: auto;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+}
+pre.mermaid svg { max-width: 100%; height: auto; }
+pre.mermaid.mermaid-error { text-align: left; color: var(--text); }
+pre.mermaid.mermaid-error::before {
+  content: attr(data-fallback);
+  display: block;
+  margin-bottom: 8px;
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/* ---------- 32. KaTeX 数学公式（功能四 / 6.3，按需加载） ----------
+   仅在启用 params.math 且本页含定界符时加载 katex.min.css；此处只做兜底布局，
+   不覆盖 KaTeX 自身样式。未渲染时的原始 $…$ 文本保持可读。 */
+.post-content .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.post-content [data-math-unrendered] { color: inherit; }
+
+/* 打印：画廊/外链徽标/编辑入口保持合理呈现 */
+@media print {
+  .nb-gallery { break-inside: avoid; }
+  .edit-page, .ext-badge { display: none !important; }
+  .article-external-notice { border-color: #999; background: none; }
+}

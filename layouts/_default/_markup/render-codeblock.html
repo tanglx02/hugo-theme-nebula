@@ -12,6 +12,22 @@
 */ -}}
 {{- $lang := .Type | default "text" -}}
 {{- $attrs := .Attributes | default dict -}}
+
+{{- /* Mermaid（功能四 / 6.2）：```mermaid 围栏在**服务端**只输出语义容器，
+       真正的渲染由按需注入的 mermaid 脚本在浏览器完成（默认关闭，见 scripts.html）。
+
+       为什么用 <pre class="mermaid"> 而不是 <div>：
+         * mermaid.run() 同样能识别 pre.mermaid；
+         * <pre> 是 HTML 规范里的**空白敏感元素**，`hugo --minify` 会原样保留其中的
+           换行 —— 而 Mermaid 语法**依赖换行**，若被压缩会导致图表解析失败。
+       容器内文本交由 html/template 自动转义；mermaid 读取的是 textContent，
+       因此转义在浏览器端会被还原，图语法不受影响。 */ -}}
+{{- if eq (lower $lang) "mermaid" -}}
+  {{- .Page.Store.Set "nebula_has_mermaid" true -}}
+  {{- with .Options }}{{ end -}}
+<pre class="mermaid" data-mermaid>{{ .Inner }}</pre>
+{{- else -}}
+
 {{- $display := cond (eq $lang "text") "CODE" $lang -}}
 {{- with $attrs.filename }}{{ $display = . }}{{ end -}}
 
@@ -33,3 +49,4 @@
     <div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text">{{ .Inner | htmlEscape }}</code></pre></div>
   {{ end }}
 </div>
+{{- end -}}

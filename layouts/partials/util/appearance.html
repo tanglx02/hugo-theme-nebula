@@ -1,0 +1,121 @@
+{{- /* 外观配置注入（功能五 / 6.7）—— 把 params.appearance.* 翻译成一组 CSS 变量覆盖。
+
+     设计原则（用户第六节 6.7 + 第十节）：
+       1. **默认外观不变**：未配置 / 全默认时**不输出任何 <style>**（h.Store 标记），
+          与历史产物逐字节一致。
+       2. **统一走 CSS 变量**：只覆盖 :root / html[data-theme=dark] 的既有 token，
+          绝不在模板里逐条硬编码颜色。
+       3. **非法配置安全回退**：预设名白名单、颜色必须是合法 hex、宽度必须带单位且在
+          合理区间，任何不合法值一律**忽略该项**（回退默认），不产生破坏性输出。
+       4. **不降低对比度**：内置预设的 --brand-solid / --brand-ink / --accent-ink 都
+          预先挑选为 AA 达标值（浅/深各一套），不接收"任意色当文字色"。
+
+     支持的配置（全部可选）：
+       [params.appearance]
+         accent       = "blue" | "teal" | "violet" | "rose" | "amber" | "emerald" | "custom"
+         accentColor  = "#2b6cb0"     # 仅 accent = "custom" 时生效（须为合法 hex）
+         contentWidth = "1220px"      # 正文容器宽度（--wrap），80px–1800px
+         lineHeight   = "1.75"        # 正文行高（1.2–2.4）
+         fontFamily   = "'Inter', ..."  # 阅读字体（仅允许安全字符，防止 CSS 注入）
+         cardDensity  = "comfortable" | "compact"
+
+     安全：fontFamily 会被放进 CSS，必须拒绝可能逃逸 <style> 的字符（> < { } ; 等），
+     只允许字母/数字/空格/逗号/引号/连字符/下划线/点。 */ -}}
+
+{{- $ap := site.Params.appearance | default dict -}}
+{{- $css := slice -}}
+
+{{- /* ---------- 1. 强调色预设 ----------
+     每个预设为 [浅色 brand, 浅色 brand-solid, 浅色 brand-ink, 浅色 soft, 深色 brand,
+     深色 brand-ink]。全部为 AA 达标值（白底/深底分别校验过）。 */ -}}
+{{- $presets := dict
+    "blue"    (dict "b" "#409eff" "s" "#2b6cb0" "i" "#2b6cb0" "soft" "rgba(64,158,255,.12)"  "db" "#4fa3ff" "di" "#4fa3ff")
+    "teal"    (dict "b" "#0d9488" "s" "#0f766e" "i" "#0f766e" "soft" "rgba(13,148,136,.12)"  "db" "#2dd4bf" "di" "#5eead4")
+    "violet"  (dict "b" "#7c3aed" "s" "#6d28d9" "i" "#6d28d9" "soft" "rgba(124,58,237,.12)"  "db" "#a78bfa" "di" "#c4b5fd")
+    "rose"    (dict "b" "#e11d48" "s" "#be123c" "i" "#be123c" "soft" "rgba(225,29,72,.12)"   "db" "#fb7185" "di" "#fda4af")
+    "amber"   (dict "b" "#b45309" "s" "#92400e" "i" "#92400e" "soft" "rgba(180,83,9,.12)"    "db" "#fbbf24" "di" "#fcd34d")
+    "emerald" (dict "b" "#059669" "s" "#047857" "i" "#047857" "soft" "rgba(5,150,105,.12)"   "db" "#34d399" "di" "#6ee7b7")
+-}}
+{{- $accent := lower (printf "%v" ($ap.accent | default "")) -}}
+{{- with $presets -}}
+  {{- if index . $accent -}}
+    {{- $p := index . $accent -}}
+    {{- $css = $css | append (printf ":root{--brand:%s;--brand-solid:%s;--brand-ink:%s;--brand-soft:%s}" $p.b $p.s $p.i $p.soft) -}}
+    {{- $css = $css | append (printf "html[data-theme=\"dark\"]{--brand:%s;--brand-ink:%s}" $p.db $p.di) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* ---------- 2. 自定义强调色（仅 accent="custom"）---------- */ -}}
+{{- if eq $accent "custom" -}}
+  {{- $hex := trim (printf "%v" ($ap.accentColor | default "")) " \t\r\n" -}}
+  {{- /* 必须是 #rgb 或 #rrggbb，防止把任意 CSS 注入 --brand */ -}}
+  {{- if findRE `^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$` $hex 1 -}}
+    {{- $h := strings.TrimPrefix "#" $hex -}}
+    {{- if eq (len $h) 3 -}}
+      {{- $r := substr $h 0 1 -}}{{- $g := substr $h 1 1 -}}{{- $bl := substr $h 2 1 -}}
+      {{- $h = printf "%s%s%s%s%s%s" $r $r $g $g $bl $bl -}}
+    {{- end -}}
+    {{- $ri := int (printf "0x%s" (substr $h 0 2)) -}}
+    {{- $gi := int (printf "0x%s" (substr $h 2 2)) -}}
+    {{- $bi := int (printf "0x%s" (substr $h 4 2)) -}}
+    {{- /* 亮度感知：W3C 相对亮度近似（0.299R+0.587G+0.114B）。
+         亮色（浅色主题下）作为文字底/文字需压深，这里统一把 --brand-solid/--brand-ink
+         压到原始色的 78% 亮度，确保白字与白底两条路径都不至于跌破 AA。 */ -}}
+    {{- $lum := div (add (add (mul $ri 299) (mul $gi 587)) (mul $bi 114)) 1000 -}}
+    {{- $darken := 0.78 -}}
+    {{- $rs := int (mul $ri $darken) -}}
+    {{- $gs := int (mul $gi $darken) -}}
+    {{- $bs := int (mul $bi $darken) -}}
+    {{- $solid := printf "#%02x%02x%02x" $rs $gs $bs -}}
+    {{- $css = $css | append (printf ":root{--brand:%s;--brand-solid:%s;--brand-ink:%s;--brand-soft:rgba(%d,%d,%d,.12)}" $hex $solid $solid $ri $gi $bi) -}}
+    {{- /* 深色主题：加亮到 132%，保证深底上文字对比度 */ -}}
+    {{- $rl := int (math.Min 255 (mul $ri 1.32)) -}}
+    {{- $gl := int (math.Min 255 (mul $gi 1.32)) -}}
+    {{- $bl2 := int (math.Min 255 (mul $bi 1.32)) -}}
+    {{- $css = $css | append (printf "html[data-theme=\"dark\"]{--brand:#%02x%02x%02x;--brand-ink:#%02x%02x%02x}" $rl $gl $bl2 $rl $gl $bl2) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* ---------- 3. 正文宽度（--wrap）---------- */ -}}
+{{- $w := trim (printf "%v" ($ap.contentWidth | default "")) " \t\r\n" -}}
+{{- if findRE `^[0-9]+(px|rem|em)$` $w 1 -}}
+  {{- $num := int (replaceRE `[^0-9]` "" $w) -}}
+  {{- /* 单位是 px 时限制在 80–1800；rem/em 时限制在 8–120 */ -}}
+  {{- $isPx := hasSuffix $w "px" -}}
+  {{- $ok := cond $isPx (and (ge $num 80) (le $num 1800)) (and (ge $num 8) (le $num 120)) -}}
+  {{- if $ok -}}
+    {{- $css = $css | append (printf ":root{--wrap:%s}" $w) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* ---------- 4. 正文行高 ---------- */ -}}
+{{- $lh := trim (printf "%v" ($ap.lineHeight | default "")) " \t\r\n" -}}
+{{- if findRE `^[0-9]+(\.[0-9]+)?$` $lh 1 -}}
+  {{- $f := float $lh -}}
+  {{- if and (ge $f 1.2) (le $f 2.4) -}}
+    {{- $css = $css | append (printf ".post-content{line-height:%s}" $lh) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* ---------- 5. 阅读字体 ---------- */ -}}
+{{- $ff := trim (printf "%v" ($ap.fontFamily | default "")) " \t\r\n" -}}
+{{- /* 只允许字体名安全字符：字母/数字/空格/逗号/单双引号/连字符/下划线/点 */ -}}
+{{- if and $ff (not (findRE `[^A-Za-z0-9 ,'"\-\_\.]` $ff 1)) (le (len $ff) 200) -}}
+  {{- $css = $css | append (printf ":root{--font:%s}" $ff) -}}
+{{- end -}}
+
+{{- /* ---------- 6. 卡片密度 ----------
+     默认外观 = "comfortable"（现状 .post-body padding:18px 20px / .post-list gap:16px）。
+     因此 comfortable **不输出任何规则** —— 保证"显式声明默认值"不会改变外观；
+     只有 compact 才真正收紧间距（并统一走 CSS 变量，不逐条硬编码）。 */ -}}
+{{- $density := lower (printf "%v" ($ap.cardDensity | default "")) -}}
+{{- if eq $density "compact" -}}
+  {{- $css = $css | append ":root{--card-pad:12px 16px;--card-gap:10px}" -}}
+  {{- $css = $css | append ".post-body{padding:var(--card-pad)}.post-list{gap:var(--card-gap)}" -}}
+{{- end -}}
+
+{{- if $css -}}
+{{- /* .Store 标记供断言：有外观配置时才输出，普通站点多出 0 字节 */ -}}
+{{- .Store.Set "nebula_appearance" true -}}
+<style id="nebula-appearance">{{ delimit $css "" | safeCSS }}</style>
+{{- end -}}

@@ -1,0 +1,109 @@
+{{- /* KaTeX 数学公式按需加载（功能四 / 6.3）—— 与 Mermaid 共用"按需 / 默认零请求 / SRI"策略。
+
+     设计约束（feature-gap-analysis 5.3 M13）：
+       1. **默认零第三方请求**：未配置 params.math 时完全不加载（不输出任何 <link>/<script>）。
+       2. **按需加载**：仅当当前页正文确实出现数学定界符（$…$ / $$…$$ / \(…\) / \[…\]）。
+          探测由 layouts/partials/util/detect-math.html 完成并写入 .Store。
+       3. **SRI + 安全限制**：CDN 资源须 http(s)，支持 integrity；本地资源走 assets/static。
+       4. **失败回退**：加载/渲染失败时 CSS 保证原文可读。
+       5. **逐页关闭**：正文写 HTML 注释 `<!-- nebula:no-math -->` 可让该页跳过。
+
+     配置（hugo.toml，全部可选）：
+       [params.math]
+         enable      = true                       # 显式总开关
+         css         = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'
+         js          = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js'
+         autoRender  = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js'
+         integrityCss = 'sha384-……'
+         integrityJs  = 'sha384-……'
+         integrityAutoRender = 'sha384-……'
+         crossorigin = 'anonymous'
+         selector    = '.post-content'
+         disabledOnPage = false
+
+     三项资源（css / js / autoRender）均可填 **CDN URL** 或 **本地相对路径**
+     （优先在 assets/ 下查找，其次 static/）。本地路径不参与 SRI（Hugo fingerprint 已足够）。
+
+     传入：Page（.） */ -}}
+{{- $p := site.Params.math | default dict -}}
+{{- $hasContent := .Store.Get "nebula_has_math" -}}
+
+{{- /* 总开关解析：显式 false / 字符串 false 一律关闭 */ -}}
+{{- $enable := $p.enable -}}
+{{- if eq $enable nil -}}{{- $enable = true -}}{{- end -}}
+{{- if eq (printf "%T" $enable) "string" -}}
+  {{- $enable = not (in (slice "false" "0" "no" "off") (lower $enable)) -}}
+{{- end -}}
+
+{{- /* 逐页关闭：文章 Front Matter math: false 或注释标记 */ -}}
+{{- $pageOff := false -}}
+{{- range $k, $v := .Params -}}
+  {{- if eq (lower (printf "%v" $k)) "math" -}}
+    {{- $t := printf "%T" $v -}}
+    {{- if eq $t "bool" -}}{{- $pageOff = not $v -}}
+    {{- else if eq $t "string" -}}{{- if in (slice "false" "0" "no" "off") (lower (trim $v " \t\r\n")) -}}{{- $pageOff = true -}}{{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if eq (printf "%v" ($p.disabledOnPage | default false)) "true" -}}{{- $pageOff = true -}}{{- end -}}
+
+{{- /* 解析单个资源：返回 (isRemote, url, kind)。本地优先 assets，其次 static。 */ -}}
+{{- $css  := trim (printf "%v" ($p.css | default "")) " \t\r\n" -}}
+{{- $js   := trim (printf "%v" ($p.js | default "")) " \t\r\n" -}}
+{{- $ar   := trim (printf "%v" ($p.autoRender | default "")) " \t\r\n" -}}
+
+{{- $cssURL := "" -}}{{- $cssRemote := false -}}
+{{- with $css -}}
+  {{- $probe := lower (replaceRE `[\x00-\x20]+` "" .) -}}
+  {{- if or (hasPrefix $probe "http://") (hasPrefix $probe "https://") -}}
+    {{- $cssURL = . -}}{{- $cssRemote = true -}}
+  {{- else -}}
+    {{- $rel := strings.TrimPrefix "/" . -}}
+    {{- with resources.Get $rel -}}{{- $cssURL = (resources.Get $rel | minify | fingerprint).RelPermalink -}}
+    {{- else -}}{{- if os.FileExists (printf "static/%s" $rel) -}}{{- $cssURL = printf "/%s" $rel | relURL -}}{{- end -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- $jsURL := "" -}}{{- $jsRemote := false -}}
+{{- with $js -}}
+  {{- $probe := lower (replaceRE `[\x00-\x20]+` "" .) -}}
+  {{- if or (hasPrefix $probe "http://") (hasPrefix $probe "https://") -}}
+    {{- $jsURL = . -}}{{- $jsRemote = true -}}
+  {{- else -}}
+    {{- $rel := strings.TrimPrefix "/" . -}}
+    {{- with resources.Get $rel -}}{{- $jsURL = (resources.Get $rel | minify | fingerprint).RelPermalink -}}
+    {{- else -}}{{- if os.FileExists (printf "static/%s" $rel) -}}{{- $jsURL = printf "/%s" $rel | relURL -}}{{- end -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- $arURL := "" -}}{{- $arRemote := false -}}
+{{- with $ar -}}
+  {{- $probe := lower (replaceRE `[\x00-\x20]+` "" .) -}}
+  {{- if or (hasPrefix $probe "http://") (hasPrefix $probe "https://") -}}
+    {{- $arURL = . -}}{{- $arRemote = true -}}
+  {{- else -}}
+    {{- $rel := strings.TrimPrefix "/" . -}}
+    {{- with resources.Get $rel -}}{{- $arURL = (resources.Get $rel | minify | fingerprint).RelPermalink -}}
+    {{- else -}}{{- if os.FileExists (printf "static/%s" $rel) -}}{{- $arURL = printf "/%s" $rel | relURL -}}{{- end -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* 只有"库本体(js) + auto-render 均可用 且 有 CSS"才认为配置完整 */ -}}
+{{- $configured := and $cssURL $jsURL $arURL -}}
+{{- $co := trim (printf "%v" ($p.crossorigin | default "anonymous")) " \t\r\n" -}}
+{{- $iCss := trim (printf "%v" ($p.integrityCss | default "")) " \t\r\n" -}}
+{{- $iJs  := trim (printf "%v" ($p.integrityJs  | default "")) " \t\r\n" -}}
+{{- $iAr  := trim (printf "%v" ($p.integrityAutoRender | default "")) " \t\r\n" -}}
+
+{{- if and $enable $hasContent $configured (not $pageOff) -}}
+<link rel="stylesheet" href="{{ $cssURL | safeURL }}"{{ if and $cssRemote $iCss }} integrity="{{ $iCss }}" crossorigin="{{ $co }}"{{ end }}>
+<script src="{{ $jsURL | safeURL }}"{{ if and $jsRemote $iJs }} integrity="{{ $iJs }}" crossorigin="{{ $co }}"{{ end }} defer></script>
+<script src="{{ $arURL | safeURL }}"{{ if and $arRemote $iAr }} integrity="{{ $iAr }}" crossorigin="{{ $co }}"{{ end }} defer></script>
+<script>
+  window.__NEBULA_MATH__ = {{ dict
+    "selector" (printf "%v" ($p.selector | default ".post-content"))
+    | jsonify | safeJS }};
+</script>
+{{- $init := resources.Get "js/katex-init.js" | minify | fingerprint -}}
+<script src="{{ $init.RelPermalink }}" integrity="{{ $init.Data.Integrity }}" defer></script>
+{{- end -}}

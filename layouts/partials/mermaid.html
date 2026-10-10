@@ -1,0 +1,70 @@
+{{- /* Mermaid 图表按需加载（功能四 / 6.2）。
+
+     设计约束（与 feature-gap-analysis 5.3 M12 一致）：
+       1. **默认零第三方请求**：只有配置了 params.mermaid（提供 loader 或 local）才加载。
+       2. **按需加载**：仅当当前页确实含 ```mermaid 围栏（.Store 标记）才注入。
+          页面无图表 -> 0 字节额外资源（含 <link> / <script> / 内联配置）。
+       3. **SRI + 安全限制**：CDN 需显式配置 + 支持 integrity；只接受 http(s) 或本地资源，
+          拒绝 javascript: / data: 等 scheme。
+       4. **失败回退**：脚本加载失败 / 渲染异常时，CSS 保证原始 mermaid 源码仍可读（不空白）。
+
+     配置（hugo.toml，全部可选；未配置 = 完全不加载）：
+       [params.mermaid]
+         enable    = true                       # 显式总开关（省略时按是否配置 loader/local 判定）
+         local     = 'js/vendor/mermaid.min.js' # 自托管：assets/ 下的相对路径（优先于 loader）
+         loader    = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'
+         integrity = 'sha384-……'                # 仅 loader（CDN）时生效
+         crossorigin = 'anonymous'
+         themeLight = 'default'
+         themeDark  = 'dark'
+         fontFamily = ''
+
+     传入：Page（.）
+*/ -}}
+{{- $p := site.Params.mermaid | default dict -}}
+{{- $hasContent := .Store.Get "nebula_has_mermaid" -}}
+{{- /* 总开关：显式 enable=false 一律不加载；否则需要"已配置来源 且 本页有图表" */ -}}
+{{- $enable := $p.enable -}}
+{{- if eq $enable nil -}}{{- $enable = true -}}{{- end -}}
+{{- if eq (printf "%T" $enable) "string" -}}
+  {{- $enable = not (in (slice "false" "0" "no" "off") (lower $enable)) -}}
+{{- end -}}
+{{- $local := trim (printf "%v" ($p.local | default "")) " \t\r\n" -}}
+{{- $loader := trim (printf "%v" ($p.loader | default "")) " \t\r\n" -}}
+{{- /* scheme 安全校验：loader 必须是 http/https */ -}}
+{{- $probe := lower (replaceRE `[\x00-\x20]+` "" $loader) -}}
+{{- $loaderOK := or (hasPrefix $probe "http://") (hasPrefix $probe "https://") -}}
+{{- /* 本地资源：必须能在 assets/ 或 static/ 中找到 */ -}}
+{{- $localOK := false -}}
+{{- $localURL := "" -}}
+{{- if $local -}}
+  {{- $rel := strings.TrimPrefix "/" $local -}}
+  {{- with resources.Get $rel -}}
+    {{- $localOK = true -}}
+    {{- $localURL = (resources.Get $rel | minify | fingerprint).RelPermalink -}}
+  {{- else -}}
+    {{- if os.FileExists (printf "static/%s" $rel) -}}
+      {{- $localOK = true -}}
+      {{- $localURL = printf "/%s" $rel | relURL -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $enable $hasContent (or $localOK (and $loader $loaderOK)) -}}
+  {{- $src := cond $localOK $localURL $loader -}}
+  {{- $integrity := "" -}}
+  {{- if not $localOK -}}{{- $integrity = trim (printf "%v" ($p.integrity | default "")) " \t\r\n" -}}{{- end -}}
+  {{- $co := trim (printf "%v" ($p.crossorigin | default "anonymous")) " \t\r\n" -}}
+  {{- /* 1) 库本体 */ -}}
+<script src="{{ $src | safeURL }}"{{ with $integrity }} integrity="{{ . }}"{{ end }}{{ if and (not $localOK) $co }} crossorigin="{{ $co }}"{{ end }} defer></script>
+  {{- /* 2) 运行期配置（供 init 脚本读取，语言中立） */ -}}
+<script>
+  window.__NEBULA_MERMAID__ = {{ dict
+    "themeLight" (printf "%v" ($p.themeLight | default "default"))
+    "themeDark" (printf "%v" ($p.themeDark | default "dark"))
+    "fontFamily" (printf "%v" ($p.fontFamily | default ""))
+    | jsonify | safeJS }};
+</script>
+  {{- /* 3) 初始化脚本（主题自有，带 fingerprint） */ -}}
+  {{- $init := resources.Get "js/mermaid-init.js" | minify | fingerprint -}}
+<script src="{{ $init.RelPermalink }}" integrity="{{ $init.Data.Integrity }}" defer></script>
+{{- end -}}

@@ -63,6 +63,9 @@ post:
   license: 版权声明
   author: 作者
   toTop: 返回顶部
+  external: 外链
+  externalNotice: 本文为外链文章，点击将跳转到站外
+  externalHost: 来源
 
 # 阅读体验（功能二）：进度条 / 返回顶部 / 专注模式 / 编辑入口
 reading:
@@ -156,3 +159,22 @@ steps:
 # 技术内容组件（功能三）：按钮被拦截时的占位提示
 components:
   linkBlocked: 链接不可用（已拦截不安全地址）
+
+# 响应式图片画廊（功能三 / 6.1）
+gallery:
+  label: 图片画廊
+  missing: 图片未找到
+  caption: 查看大图
+
+# 多作者与作者档案（功能四 / 6.5）
+authors:
+  title: 作者
+  by: 作者
+
+# 技术图表与公式（功能四 / 6.2 / 6.3）
+mermaid:
+  loading: 图表渲染中…
+  error: 图表渲染失败
+math:
+  loading: 公式渲染中…
+  error: 公式渲染失败

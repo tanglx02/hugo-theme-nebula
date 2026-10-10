@@ -13,7 +13,10 @@
 {{ end }}
 {{ with $desc }}<meta name="description" content="{{ . }}">{{ end }}
 {{ with .Keywords }}<meta name="keywords" content="{{ delimit . "," }}">{{ end }}
-<meta name="author" content="{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}">
+{{- /* 作者元信息（功能四 / 6.5）：与正文 / JSON-LD / RSS 同源于 util/authors.html。
+     多作者输出逗号分隔；无作者时 content 为空串（不虚构姓名，见 BUG-R2-005）。 */ -}}
+{{- $authors := partial "util/authors.html" (dict "page" .) -}}
+<meta name="author" content="{{ $authors.csv }}">
 <link rel="canonical" href="{{ .Permalink }}">
 
 {{- /* ---------- 阅读体验（功能二）开关 ----------
@@ -140,10 +143,17 @@
     "url" .Permalink -}}
 {{- /* author：**无作者时省略 author 字段**，而不是输出 "name": null
        （schema.org 要求 Person.name 为字符串；null 会被结构化数据校验器判为无效）。
-       有作者（站点级或文章级）时输出正常字符串姓名。绝不生成虚假姓名（BUG-R2-005）。 */ -}}
-{{- $ldAuthor := .Params.author | default site.Params.author | default "" -}}
-{{- if (trim $ldAuthor " \t\r\n") -}}
-  {{- $ld = merge $ld (dict "author" (dict "@type" "Person" "name" (trim $ldAuthor " \t\r\n"))) -}}
+       有作者时输出 Person 姓名；**多作者**（front matter `authors` 列表）输出 Person 数组，
+       与正文 / RSS / 卡片同源于 util/authors.html —— 三处展示必须一致（功能四 / 6.5）。
+       空不虚构（BUG-R2-005）。 */ -}}
+{{- with $authors.names -}}
+  {{- if eq (len .) 1 -}}
+    {{- $ld = merge $ld (dict "author" (dict "@type" "Person" "name" (index . 0))) -}}
+  {{- else -}}
+    {{- $people := slice -}}
+    {{- range . -}}{{- $people = $people | append (dict "@type" "Person" "name" .) -}}{{- end -}}
+    {{- $ld = merge $ld (dict "author" $people) -}}
+  {{- end -}}
 {{- end -}}
 {{- with $desc }}{{ $ld = merge $ld (dict "description" .) }}{{ end -}}
 {{- if .IsPage -}}
@@ -162,6 +172,14 @@
 {{- /* Styles */ -}}
 {{ $css := resources.Get "css/main.css" | minify | fingerprint }}
 <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+
+{{- /* 外观配置（功能五 / 6.7）：把 params.appearance.* 翻译成 CSS 变量覆盖。
+     未配置时**不输出任何 <style>**，默认外观逐字节不变（见 partial 内说明）。 */ -}}
+{{ partial "util/appearance.html" . }}
+
+{{- /* 数学语法探测（功能四 / 6.3）：仅当正文确实含定界符时才标记，
+     供 scripts.html 决定是否按需注入 KaTeX。放在 head 保证探测先于脚本 partial 执行。 */ -}}
+{{- if .IsPage }}{{ partial "util/detect-math.html" . }}{{ end }}
 
 {{- /* Head hooks */ -}}
 {{ partial "extra-head.html" . }}

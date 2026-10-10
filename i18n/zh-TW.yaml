@@ -62,6 +62,9 @@ post:
   license: 版權聲明
   author: 作者
   toTop: 回到頂部
+  external: 外鏈
+  externalNotice: 本文為外鏈文章，點擊將跳轉到站外
+  externalHost: 來源
 
 # 閱讀體驗（功能二）：進度條 / 回到頂部 / 專注模式 / 編輯入口
 reading:
@@ -155,3 +158,22 @@ steps:
 # 技術內容元件（功能三）：按鈕被攔截時的佔位提示
 components:
   linkBlocked: 連結無法使用（已攔截不安全位址）
+
+# 響應式圖片畫廊（功能三 / 6.1）
+gallery:
+  label: 圖片畫廊
+  missing: 找不到圖片
+  caption: 檢視大圖
+
+# 多作者與作者檔案（功能四 / 6.5）
+authors:
+  title: 作者
+  by: 作者
+
+# 技術圖表與公式（功能四 / 6.2 / 6.3）
+mermaid:
+  loading: 圖表渲染中…
+  error: 圖表渲染失敗
+math:
+  loading: 公式渲染中…
+  error: 公式渲染失敗

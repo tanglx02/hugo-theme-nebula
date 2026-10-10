@@ -73,9 +73,16 @@
     {{- $content = partial "util/slice-runes.html" (dict "text" $content "n" $limit) -}}
   {{- end -}}
   {{- $allContent = $allContent | append $content -}}
+  {{- /* 作者（功能四 / 6.5）：与正文 / RSS / JSON-LD 同源，空不虚构。 */ -}}
+  {{- $author := partial "util/authors.html" (dict "page" .) -}}
+  {{- /* 外链文章（功能四 / 6.6）：搜索索引按**站外地址**收录，点击直达外链而非站内空页。 */ -}}
+  {{- $ext := partial "util/external-url.html" . -}}
   {{- $items = $items | append (dict
       "title" .Title
-      "url" .RelPermalink
+      "url" (cond $ext.isExternal $ext.url .RelPermalink)
+      "external" $ext.isExternal
+      "author" $author.primary
+      "authors" $author.names
       "date" (cond .Date.IsZero "" (.Date.Format "2006-01-02"))
       "dateDisplay" (cond .Date.IsZero "" (.Date.Format (i18n "common.dateFormat")))
       "summary" $summary
@@ -150,6 +157,9 @@
   {{- $index = $index | append (dict
       "title" .title
       "url" .url
+      "external" .external
+      "author" .author
+      "authors" .authors
       "date" .date
       "dateDisplay" .dateDisplay
       "summary" .summary

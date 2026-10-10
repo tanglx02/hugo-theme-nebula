@@ -1,15 +1,24 @@
 {{- $p := . -}}
 {{- $cover := "" -}}
 {{- with $p.Params.cover }}{{ $cover = . }}{{ else }}{{ with $p.Params.images }}{{ $cover = index . 0 }}{{ end }}{{ end -}}
-{{- $author := $p.Params.author | default site.Params.author -}}
+{{- /* 作者：统一走 util/authors.html（多作者优先 + 站点回退 + 空不虚构）。
+     单作者（默认）时 $authors.csv == $author，输出与历史逐字节一致。 */ -}}
+{{- $authors := partial "util/authors.html" (dict "page" $p) -}}
+{{- $author := $authors.primary -}}
+{{- $authorText := $authors.csv -}}
+{{- /* 外链文章：卡片区分本站正文与外链（功能四 / 6.6） */ -}}
+{{- $ext := partial "util/external-url.html" $p -}}
+{{- $cardHref := cond $ext.isExternal $ext.url $p.RelPermalink -}}
+{{- $isBlank := $ext.isExternal -}}
 
-<article class="post-card">
-  <a class="post-thumb" href="{{ $p.RelPermalink }}" aria-label="{{ $p.Title }}">
+<article class="post-card{{ if $ext.isExternal }} post-card-external{{ end }}">
+  <a class="post-thumb" href="{{ $cardHref | safeURL }}"{{ if $isBlank }} target="_blank" rel="noopener"{{ end }} aria-label="{{ $p.Title }}">
     {{ if $cover }}
       <img src="{{ partial "util/rel-url.html" $cover | safeURL }}" alt="{{ $p.Title }}" loading="lazy" decoding="async">
     {{ else }}
       <div class="thumb-fallback">{{ partial "util/slice-runes.html" (dict "text" $p.Title "n" 2) }}</div>
     {{ end }}
+    {{ if $ext.isExternal }}<span class="ext-badge" aria-hidden="true">{{ i18n "post.external" }}</span>{{ end }}
   </a>
 
   <div class="post-body">
@@ -25,7 +34,7 @@
       {{ end }}
     </div>
 
-    <h2 class="post-title"><a href="{{ $p.RelPermalink }}">{{ $p.Title }}</a></h2>
+    <h2 class="post-title"><a href="{{ $cardHref | safeURL }}"{{ if $isBlank }} target="_blank" rel="noopener"{{ end }}>{{ $p.Title }}</a></h2>
 
     <p class="post-summary">
       {{ with $p.Description }}{{ . }}{{ else }}{{ $p.Summary | plainify | truncate 110 }}{{ end }}
@@ -42,7 +51,7 @@
         {{ else }}
           <span class="avatar-fallback">{{ partial "util/slice-runes.html" (dict "text" $author "n" 1) }}</span>
         {{ end }}
-        <span>{{ $author }}</span>
+        <span>{{ $authorText }}</span>
       </span>
       <span class="dot">·</span>
       {{/* 缺日期时显示本地化的"未标注日期"，绝不显示 0001年1月1日（BUG-P3-001） */}}

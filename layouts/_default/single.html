@@ -37,6 +37,18 @@
 {{- $showBreadcrumb := (partial "util/bool-param.html" (dict "page" . "key" "breadcrumb" "default" $d.breadcrumb)).value -}}
 {{- $showTOC := (partial "util/bool-param.html" (dict "page" . "key" "toc" "default" $d.toc)).value -}}
 
+{{- /* 作者（功能四 / 6.5）：统一走 util/authors.html，与卡片 / RSS / JSON-LD 同源。
+     .primary 用于"作者：X"，.csv 用于多作者并列展示。 */ -}}
+{{- $authors := partial "util/authors.html" (dict "page" .) -}}
+{{- $authorText := $authors.csv -}}
+
+{{- /* 外链文章（功能四 / 6.6）：front matter `externalUrl` 合法时，正文页顶部给出
+     明确跳转提示，标题/主链接指向站外。scheme 校验在 util/external-url.html 内完成。 */ -}}
+{{- $ext := partial "util/external-url.html" . -}}
+
+{{- /* 编辑此页（功能四 / 6.4）：配置了 params.editUrl 且本页未显式关闭才输出。 */ -}}
+{{- $edit := partial "util/edit-url.html" . -}}
+
 {{- /* 目录：仅当开关允许**且**正文确实有足够章节时输出（len 阈值沿用历史 60）。 */ -}}
 {{- $hasTOC := false -}}
 {{- if $showTOC -}}
@@ -63,6 +75,15 @@
         {{ end }}
 
         <h1 class="article-title">{{ .Title }}</h1>
+
+        {{- /* 外链文章提示条（功能四 / 6.6）：仅 externalUrl 合法时显示。 */ -}}
+        {{- if $ext.isExternal }}
+        <p class="article-external-notice">
+          <span class="ext-badge">{{ i18n "post.external" }}</span>
+          {{ i18n "post.externalNotice" }}
+          <a href="{{ $ext.url | safeURL }}" target="_blank" rel="noopener">{{ $ext.host | default $ext.url }}</a>
+        </p>
+        {{- end }}
 
         <div class="article-meta">
           {{/* 缺日期时不显示日期（更不显示 0001年1月1日）——与搜索索引的空日期保持一致
@@ -95,6 +116,14 @@
             {{ i18n "post.wordCount" (dict "n" .WordCount) }}
           </span>
           {{ end }}
+          {{- /* 作者展示（功能四 / 6.5）：有作者时显示；多作者并列（.csv）。
+               空不虚构 —— 无作者则整段不输出。 */ -}}
+          {{ with $authorText }}
+          <span class="stat stat-author">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0113 0"/></svg>
+            {{ . }}
+          </span>
+          {{ end }}
           {{ with .Params.categories }}
             {{ range first 1 . }}
               <a class="chip chip-cat" href="{{ "categories" | relURL }}/{{ . | urlize }}/">{{ . }}</a>
@@ -120,9 +149,19 @@
       {{ if $showShare }}{{ partial "share.html" . }}{{ end }}
 
       <div class="license">
-        <strong>{{ i18n "post.license" }}：</strong>{{ i18n "post.author" }} {{ .Params.author | default site.Params.author }}。
+        <strong>{{ i18n "post.license" }}：</strong>{{ i18n "post.author" }} {{ $authorText }}。
         {{ with site.Params.license }}{{ . | markdownify }}{{ else }}{{ i18n "common.licenseDefault" }}{{ end }}
       </div>
+
+      {{- /* 编辑此页（功能四 / 6.4）：未配置或本页关闭时**完全不输出**，不显示死链接。 */ -}}
+      {{ if $edit.enabled }}
+      <div class="article-actions">
+        <a class="edit-page" href="{{ $edit.url | safeURL }}" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+          {{ i18n "reading.editPage" }}
+        </a>
+      </div>
+      {{ end }}
 
       {{ if $showNav }}
       <nav class="post-nav">

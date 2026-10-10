@@ -62,6 +62,9 @@ post:
   license: License
   author: Author
   toTop: Back to top
+  external: External
+  externalNotice: This is an external article; clicking will open an off-site page
+  externalHost: Source
 
 # Reading experience (feature 2): progress bar / back-to-top / focus / edit
 reading:
@@ -155,3 +158,22 @@ steps:
 # Technical content components (feature 3): placeholder when a button URL is blocked
 components:
   linkBlocked: Link unavailable (unsafe address blocked)
+
+# Responsive gallery (feature 3 / 6.1)
+gallery:
+  label: Image gallery
+  missing: Image not found
+  caption: View larger
+
+# Multiple authors & author profile (feature 4 / 6.5)
+authors:
+  title: Authors
+  by: by
+
+# Diagrams and math (feature 4 / 6.2 / 6.3)
+mermaid:
+  loading: Rendering diagram…
+  error: Failed to render diagram
+math:
+  loading: Rendering formula…
+  error: Failed to render formula

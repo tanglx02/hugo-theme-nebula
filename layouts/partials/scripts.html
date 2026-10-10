@@ -24,6 +24,13 @@
 <script src="{{ $tabsjs.RelPermalink }}" integrity="{{ $tabsjs.Data.Integrity }}" defer></script>
 {{ end }}
 
+{{- /* ---------- Mermaid / KaTeX（功能四：6.2 / 6.3，按需加载） ----------
+     与 tabs 同一策略：只有当前页确实用到（render-codeblock 写 nebula_has_mermaid /
+     util/detect-math 写 nebula_has_math）**且**站点显式配置了来源时才注入。
+     普通页面 / 未配置站点的额外字节数为 0，保持"默认零第三方请求"。 */ -}}
+{{ partial "mermaid.html" . }}
+{{ partial "math.html" . }}
+
 {{- /* 把 i18n 文案注入给前端脚本，避免 JS 中硬编码文案 */ -}}
 <script>
   window.NEBULA_I18N = {{ dict
@@ -46,6 +53,8 @@
     "loading" (i18n "common.loading")
     "focusMode" (i18n "reading.focusMode")
     "focusExit" (i18n "reading.focusExit")
+    "mermaidError" (i18n "mermaid.error")
+    "mathError" (i18n "math.error")
     | jsonify | safeJS }};
 </script>
 

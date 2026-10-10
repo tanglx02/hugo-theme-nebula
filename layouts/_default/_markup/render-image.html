@@ -14,63 +14,13 @@
       sizes  = "(max-width: 768px) 100vw, 900px"
       quality = 85
       format = "webp"
+
+  实现说明：具体渲染逻辑抽到 layouts/partials/util/image-figure.html，
+  与 gallery shortcode **共用同一条管线**（避免重复实现图片处理）。
+  hook 侧未传 cls，输出与历史版本逐字节一致。
 */ -}}
-{{- $dest := .Destination -}}
-{{- $alt := .Text | default (.Title | default "") -}}
-{{- $img := .Page.Resources.GetMatch $dest -}}
-{{- $page := .Page -}}
-{{- /* 可处理性判断：**不能用 reflect.IsImageResourceProcessable** ——
-       该函数在 Hugo 0.128.0 上不存在（实测报
-       "can't evaluate field IsImageResourceProcessable"），
-       而 0.128.0 是 theme.toml 声明的最低版本。
-       这里改为按 MediaType 的 raster 白名单判断，所有支持版本行为一致。 */ -}}
-{{- $processable := false -}}
-{{- with $img -}}
-  {{- if eq .ResourceType "image" -}}
-    {{- $processable = in (slice "jpeg" "png" "webp" "gif" "bmp" "tiff") .MediaType.SubType -}}
-  {{- end -}}
-{{- end -}}
-{{- if and $img $processable -}}
-  {{- with $img -}}
-  {{- $cfg := site.Params.images | default dict -}}
-  {{- $widths := $cfg.widths | default (slice 480 768 1200) -}}
-  {{- $quality := $cfg.quality | default 85 -}}
-  {{- $format := $cfg.format | default "webp" -}}
-  {{- $sizes := $cfg.sizes | default "(max-width: 768px) 100vw, 900px" -}}
-  {{- $srcset := slice -}}
-  {{- $fallback := .RelPermalink -}}
-  {{- range $widths -}}
-    {{- if ge $img.Width . -}}
-      {{- $r := $img.Resize (printf "%dx %s q%d" . $format $quality) -}}
-      {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
-    {{- end -}}
-  {{- end -}}
-  {{- if not $srcset -}}
-    {{- $r := $img.Resize (printf "%dx %s q%d" $img.Width $format $quality) -}}
-    {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
-  {{- end -}}
-  <figure style="margin:1.4em 0">
-    <img src="{{ $fallback }}" srcset="{{ delimit $srcset ", " }}" sizes="{{ $sizes }}"
-         width="{{ .Width }}" height="{{ .Height }}" alt="{{ $alt }}"
-         loading="lazy" decoding="async" data-zoom-src="{{ .RelPermalink }}"
-         {{ with $.Title }}title="{{ . }}"{{ end }}>
-    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
-  </figure>
-  {{- end -}}
-{{- else if $img -}}
-  {{- /* SVG 等不可处理的图片资源：输出原图（保持原行为） */ -}}
-  <figure style="margin:1.4em 0">
-    {{- /* SVG 等不可处理的资源不提供 width/height（其 API 不支持） */ -}}
-    <img src="{{ $img.RelPermalink }}" alt="{{ $alt }}" loading="lazy" decoding="async"
-         data-zoom-src="{{ $img.RelPermalink }}"
-      {{ with $.Title }}title="{{ . }}"{{ end }}>
-    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
-  </figure>
-{{- else -}}
-  {{- $src := partial "util/rel-url.html" $dest | safeURL -}}
-  <figure style="margin:1.4em 0">
-    <img src="{{ $src }}" alt="{{ $alt }}" loading="lazy" decoding="async"
-      {{ with .Title }}title="{{ . }}"{{ end }}>
-    {{ with .Title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
-  </figure>
-{{- end -}}
+{{- partial "util/image-figure.html" (dict
+    "page" .Page
+    "dest" .Destination
+    "alt" (.Text | default (.Title | default ""))
+    "title" (.Title | default "")) -}}
