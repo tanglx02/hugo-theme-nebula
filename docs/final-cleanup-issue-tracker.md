@@ -26,12 +26,12 @@
 | 项 | 本表建立时 | **当前候选（功能冻结候选）** |
 | --- | --- | --- |
 | 分支 | `feat/theme-feature-completion` | 同名（**已推送** `origin`） |
-| HEAD | `ca0c51b0aec0896e102e66d2f5f143261dac2691` | `2593ead325e72a1851ff03e48ce7ccae7b38cff9` |
+| HEAD | `ca0c51b0aec0896e102e66d2f5f143261dac2691` | `897f1e09136fd8944e405861ea6053f42b569a45`（内容冻结提交） |
 | M16 引入前基线 | — | `37c3da646cce27be789c1a9f9060b25615c72cdb`（BC1 对照） |
 | `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动，仍指向 `bc152c8`） | 同左，**未移动** |
-| 已含 | `origin/main`、`fix/third-party-audit-v1.0.9-r2`、第二轮修复（`b2d2c71`）、R2-009 修复（`59e7f30`） | 另含 M16 实现与口径纠正（`2593ead`） |
-| 领先 `origin/main` | 26 提交 | **32** 提交（`origin/main..HEAD` = 32，`HEAD..origin/main` = 0） |
-| 分支是否已推送 | 否 | **是**（`origin/feat/theme-feature-completion` = `2593ead…`） |
+| 已含 | `origin/main`、`fix/third-party-audit-v1.0.9-r2`、第二轮修复（`b2d2c71`）、R2-009 修复（`59e7f30`） | 另含 M16 实现与口径纠正（`2593ead`）+ 交接一致性核验（`897f1e0`） |
+| 领先 `origin/main` | 26 提交 | **33** 提交（`origin/main..HEAD` = 33，`HEAD..origin/main` = 0） |
+| 分支是否已推送 | 否 | **是**（`origin/feat/theme-feature-completion` = `897f1e0…`，快进推送） |
 
 ---
 
