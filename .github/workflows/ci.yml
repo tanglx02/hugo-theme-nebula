@@ -277,6 +277,22 @@ jobs:
       - name: Workflow policy (least privilege / pinned runner / Node24 actions)
         run: python3 tools/check_workflow_policy.py
 
+      # 功能一 / 二 / 三·四·五 的**真实产物**门禁：三者都用真实 Hugo 构建 +
+      # 解析产物，且各自自带故障注入自证（--selftest：人为打坏实现 →
+      # 对应断言必须变红）。见 docs/测试说明.md。
+      # 放在 check_docs 之前：功能回归先于文档一致性，失败时定位更快。
+      - name: "Home layouts (cards/profile/hero/landing + safe fallback + feeds unchanged)"
+        run: python3 tools/check_home_layouts.py
+
+      - name: "Reading experience (progress/top/focus/print + real browser checks)"
+        run: python3 tools/check_reading_experience.py
+
+      - name: "New features (gallery / external article / multi-author / edit link / appearance / Mermaid+KaTeX)"
+        run: python3 tools/check_new_features.py public
+
+      - name: "New features - fault injection self-proof (4 injections must turn red)"
+        run: python3 tools/check_new_features.py --selftest
+
       - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
         env:
           DOC_VERSION: '1.0.9'
