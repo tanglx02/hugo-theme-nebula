@@ -17,7 +17,16 @@ lang 声明——浏览器/朗读器/翻译器看到的语言不一致。
 可用变量（Hugo 文档）：`.Permalink`（目标 URL）、`.Page`（目标 Page 对象）。
 */ -}}
 {{- $lang := site.Language.Lang | default "zh-CN" -}}
-{{- $title := .Page.Title | default .Permalink -}}
+{{- /* .Page 在**部分 alias 场景下为 nil**（多语言站点会为默认语言额外生成一个
+       /<defaultContentLanguage>/ 重定向页，Hugo 不附带目标 Page）。此时
+       `.Page.Title` 会以 "nil pointer evaluating page.Page.Title" 中断整个构建
+       —— 实测 0.128.0 / 0.148.0 / 0.162.0 均崩溃，0.166.0+ 未复现（Hugo 后来
+       改成跳过这类 alias）。主题最低版本是 0.128.0，因此必须自行防御。
+       注意：不能写 `with .Page`，因为 `.Page` 在 Go template 里是接口，
+       未附带 Page 时求值为 nil interface，`with` 对 nil interface 判据不稳定；
+       直接判 `if .Page` 同样是接口比较，故这里用**两个变量分步取值**并显式判空。 */ -}}
+{{- $title := .Permalink -}}
+{{- with .Page -}}{{- with .Title -}}{{- $title = . -}}{{- end -}}{{- end -}}
 <!DOCTYPE html>
 <html lang="{{ $lang }}">
 <head>
