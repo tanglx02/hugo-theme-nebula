@@ -7,6 +7,12 @@
        本 partial 用"输出内容"而非 `return` 传值（与 util/rel-url.html 一致，
        避免不同 Hugo 版本对 partial return 的差异）。
 
+       **形态规范化（BUG-R3-003）**：不同版本给出的形态不一致 —— 当
+       [languages.*] 里没有 languageCode 时，0.128 / 0.148 会把语言键原样
+       回退（'zh-cn'），0.162+ 经 locale 得到 'zh-CN'。不归一就会出现
+       `og:locale="zh_cn"`（OGP 规范要求 ll_CC）这类只在旧版本暴露的脏数据。
+       因此统一输出 BCP47 规范形态：语言子标签小写、地区子标签大写。
+
        调用：{{ partial "util/locale.html" .Language }}  /  {{ partial "util/locale.html" site.Language }}
   */ -}}
 {{- $lang := . -}}
@@ -19,4 +25,19 @@
 {{- else -}}
   {{- $out = $lang.LanguageCode | default $lang.Lang -}}
 {{- end -}}
+{{- /* BCP47 / OGP 形态规范化：语言子标签小写、地区子标签大写（zh-CN）。
+
+     为什么必须做：不同 Hugo 版本给出的形态不一致 —— 当 [languages.*] 里没有
+     languageCode 时，0.128 / 0.148 会把语言键原样回退（'zh-cn'），而 0.162+
+     经 locale 得到 'zh-CN'。不归一就会出现
+       og:locale="zh_cn"   （OGP 规范要求 ll_CC，大写地区）
+       hreflang="zh-cn"    （大小写不敏感，但与站内其它语言值不一致）
+     这类"只在旧版本上才暴露"的脏数据（实测见 tools/check_lang_config.py L4）。 */ -}}
+{{- $parts := split $out "-" -}}
+{{- $head := lower (index $parts 0) -}}
+{{- $tail := slice -}}
+{{- range $k, $p := $parts -}}
+  {{- if gt $k 0 -}}{{- $tail = $tail | append (upper $p) -}}{{- end -}}
+{{- end -}}
+{{- $out = cond (gt (len $tail) 0) (printf "%s-%s" $head (delimit $tail "-")) $head -}}
 {{- $out -}}

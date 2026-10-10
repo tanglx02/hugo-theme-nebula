@@ -12,12 +12,37 @@ hasCJKLanguage = true
 defaultContentLanguage = 'zh-CN'
 enableRobotsTXT = true
 
+# ⚠ 这里的字段是**跨版本唯一零告警**的组合，改动前请先看下面的实测矩阵。
+#
+#   语言键（[languages.<key>]）必须：
+#     1) 与 i18n/ 下的文件名（不分大小写）精确一致 —— 即 'zh-CN'，不是 'zh'；
+#     2) **同时**在根上存在 `locale`，否则 0.162+ 会报
+#        language name "zh-CN" is invalid（带地区后缀的语言键必须配 locale）。
+#
+#   以下字段**不能**写在这个层级（会在部分版本上产生弃用告警或直接报错）：
+#     * `label`         —— 0.112 起弃用（< 0.129 会报 ERROR deprecated）
+#     * `languageCode`  —— 0.158 起弃用（≥ 0.158 会报 WARN deprecated）
+#     * `locale`        —— 0.112~0.129 之间弃用（且 0.128 上会吞掉 i18n 文案）
+#   语言显示名请放 [languages.zh-CN.params].label，或交给站点外部的语言切换配置
+#   （tools/lang-*.toml 里的 label 就是这么用的）。
+#
+#   五版本 × 三种写法的实测结果（tools/check_features.py 8c 会持续守住）：
+#
+#     写法                                      0.128.0   0.148.0  0.162~0.167
+#     ---------------------------------------------------------------
+#     A 无 [languages] 块，只有 defaultContentLanguage='zh-CN'
+#                                              构建失败  构建失败  构建失败
+#     B label + languageCode（曾用写法）        ERROR     OK        WARN×2
+#     C root locale + weight/contentDir（本文件）OK       OK        OK（零告警）
+#
+#   locale 在 0.158+ 才作为 i18n 语言生效，因此 0.128/0.148 上的 i18n 归属
+#   完全来自语言键本身 —— 这正是语言键必须是 'zh-CN' 的原因。
 [languages]
   [languages.zh-CN]
-    label = '简体中文'
     weight = 1
-    languageCode = 'zh-CN'
     contentDir = 'content'
+    [languages.zh-CN.params]
+      label = '简体中文'
 [pagination]
   pagerSize = 8            # 每页文章数（Hugo >= 0.128 使用 pagination.pagerSize）
 rssLimit = 20

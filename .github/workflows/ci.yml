@@ -245,6 +245,21 @@ jobs:
           export HUGO_MATRIX_DIR="$HUGO_MATRIX_HOME"
           python3 tools/check_content_components.py
 
+      # 语言配置的**跨版本行为**验收（静态规则回答不了的问题）：
+      #   5 版本上真实构建 exampleSite —— 构建成功 / 无 deprecated / 无 ERROR /
+      #   配置层 WARN≤基线 / NEBULA_I18N 无空值 / og:locale 为规范 ll_CC /
+      #   html lang 非空 / UI 文案为中文。
+      #   附 L7/L8/L8b 反证：改坏语言键 -> 空串文案；顶层 label -> 弃用告警；
+      #   同名 params.label 遮蔽顶层弃用字段（说明为何还需 check_features.py 8c 静态禁止）。
+      # 复用上一步已缓存的 Hugo 版本矩阵（runner.tool_cache 在 job 内跨 step 持久）。
+      - name: "Language config cross-version (form I / zero-warning / i18n non-empty / og:locale BCP47 + L7/L8/L8b counterproofs)"
+        env:
+          HUGO_MATRIX_HOME: ${{ runner.tool_cache }}/hugo-matrix
+        run: |
+          set -e
+          export HUGO_MATRIX_DIR="$HUGO_MATRIX_HOME"
+          python3 tools/check_lang_config.py
+
       - name: Search date contract - date machine field + dateDisplay per language
         env:
           SITE_DIR: exampleSite

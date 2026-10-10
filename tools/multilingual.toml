@@ -2,6 +2,8 @@
 #   zh-CN 在根路径（URL 与单语言版完全一致），en 在 /en/ 子路径。
 #   语言键 = i18n 文件名（zh-CN.yaml / en.yaml）。
 #   en 使用独立 contentDir（content-en/），单语言构建不会扫描该目录，避免污染。
+# 显示名放 [languages.<key>.params].label；不再用顶层 label（0.112 起弃用）
+# 与 languageCode（0.158 起弃用）——与 exampleSite 保持同一零告警约定。
 defaultContentLanguage = 'zh-CN'
 locale = 'zh-CN'
 
@@ -11,12 +13,14 @@ locale = 'zh-CN'
 
 [languages]
   [languages.zh-CN]
-    label = '简体中文'
     weight = 1
-    languageCode = 'zh-CN'
+    [languages.zh-CN.params]
+      label = '简体中文'
   [languages.en]
-    label = 'English'
     weight = 2
-    languageCode = 'en-US'
+    # 0.158+ 用 locale 取代了 languageCode（描述该语言的 BCP47 区域，供 og:locale 使用）
+    locale = 'en-US'
     # 独立 contentDir：单语言构建完全不会扫描 content-en/，避免污染
     contentDir = 'content-en'
+    [languages.en.params]
+      label = 'English'
