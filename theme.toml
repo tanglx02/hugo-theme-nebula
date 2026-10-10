@@ -1,18 +1,28 @@
 name = "Nebula"
 license = "MIT"
 licenselink = "https://github.com/tanglx02/hugo-theme-nebula/blob/main/LICENSE"
-description = "一款清爽、现代的 Hugo 博客主题：卡片流首页、全文搜索、暗色模式、代码高亮、TOC 目录。"
+description = "一款清爽、现代的 Hugo 博客主题：多种首页布局、完整全文搜索、暗色模式、响应式图片画廊、Mermaid / KaTeX、多作者与外链文章、外观配置。"
 homepage = "https://github.com/tanglx02/hugo-theme-nebula"
 demosite = "https://blog.kejilion.pro"
-tags = ["blog", "chinese", "responsive", "dark-mode", "search", "minimal"]
+tags = ["blog", "chinese", "responsive", "dark-mode", "search", "minimal",
+        "gallery", "mermaid", "katex", "i18n", "accessible"]
 features = [
-  "全站搜索（完整全文，支持分片索引）",
+  "四种首页布局（cards / profile / hero / landing，可配置且安全回退）",
+  "全站搜索（完整全文，支持分片索引，`auto` 按体积自动选择）",
   "暗色模式",
   "响应式布局",
+  "阅读体验（按正文区映射的进度条 / 返回顶部 / 专注模式 / 打印样式）",
   "代码高亮与一键复制",
+  "正向内容组件：提示块 / 标签页 / 步骤 / 文件树 / 徽标 / 按钮（URL scheme 校验）/ 折叠块",
+  "响应式图片画廊（复用图片 Pipeline 与灯箱）",
+  "Mermaid 图表与 KaTeX 数学公式（默认零第三方请求，按需加载）",
   "文章目录 TOC",
   "侧边栏组件",
   "灯箱（键盘与焦点无障碍）",
+  "多作者（meta / JSON-LD / RSS / 卡片全文一致）",
+  "外链文章（推荐阅读卡片）与「编辑此页」入口",
+  "外观配置（强调色 / 正文宽度 / 行高 / 字体 / 卡片密度）",
+  "i18n：内置 zh-CN / zh-TW / en",
   "SEO 优化",
   "RSS / sitemap / robots",
 ]

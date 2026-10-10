@@ -3,6 +3,42 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 第三轮：功能完善与最终收尾（功能冻结候选版本）
+
+功能完善轮 + 最终收尾总任务。**功能冻结候选**：等待独立第三方全面验收，未打 tag、未发 Release。
+问题全量追踪见 `docs/final-cleanup-issue-tracker.md`（R4 系列）；本轮交接报告见
+`docs/最终交接报告-功能冻结候选版.md`。
+
+### 新增功能
+
+- **画廊**：`{{</* gallery */>}}` shortcode，复用图片 Pipeline 自动补尺寸，灯箱联动。
+- **Mermaid / KaTeX（按需加载 + SRI）**：`detect-math` 探测正文是否含公式/图表，仅命中时
+  加载 `static/vendor` 内置资源（示例站），生产构建默认零外部 CDN 请求。
+- **作者工作流（功能四 / 6.5）**：`util/authors.html` 统一来源，贯通 meta / JSON-LD /
+  RSS / 卡片 / 正文；**外链文章（6.6）**：正文页顶部提示条 + 卡片/搜索/RSS 按站外地址直达；
+  **编辑此页（6.4）**：`editURL` 模板函数安全拼装（禁 javascript: 等 scheme）。
+- **外观配置完善（功能五 / 6.1）**：`util/appearance.html`，主题色/圆角/字体等外观参数
+  收敛为单一生效链，避免配置互相覆盖。
+- **exampleSite 完整功能展示站**：新增「作者与外观」「外链阅读」「媒体与图表」演示文章
+  （中英双语），内置 mermaid/katex 本地资源（带 SRI）。
+
+### 修复（本轮自测暴露，R4 系列）
+
+- **R4-007（产品）**：外链提示条 flex 块级化导致链接触控目标 98×23px 低于 24px（WCAG 2.5.8），
+  `.article-external-notice a` 改 `inline-flex + min-height:26px`。
+- **R4-008（测试）**：`verify_search_shard.py` 断言双读 DOM 造成 firefox 偶发假红，
+  改「一次快照 + 有界稳定重试」后 3 连跑全绿。
+- **R4-001~006**：测试工具默认路径修复（`link_check` / `verify_baseurl` / `verify_multisection`
+  裸跑可用）、假守卫改结构级判据、残留清理，详见 tracker。
+
+### 测试与文档
+
+- 故障注入自证：7 组关键门禁全部证明"能失败"（见 tracker §10.5）。
+- 六版本构建矩阵（0.128/0.148/0.162/0.166/0.167）全绿；三浏览器（chromium/firefox/webkit）
+  全量门禁回归通过。
+- README 重写（含功能一~五独立小节与完整配置参考）、10 张正式截图（JPG，共 2.75 MB）、
+  `theme.toml` 同步。
+
 ## [未发布] — 第二轮集中修复（独立复验报告）
 
 针对 `Nebula-v1.0.9-修复分支-独立复验报告.md` 确认的问题做**有范围控制的修复**：

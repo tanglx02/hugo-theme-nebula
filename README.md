@@ -6,19 +6,69 @@
 
 面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖；默认配置下无外部 CDN 请求（启用可选评论/统计功能后会加载对应第三方服务资源，见下方说明）。
 
-| 亮色 | 暗色 |
+| 亮色首页 | 暗色首页 |
 | --- | --- |
-| ![首页亮色](docs/screenshots/01-home-light.png) | ![首页暗色](docs/screenshots/04-home-dark.png) |
+| ![首页亮色](docs/screenshots/01-home-light.jpg) | ![首页暗色](docs/screenshots/02-home-dark.jpg) |
 
-| 文章页（含目录） | 全站搜索 |
+| 文章页（含目录） | 暗色文章页 |
 | --- | --- |
-| ![文章页](docs/screenshots/03-post-dark.png) | ![搜索](docs/screenshots/05-search.png) |
+| ![文章页](docs/screenshots/04-post-light.jpg) | ![暗色文章页](docs/screenshots/05-post-dark.jpg) |
 
-| 归档页 | 移动端 |
+| 全站搜索 | 归档页 |
 | --- | --- |
-| ![归档](docs/screenshots/06-archive.png) | ![移动端](docs/screenshots/07-mobile.png) |
+| ![搜索](docs/screenshots/03-search.jpg) | ![归档](docs/screenshots/09-archive.jpg) |
+
+| 画廊 / Mermaid / KaTeX | 多作者与外观 |
+| --- | --- |
+| ![媒体与图表](docs/screenshots/06-media-diagrams.jpg) | ![作者与外观](docs/screenshots/07-authors-appearance.jpg) |
+
+| 内容组件 | 移动端 |
+| --- | --- |
+| ![内容组件](docs/screenshots/08-content-components.jpg) | ![移动端](docs/screenshots/10-mobile.jpg) |
 
 ## 特性
+
+### 功能一 · 首页布局
+
+- 🎴 **多种首页布局**：`params.home.layout` 可选 `cards`（默认）/ `profile` / `hero` / `landing`；
+  非法或空值**安全回退 `cards`**（不空白、不报错）；切换布局**不影响**分类页 / 标签页 / 搜索索引 / RSS
+  （`index.json` 与 `index.xml` 逐字节一致）
+
+### 功能二 · 阅读体验
+
+- 📊 **阅读进度条**：按**正文阅读区**映射（顶部≈0、底部≈100），可站点级 / 文章级开关
+- ⬆️ **返回顶部**：顶部时隐藏、下滚出现，**键盘可聚焦并用 Enter 触发**
+- 🎯 **专注模式**：`html.focus-on` + `aria-pressed`，收敛次要区块但**正文与站点导航始终可见**；
+  刷新保持状态、Escape 退出、键盘可切换
+- 🖨️ **打印样式**：仅作用于 `@media print`，自动展开折叠块、隐藏交互元素
+
+### 功能三 · 技术内容组件
+
+- 🖼️ **响应式图片画廊**：`{{< gallery cols="3" >}}`，每行 `源 | alt | 题注`；
+  复用图片 Pipeline（多尺寸 WebP `srcset` + 宽高）与内置灯箱；支持 page bundle 资源 / static 路径 / 外链三种来源；
+  **缺图有占位回退**（不产生破损图、不横向溢出）
+- 📈 **Mermaid 图表**：```mermaid 围栏即用；**按需加载**（仅含语法的页面注入脚本）；
+  自托管优先、CDN 需 SRI；浅深主题跟随；**渲染失败保留原始代码**（不空白）
+- 🧮 **KaTeX 数学公式**：`$...$` 行内与 `$$...$$` 块级；构建期探测定界符，**按需加载**；
+  支持逐页关闭（`math: false` 或 `<!-- nebula:no-math -->`）；`\$` 货币符号不误触发
+
+### 功能四 · 编辑与作者工作流
+
+- ✏️ **编辑此页**：`params.editUrl` 配置后正文底部出现入口，直接跳到**源文件**（github / gitlab / gitee / custom）；
+  支持逐文章关闭（`editUrl: false`）；未配置时**不输出任何元素**
+- 👥 **多作者**：`authors`（列表）→ `author` → `site.Params.author` 逐级回退，**空不虚构**；
+  贯通 `<meta>`、JSON-LD（单人 Person / 多人 Person 数组）、RSS（每位作者一个 `<author>`）、卡片与正文
+- 🔗 **外链文章**：Front Matter 写 `externalUrl` 即成为"推荐阅读"——
+  卡片带徽标与 `target="_blank" rel="noopener"`、canonical 指向站外、RSS `guid isPermaLink="false"`、
+  搜索索引 `external:true`；scheme 白名单（`javascript:` 等危险 scheme 视为普通文章）
+
+### 功能五 · 外观配置
+
+- 🎨 **外观配置**：`params.appearance` 可调 `accent` / `accentColor` / `contentWidth` / `lineHeight` /
+  `fontFamily` / `cardDensity`；预设色板白名单 + hex 校验（亮度感知自动压深以保证对比度）；
+  **未配置时不输出任何 `<style>`**（默认外观逐字节不变）
+
+### 基础能力
 
 - 🎴 **焦点图 + 卡片流首页**：置顶文章自动进入焦点区
 - 🔍 **完整全文搜索**：正文任意位置（含数万字长文末尾）均可检索；`Ctrl+K` / `/` 呼出；支持 `?q=` 深链
@@ -198,6 +248,60 @@ hugo server -D      # 打开 http://localhost:1313
     enable = false
   [params.busuanzi]
     enable = false
+
+  # ---------- 首页布局（功能一） ----------
+  [params.home]
+    layout = 'cards'                     # cards（默认）| profile | hero | landing
+                                         # 非法/空值会安全回退为 cards
+
+  # ---------- 阅读体验（功能二） ----------
+  [params.reading]
+    progressBar = true                   # 阅读进度条
+    backToTop = true                     # 返回顶部
+    focusMode = false                    # 专注阅读模式（默认关闭，可按文章覆盖）
+
+  # ---------- 外观（功能五） ----------
+  # 全部可选。**不配置时输出与历史版本逐字节相同**。
+  [params.appearance]
+    accent = 'blue'                      # 预设：blue|teal|violet|rose|amber|emerald|custom
+    accentColor = ''                     # accent='custom' 时用 hex，如 '#0ea5e9'
+    contentWidth = '900px'               # 正文最大宽度
+    lineHeight = '1.75'                  # 正文行高
+    fontFamily = ''                      # 自定义字体栈（留空用默认）
+    cardDensity = 'comfortable'          # comfortable（默认）| compact
+
+  # ---------- 编辑此页（功能四） ----------
+  [params.editUrl]
+    repo = 'https://github.com/you/repo' # 必填；未配置则**不渲染任何入口**
+    branch = 'main'
+    contentDir = 'content'               # 源文件在仓库中的根目录
+    provider = 'github'                  # github | gitlab | gitee | custom
+    # urlTemplate = 'https://git.example.com/{repo}/-/edit/{branch}/{path}'
+                                         # provider='custom' 时使用
+                                         # 占位符：{repo} {branch} {path} {file}
+
+  # ---------- Mermaid（功能三） ----------
+  [params.mermaid]
+    enable = true
+    local = 'js/vendor/mermaid.min.js'   # 自托管（相对 static/）；留空则用 loader
+    loader = ''                          # CDN 地址（需 http(s)），仅在 local 缺失时使用
+    integrity = ''                       # CDN 场景的 SRI
+    crossorigin = 'anonymous'
+    themeLight = 'default'
+    themeDark = 'dark'
+    fontFamily = ''
+
+  # ---------- KaTeX（功能三） ----------
+  [params.math]
+    enable = true
+    css = '/vendor/katex/katex.min.css'                    # 可换 CDN 绝对地址
+    js = '/vendor/katex/katex.min.js'
+    autoRender = '/vendor/katex/contrib/auto-render.min.js'
+    integrityCss = ''
+    integrityJs = ''
+    integrityAutoRender = ''
+    crossorigin = 'anonymous'
+    selector = '.post-content'           # 渲染范围
 ```
 
 ### 第三方服务说明（可选功能）
@@ -411,6 +515,10 @@ lastmod: 2026-10-08
 draft: false
 description: "摘要：用于列表卡片、搜索片段与 SEO"
 author: ""                # 留空使用站点 author
+authors: ["Tanglx", "Co-author"]   # 可选：多作者（优先于 author，二者都无则用站点 author）
+externalUrl: ""           # 可选：外链文章（本站只做"推荐阅读"卡片，canonical 指向站外）
+editUrl: false            # 可选：本页关闭"编辑此页"入口（站点已配 params.editUrl 时生效）
+math: true                # 可选：本页是否注入数学渲染（false 可逐页关闭）
 tags: ["Hugo"]
 categories: ["效率工具"]
 series: ["Hugo 建站系列"] # 可选
@@ -653,6 +761,119 @@ print(2)
 
 支持 `filename`（显示文件名）、`linenos`（行号）、`hl_lines`（高亮行）、未知语言与无语言代码块（安全降级为纯文本）。
 
+## 图片画廊（功能三）
+
+```markdown
+{{</* gallery cols="3" label="现场记录" */>}}
+shot-a.png | 目标机信息收集 | 信息收集阶段
+shot-b.jpg | 边界突破尝试
+/images/path.png | static 绝对路径
+https://example.com/x.png | 外链图片 | scheme 白名单校验
+{{</* /gallery */>}}
+```
+
+每行写 `源 | alt | 题注`（后两段可省略）。来源支持 **page bundle 资源**（相对文件名）、
+**static 路径**（以 `/` 开头）、**外链 URL**（`http(s)://`）。
+
+- 复用图片 Pipeline：bundle 图片自动获得多尺寸 WebP `srcset` + 宽高（防 CLS）；
+- **不套 `<a>`** —— 因此点任意图片都进入主题内置**灯箱**（与正文图片一致，无需重复建设）；
+- 引用了不存在的图片 → 渲染为带 alt 的**占位块**（不产生破损图、不横向溢出）；
+- `cols` 支持 2 / 3 / 4（其它值回退 3）。
+
+## Mermaid 图表（功能三）
+
+````markdown
+```mermaid
+flowchart TD
+    A[开始] --> B{可复现?}
+    B -- 是 --> C[抓包]
+```
+````
+
+**按需加载**：只有页面出现 ```mermaid 围栏时才注入脚本；未配置 `params.mermaid` 的站点完全不加载。
+`local` 优先（相对 `static/` 的自托管文件），其次 `loader`（CDN，须 http(s) + 建议配 `integrity`）。
+浅色/深色主题各自跟随，渲染失败会保留原始代码（加 `.mermaid-error`，不空白）。
+
+## 数学公式 KaTeX（功能三）
+
+正文里写 `$...$`（行内）或 `$$...$$`（块级）即可。主题在**构建期探测**正文中的数学定界符，
+只有确实含公式的页面才注入 CSS / JS / auto-render（**按需加载**）。
+
+- 逐页关闭：Front Matter `math: false`，或正文写 `<!-- nebula:no-math -->`；
+- `\$` 货币符号会被正确识别，**不触发**公式渲染；
+- `params.math.{css,js,autoRender}` 三项可为本地路径或 CDN 绝对地址，均可配 SRI。
+
+## 编辑此页（功能四）
+
+```toml
+[params.editUrl]
+  repo = 'https://github.com/you/repo'
+  branch = 'main'
+  contentDir = 'content'
+  provider = 'github'        # github | gitlab | gitee | custom
+```
+
+配置后文章底部出现"编辑此页"入口，指向**源文件**（路径逐段 URL 编码，Windows 反斜杠自动归一）；
+**未配置时不输出任何元素**；单篇可用 Front Matter `editUrl: false` 关闭。
+
+## 多作者（功能四）
+
+```yaml
+authors: ["Tanglx", "Co-author"]   # 优先于 author
+```
+
+回退顺序：`authors`（列表）→ `author` → `site.Params.author` → 空（**不虚构**）。
+作者信息会贯通 `<meta name="author">`（逗号并列）、JSON-LD（单人 Person / 多人 Person 数组）、
+RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息，全文一致。
+
+## 外链文章（功能四）
+
+```yaml
+externalUrl: "https://attack.mitre.org/"
+```
+
+本站只做"推荐阅读"卡片：卡片带外链徽标与 `target="_blank" rel="noopener"`、
+`canonical` 指向站外、RSS `guid isPermaLink="false"`、搜索索引 `external: true`。
+scheme 白名单为 `http(s)` 与协议相对；`javascript:` 等危险 scheme 会被**当作普通文章**处理。
+
+## 外观配置（功能五）
+
+```toml
+[params.appearance]
+  accent = 'teal'          # blue|teal|violet|rose|amber|emerald|custom
+  accentColor = ''         # accent='custom' 时的 hex
+  contentWidth = '900px'
+  lineHeight = '1.75'
+  fontFamily = ''
+  cardDensity = 'comfortable'   # comfortable | compact
+```
+
+预设色板带白名单，自定义色值做 hex 校验并**按亮度自动压深/加亮**以保证正文对比度；
+宽度/行高/字体均做区间与安全字符校验，非法值安全回退。
+**未配置时输出与历史版本逐字节相同**（不产生任何 `<style>`）。
+
+## 首页布局（功能一）
+
+```toml
+[params.home]
+  layout = 'cards'   # cards（默认）| profile | hero | landing
+```
+
+非法或空值**安全回退 `cards`**。切换布局**不影响**分类页、标签页、搜索索引与 RSS
+（`index.json` 与 `index.xml` 逐字节一致，已由门禁断言）。
+
+## 阅读体验（功能二）
+
+```toml
+[params.reading]
+  progressBar = true     # 阅读进度条（按正文阅读区映射）
+  backToTop = true       # 返回顶部（键盘可达）
+  focusMode = false      # 专注阅读模式（默认关闭）
+```
+
+文章级可用 `showProgress` / `showBackToTop` / `showFocusMode` 覆盖（**显式 `false` 会真正生效**）。
+打印样式仅作用于 `@media print`，并遵循 `prefers-reduced-motion`。
+
 ## exampleSite / 本地开发
 
 ```bash
@@ -702,7 +923,7 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 | --- | --- | --- |
 | Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
 | Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
@@ -778,11 +999,14 @@ python3 tools/serve.py public 8080 &   # 独立静态服务器（勿用 hugo ser
 
 python3 tools/link_check.py public                 # 死链（失败即 exit 1）
 python3 tools/check_index.py public/index.json     # 索引完整性
-python3 tools/check_features.py public             # 功能断言（26 项）
+python3 tools/check_features.py public             # 功能断言（35 项）
+python3 tools/check_new_features.py public         # 新增功能断言（画廊/外链/多作者/编辑/外观/Mermaid+KaTeX，40 项）
+python3 tools/check_new_features.py --selftest     # 上述门禁的故障注入自证（4 类注入必须变红）
+python3 tools/check_home_layouts.py                # 首页四种布局 + 回退 + feeds 不受影响
+python3 tools/check_reading_experience.py          # 阅读体验（含真实浏览器断言）
 python3 tools/check_i18n_hardcode.py               # UI 文案是否被写死进模板/脚本
 python3 tools/verify_i18n.py public zh-CN          # 渲染结果文案是否来自 i18n
-SITE_DIR=exampleSite HUGO_ARGS='--source . --themesDir ../..' \
-  python3 tools/verify_multisection.py             # 多 Section 完整回归
+python3 tools/verify_multisection.py               # 多 Section 完整回归（默认用仓库自带 exampleSite）
 AUDIT_BROWSERS=chromium python3 tools/audit.py http://127.0.0.1:8080
 AUDIT_FULL=1 AUDIT_BROWSERS=chromium AUDIT_VIEWPORTS=320,375,768,1440 \
   python3 tools/audit.py http://127.0.0.1:8080     # 等价于 Release 全站审计
