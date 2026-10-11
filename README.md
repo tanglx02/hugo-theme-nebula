@@ -287,8 +287,9 @@ hugo server -D      # 打开 http://localhost:1313
   # ---------- 作者档案页（功能四 · 可选启用） ----------
   # 默认关闭：不输出任何作者档案结构；未注册 authors taxonomy 时 URL 与历史版本一致（BC1 规范化后逐字节相同）。
   # 启用需同时注册 [taxonomies] authors（见下方）并设 pages = true。
+  # 注意：pages 只控制主题资料结构渲染；是否生成 /authors/ 页面由 taxonomy 注册决定（详见「作者档案页」章节）。
   [params.authors]
-    pages = false                        # true = 生成 /authors/ 与 /authors/<名称>/
+    pages = false                        # true = 主题渲染资料卡/互链等档案结构（前提：已注册 taxonomy）
     taxonomy = 'authors'                 # 自定义 taxonomy 键名时同步指定（默认 authors）
     [params.authors.profiles.Tanglx]     # 键名 = 作者名（全部字段可缺省）
       bio = '作者简介'
@@ -860,20 +861,32 @@ RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息�
 [taxonomies]
   tag = 'tags'
   category = 'categories'
-  authors = 'authors'          # ← 新增：注册作者 taxonomy
+  authors = 'authors'          # ← 新增：注册作者 taxonomy（注册本身即生成 /authors/ 页面，
+                               #    与下方 pages 无关；要完全不产生 /authors/ 页面就删掉这行）
 
-# 2) 显式打开档案页
+# 2) 显式打开档案页（主题资料结构：资料卡 / 互链；前提是上面已注册 taxonomy）
 [params.authors]
-  pages = true                 # ← 默认 false；不写或写 false 即为关闭
+  pages = true                 # ← 默认 false；false 时 Hugo 仍生成 /authors/ 页面，
+                               #    但主题不渲染资料结构
   # taxonomy = 'authors'       # 可选：自定义 taxonomy 键名时同步指定（默认 authors）
 ```
 
-**URL 行为对照**：
+**URL 行为对照（三个场景，勿混淆）**：
 
-| 状态 | 生成页面 | 说明 |
+> `params.authors.pages` 与 taxonomy 注册是**两个独立开关**：`pages` 只控制
+> **主题是否渲染作者资料结构**（资料卡 / 互链 / 档案页布局）；Hugo 是否生成
+> `/authors/` taxonomy 页面，**只由 taxonomy 注册决定** —— `pages=false`
+> **不会阻止** Hugo 为已注册的 `authors` taxonomy 生成 `/authors/` 索引页与
+> term 页。**不产生 `/authors/` 页面、完全保持原 URL 与页面数量的
+> 唯一方法是不注册 `authors` taxonomy**。已注册 taxonomy 但关闭主题资料结构时的页面
+> 行为、URL 与产物差异以实测为准（exampleSite 实测：启用 291 页 =
+> 注册 taxonomy + `pages=false` 的 291 页；不注册 taxonomy 为 286 页）。
+
+| 场景 | Hugo 是否生成 `/authors/` 页面 | 主题是否渲染作者资料结构 |
 | --- | --- | --- |
-| 默认（`pages` 未设 / `false`） | 无任何 `/authors/...` | URL 结构与历史版本一致，页面数不变 |
-| 已启用 | `/authors/`（作者列表索引）+ `/authors/<名称>/`（作者档案页） | 索引页复用列表布局；档案页展示该作者全部文章 + 资料卡 |
+| 未注册 `authors` taxonomy（`pages` 任意） | **否**（页面数不变，URL 与历史版本逐字节一致，BC1） | 否 |
+| 注册 taxonomy + `pages=false`（或缺省） | **是**（Hugo taxonomy 机制照常生成索引页与 term 页） | 否（无资料卡 / 互链，term 页回退通用列表布局） |
+| 注册 taxonomy + `pages=true` | 是 | 是（完整档案功能） |
 
 **单数 `author` 与复数 `authors` 的语义差异（重要）**：
 

@@ -97,7 +97,8 @@ REQUIRED_STEP_TOKENS = {
         "check_ci_jobs.py",              # 自指：删除本门禁自身会立即判红
         "check_workflow_policy.py", "check_docs.py", "check_date_format.py",
         "check_html_quality.py", "security_baseline.py",
-        "test_pagination_retry.py", "test_inventory.py", "check_seo.py",
+        "test_pagination_retry.py", "test_inventory.py", "test_check_index.py",
+        "check_seo.py",
         "check_comments.py", "check_pagination.py", "verify_multilingual.py",
         # 功能一 / 二 / 三·四·五 的产物门禁：删除或改空命令即判红。
         # 末尾的 --selftest 单独登记，保证"故障注入自证"本身不能被悄悄摘掉。
@@ -112,6 +113,9 @@ REQUIRED_STEP_TOKENS = {
         "verify_search_edge.py", "verify_search_highlight.py",
         "verify_search_shard.py", "verify_baseurl.py",
         "verify_contrast.py", "check_responsive_overflow.py",
+        # DOC-R3-006：步骤名里的断言数必须与真实执行结果一致（实测 19 项）；
+        # 改名或改数都会在这里判红 —— 数字与文档统一由本门禁兑底。
+        "19 checks",
     ],
     "release-full-audit": [
         "gen_testdata.py", "hugo --source exampleSite", "link_check.py",
@@ -131,6 +135,21 @@ THREE_ENGINE_TOKENS = {
 # 仅 tag 推送才执行的 job（Release 门禁）：if 必须显式以 refs/tags/v 为条件
 TAG_GATED_JOBS = ("release-full-audit",)
 TAG_COND_RE = re.compile(r"startsWith\s*\(\s*github\.ref\s*,\s*['\"]refs/tags/v['\"]\s*\)")
+
+# ---- 关键步骤环境变量契约（DOC-R3-006）----
+# 承载 verify_search_modal.py 的步骤必须显式登记多语言环境变量：
+#   * SEARCH_MODAL_URLS     提供 en / zh-TW 站点（缺省则只测当前语言）
+#   * REQUIRE_SEARCH_LANGS = '1'  把语言覆盖不足变成硬门禁（TEST-DEFECT-019）
+# 删掉这两个变量会让三语言覆盖**静默退化为仅当前语言**，步骤数量/命令不变，
+# 因此单独登记在这里；对应故障注入：selftest 的 drop-search-langs。
+REQUIRED_STEP_ENV = {
+    "browser-tests": {
+        "verify_search_modal.py": {
+            "SEARCH_MODAL_URLS": None,       # 必须存在（值随端口变化）
+            "REQUIRE_SEARCH_LANGS": "1",     # 必须为硬门禁
+        },
+    },
+}
 
 # 注释行后面允许跟说明文字（如 "9  （非 tag 推送）"），只取第一个整数
 DECL_RE = re.compile(r"^\s*#\s*CI-JOBS:\s*([A-Za-z0-9_-]+)\s*=\s*(\d+)")
@@ -346,6 +365,32 @@ def run(h):
              not token_missing, "；".join(token_missing[:5]) if token_missing
              else f"{sum(len(v) for v in REQUIRED_STEP_TOKENS.values())} 个关键命令全部存在")
 
+    # ---- 关键步骤环境变量契约（DOC-R3-006）----
+    env_missing = []
+    for jid, rules in REQUIRED_STEP_ENV.items():
+        job = jobs.get(jid) or {}
+        for run_key, expect_env in rules.items():
+            found = None
+            for st in (job.get("steps") or []):
+                if isinstance(st, dict) and run_key in (
+                        str(st.get("run") or "") + str(st.get("name") or "")):
+                    found = st
+                    break
+            if found is None:
+                env_missing.append(f"{jid}: 承载 {run_key} 的步骤不存在")
+                continue
+            st_env = found.get("env") if isinstance(found.get("env"), dict) else {}
+            for var, val in expect_env.items():
+                if var not in st_env:
+                    env_missing.append(
+                        f"{jid}/{run_key}: 缺少环境变量 {var}（多语言覆盖会静默退化）")
+                elif val is not None and str(st_env.get(var)) != val:
+                    env_missing.append(
+                        f"{jid}/{run_key}: {var}={st_env.get(var)!r}，期望 {val!r}")
+    h.record("关键步骤环境变量契约（搜索弹窗多语言覆盖必须显式登记）",
+             not env_missing, "；".join(env_missing[:4]) if env_missing
+             else f"{sum(len(r) for r in REQUIRED_STEP_ENV.values())} 个环境变量均在位")
+
     # job 级 continue-on-error：会掩盖整个 job 的失败
     coe_jobs = [jid for jid, j in jobs.items() if j.get("continue-on-error") is True]
     # step 级 continue-on-error：会掩盖关键步骤的失败
@@ -458,6 +503,14 @@ def _mutate(text, kind):
         # 换掉 matrix 取值（chromium -> edge）：数量不变、结构契约必须命中
         return text.replace("browser: [chromium, firefox, webkit]",
                             "browser: [edge, firefox, webkit]")
+    if kind == "drop-search-langs":
+        # 删掉搜索弹窗步骤的多语言环境变量：步骤数量/命令都不变，
+        # 但三语言覆盖静默退化为仅当前语言（DOC-R3-006）
+        return text.replace(
+            "          SEARCH_MODAL_URLS: 'http://127.0.0.1:8081,http://127.0.0.1:8082'\n"
+            "          # 覆盖不足时判失败，而不是只打印提示（TEST-DEFECT-019）\n"
+            "          REQUIRE_SEARCH_LANGS: '1'\n",
+            "")
     raise RuntimeError(f"未知注入类型: {kind}")
 
 
@@ -482,6 +535,7 @@ def selftest():
         ("echo-skipped", "关键命令替换为 echo skipped"),
         ("single-engine", "三引擎检查被单引擎门控"),
         ("swap-matrix-value", "matrix 浏览器取值被替换"),
+        ("drop-search-langs", "搜索弹窗多语言环境变量被删除（DOC-R3-006）"),
     ]
 
     print("=== CI 门禁故障注入自证（每类注入都必须让门禁变红）===")
@@ -502,7 +556,8 @@ def selftest():
             hit = [l for l in p.stdout.splitlines()
                    if l.startswith("FAIL") and ("关键" in l or "matrix" in l
                                                 or "恒假" in l or "三引擎" in l
-                                                or "continue-on-error" in l or "空转" in l)]
+                                                or "continue-on-error" in l or "空转" in l
+                                                or "环境变量" in l)]
             h.record(f"注入[{kind}] 使门禁变红（rc!=0）", rc != 0,
                      f"{desc} -> rc={rc}" + (f"，命中: {hit[0][:80]}" if hit else ""))
     h.finish()

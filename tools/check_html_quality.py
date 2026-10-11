@@ -291,6 +291,12 @@ def parse_page(rel, html, stats):
     m = re.search(r"<title>(.*?)</title>", html, re.S | re.I)
     if not m or not m.group(1).strip():
         problems.append(("title-empty", "缺少 <title> 或内容为空"))
+    # OBS-R3-002：空标题页的 <title> 不得出现前导 "- "（模板必须回退站点标题）。
+    # 正常页面 title 形如 "文章标题 - 站点名"，永远不会以 "- " 开头；
+    # 出现前导 "- " 只可能是 `{{ .Title }} - {{ .Site.Title }}` 遇上空 .Title。
+    if m and m.group(1).startswith("- "):
+        problems.append(("title-leading-dash",
+                         f"<title> 以 '- ' 开头（空标题应回退站点标题）: {m.group(1)[:40]!r}"))
 
     # h1 数量
     if p.h1 > 1:

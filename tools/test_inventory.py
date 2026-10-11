@@ -13,7 +13,10 @@
     7. 空格目录名          -> %20
     8. 已编码文件名        -> 保持编码（不二次编码）
     9. URL 冲突（两个文件 normalize 成同一 URL）-> exit 1
-    10. 分类 site/alias/error 正确
+   10. 分类 site/alias/error 正确
+   11. 加号路径（authors/c++-工程师）-> 字面 "+"（TEST-DEFECT-R3-010）
+   12. 已编码 %2B 不二次编码、也不被解码
+   13. c++/ 与 c%2B%2B/ 两个不同目录不折叠为同一 URL
 
 跨平台：路径统一走 os.path 与正斜杠，Windows / Linux 行为一致。
 
@@ -51,6 +54,17 @@ def run(h):
         write(tmp, "posts/page/10/index.html")
         write(tmp, "分类 1/index.html")          # 中文 + 空格
         write(tmp, "%E5%B7%B2%E7%BC%96%E7%A0%81/index.html")   # 已编码名
+        # TEST-DEFECT-R3-010：Hugo 对 taxonomy term 保留字面 "+"。
+        # 作者 "C++ 工程师" 的真实产物目录就是 `authors/c++-工程师/`（见
+        # check_author_pages ON5），sitemap / 页面链接 / 浏览器地址栏均为字面 "+"，
+        # inventory 必须与该形态一致（此前被编成 %2B 导致全站审计假差异）。
+        write(tmp, "authors/c++-工程师/index.html")   # 加号 + 中文混合
+        write(tmp, "tags/C++与高并发/index.html")     # 加号 + 中文（无空格）
+        # 已编码目录名里的 %2B 必须保持原样（% 在 safe 中，不二次编码）
+        write(tmp, "p%2Bq/index.html")
+        # R3-010 不折叠断言的夹具：字面加号目录 vs 已编码目录（磁盘上是两个不同目录）
+        write(tmp, "c++/index.html")
+        write(tmp, "c%2B%2B/index.html")
         write(tmp, "alias1/index.html",           # alias 形态（meta refresh）
                '<html><head><meta http-equiv=refresh content="0;url=/"></head></html>')
         inv = inv_mod.scan(tmp)
@@ -65,18 +79,30 @@ def run(h):
             ("/posts/page/10/", "/page/10/"),
             ("/%E5%88%86%E7%B1%BB%201/", "中文 + 空格目录"),
             ("/%E5%B7%B2%E7%BC%96%E7%A0%81/", "已编码目录名（不二次编码）"),
+            # 加号保留字面形态（Hugo 真实输出），中文部分照常 percent-encode
+            ("/authors/c++-%E5%B7%A5%E7%A8%8B%E5%B8%88/", "加号作者路径（R3-010）"),
+            ("/tags/C++%E4%B8%8E%E9%AB%98%E5%B9%B6%E5%8F%91/", "加号 + 中文混合路径"),
+            # 已编码的 %2B 原样保留，不得变成 %252B 也不得解码成 +
+            ("/p%2Bq/", "已编码 %2B 目录名（不二次编码、不解码）"),
         ):
             h.record(f"规范化：{label} -> {expect}", expect in urls,
                      "" if expect in urls else f"实际集合缺 {expect}")
 
-        h.record("inventory 自身无 URL 冲突（9 个文件 -> 9 个 URL）",
-                 inv["public_html_files"] == len(urls) == 9,
+        # 两个不同的文件不得被规范化成同一个 URL（R3-010 回归）：
+        # `c++/`（Hugo 字面加号形态）与 `c%2B%2B/`（已编码形态）必须得到
+        # 两个不同的规范化字符串 —— 若把 + 编成 %2B，二者会被折叠成同一 URL。
+        h.record("规范化：c++/ 与 c%2B%2B/ 不折叠为同一 URL",
+                 "/c++/" in urls and "/c%2B%2B/" in urls,
+                 f"实际: {sorted(u for u in urls if u.startswith('/c'))}")
+
+        h.record("inventory 自身无 URL 冲突（14 个文件 -> 14 个 URL）",
+                 inv["public_html_files"] == len(urls) == 14,
                  f"files={inv['public_html_files']} urls={len(urls)}")
 
         # ---------- 10 分类 ----------
         by = inv["by_class"]
         h.record("分类正确：site / alias / error",
-                 by.get("site", 0) == 7 and by.get("alias", 0) == 1 and by.get("error", 0) == 1,
+                 by.get("site", 0) == 12 and by.get("alias", 0) == 1 and by.get("error", 0) == 1,
                  str(by))
 
         # ---------- 9 冲突 ----------

@@ -120,7 +120,7 @@
 | BUG-R2-005 | P3 | 未配置作者时 JSON-LD 输出 `author.name:null` | **已修**：`head.html:141-146` 无作者即省略 author 字段 | **FIXED** |
 | OBS-R2-001 | 观察 | 搜索弹窗无关闭按钮，仅 Esc/遮罩 | 保持现状（界面有 Esc 提示）；**不构成缺陷** | **ACCEPTED-LIMITATION** |
 | TEST-DEFECT-R2-001 | P2 | `check_index.py` 对"正文截断到 10 字"仍真空通过 | **已修**：末尾标记 `TAILMARKER_9Z8Y7X`/`TAILMARKER_50K_END` + `MIN_BYTES_PER_ENTRY=1000` + 截断有界校验 | **FIXED**（需重跑故障注入确认） |
-| TEST-DEFECT-R2-002 | P2 | `check_ci_jobs.py` 对删除/禁用/`continue-on-error`/空 run 不敏感 | **已修**：`--selftest` 7 类注入 + job 级恒假 + 条件步骤取值存在性校验 | **FIXED**（需重跑 `--selftest`） |
+| TEST-DEFECT-R2-002 | P2 | `check_ci_jobs.py` 对删除/禁用/`continue-on-error`/空 run 不敏感 | **已修**：`--selftest` 8 类注入（DOC-R3-006 起新增 drop-search-langs）+ job 级恒假 + 条件步骤取值存在性校验 | **FIXED**（需重跑 `--selftest`） |
 | TEST-DEFECT-R2-003 | P3 | `check_html_quality`/`security_baseline`/`html_inventory`/`check_alias_pages` 仍 cwd 相对 | **已修**：注释声明统一为 `<repo>/public` | **FIXED**（需实测默认路径） |
 | TEST-DEFECT-R2-004 | P3 | `verify_multisection`/`gen_testdata` 异常路径不清理 | **已修**：`finally` 清理 + 边界校验 | **FIXED**（需实测） |
 | TEST-DEFECT-R2-005 | P3 | `check_comments` 失败泄漏 `tools/_ml-giscus.toml` 且未被忽略 | **已修**：`.gitignore` 显式加入该文件 + `finally` 清理 | **FIXED** |
@@ -207,7 +207,7 @@
 | 门禁 | 注入方式 | 注入后结果 | 还原后结果 |
 | --- | --- | --- | --- |
 | `check_new_features.py --selftest` | 内置 5 类注入（gallery/mermaid/katex/组件/外链） | 5/5 全部变红 | EXIT=0 |
-| `check_ci_jobs.py --selftest` | 内置 7 类注入（delete-step/step-if-false/job-if-false/continue-on-error/echo-skipped/单引擎/换矩阵） | 7/7 全部变红 | EXIT=0 |
+| `check_ci_jobs.py --selftest` | 内置 8 类注入（delete-step/step-if-false/job-if-false/continue-on-error/echo-skipped/单引擎/换矩阵/**drop-search-langs**） | 8/8 全部变红 | EXIT=0 |
 | `check_docs.py` | README 追加绝对化表述「零外部 CDN 请求」 | 10/11（README 绝对化表述断言红），EXIT=1 | EXIT=0，11/11 |
 | `verify_multisection.py` | `layouts/_default/index.json` 搜索索引写死 `slice "posts"` | 37/40（3 条"搜索索引包含 tutorials/notes/projects"红），EXIT=1 | 40/40，EXIT=0 |
 | `check_home_layouts.py` | `layouts/partials/home/profile.html` 移除 `home-profile` 结构标记 | 42/44（profile 布局标记 + 演示页 2 条红），EXIT=1 | 标记回读核验存在 |
@@ -266,8 +266,9 @@
 - **启用条件（须同时满足）**：`[taxonomies]` 注册了作者 taxonomy（默认键名 `authors`，
   可经 `params.authors.taxonomy` 改名）**且** `params.authors.pages=true`。
   若声明启用但 taxonomy 未真正注册 → 自动降级 `enabled=false`（避免死链）。
-- **URL 行为**：默认**零改变**（无 `/authors/...`，页面数不变）；启用后生成
-  `/authors/`（索引，复用 `list.html`）与 `/authors/<term>/`（档案页，`term.html`）。
+- **URL 行为**：默认**零改变**（默认 = 站点未注册 `authors` taxonomy，无 `/authors/...`，页面数不变；
+  已注册 taxonomy 但 `pages=false` 时 Hugo 照常生成 `/authors/` 页面，仅主题不渲染资料结构，
+  实测见交接报告 §8.1）；启用后生成 `/authors/`（索引，复用 `list.html`）与 `/authors/<term>/`（档案页，`term.html`）。
 - **单数/复数语义（Hugo 既有机制，非主题行为）**：只有复数列表 `authors: ["A","B"]` 建立
   taxonomy term；单数 `author: "X"` 仅作署名回退，**不建立 term**（因此不会凭空生成档案页）。
 - **CJK/特殊字符**：**刻意不用 `urlize` 拼路径**——`urlize "张伟"` 返回 percent-encoded
@@ -292,3 +293,18 @@
 > 说明：上述均为**开发方自测**（本地真实构建产物断言 + 故障注入），**尚未经独立第三方验收**。
 
 > 更新记录：本表随本轮开发进展持续更新；最终版本以 `feat/theme-feature-completion` 分支 tip 上的文件为准。
+
+---
+
+## 12. 独立第三方验收遗留问题收尾（R3 验收轮）
+
+> 本节记录独立第三方验收（PASS WITH LIMITATIONS，候选 SHA `f3549a5`）遗留项的最终收尾。
+> 严格限制改动范围，未顺手重构其它代码。
+
+| ID | 问题 | 处理 | 结论 |
+| --- | --- | --- | --- |
+| TEST-DEFECT-R3-010 | `normalize_url()` 未把路径中的字面 `+` 列入 safe，作者名 `C++ 工程师` 的产物路径被编成 `%2B`，与 sitemap / 浏览器实际访问 URL 不一致 → 全站审计假差异 | `tools/html_inventory.py`：safe 增加 `+`（与 Hugo 真实产物形态一致；注释说明 `%2B` 目录名的语义边界，冲突检测不受影响）；`tools/test_inventory.py` 新增 4 组回归（加号作者路径 / 加号+中文混合 / 已编码 `%2B` 不二次编码不解码 / `c++/` 与 `c%2B%2B/` 不折叠），17/17；最小 Hugo 验证站（authors taxonomy + `C++ 工程师` 档案页）三浏览器 `AUDIT_FULL=1 AUDIT_REQUIRE_INVENTORY=1` 全站审计：chromium / firefox / webkit 各 **20/20**、MISSING=0、UNEXPECTED=0、rc=0 | **FIXED** |
+| DOC-R3-005 | 文档把 `params.authors.pages` 与 taxonomy 注册混为一谈，易误读为 `pages=false` 能关掉 Hugo 的 `/authors/` 页面生成 | README 作者档案页章节重写为**三场景对照表**（未注册 / 注册+false / 注册+true）；`exampleSite/hugo.toml` 两处注释修正；`docs/稳定基线.md` §5.11 补 `pages` 语义；`docs/测试说明.md`、CHANGELOG、交接报告同步；`check_docs.py` 新增 4 条结构级断言（章节级语义锚 + 过时表述禁止 + toml/基线口径）并经故障注入自证（破坏锚点 → 15/16 红） | **FIXED** |
+| DOC-R3-006 | CI 步骤名写 "14 checks"，docs 写 19 项，口径不一致 | 实测（`SEARCH_MODAL_URLS` + `REQUIRE_SEARCH_LANGS=1`，chromium）确认 **19 项断言**，`ci.yml` 步骤名改 "19 checks" 并由 `check_ci_jobs.py` 登记（"19 checks" token，实测 19/19）；新增**关键步骤环境变量契约**（`REQUIRED_STEP_ENV`：搜索弹窗步骤必须显式登记 `SEARCH_MODAL_URLS` 与 `REQUIRE_SEARCH_LANGS='1'`）+ `--selftest` 第 8 类注入 `drop-search-langs` 自证必红（8/8） | **FIXED** |
+| TEST-DEFECT-R3-011 | `check_index.py` 构建使用 `--config` 叠加层设置 `contentLimit` 时配置感知不到 → 合法截断被按"未配置"严格校验 → 假红 | 配置感知扩展到 `<BUILD_DIR 上一层>/*.toml` 与 `exampleSite/*.toml`（含叠加层，跳过 `_` 前缀临时文件）；配置模式下新增"有界性"判据（条目 > 2×limit+2000 判 limit 未生效）；新增 `tools/test_check_index.py`（5 场景：默认完整 / 默认截断红 / 叠加层配置合法截断绿 / 超上限红 / 整段丢失红）接入 static-checks | **FIXED** |
+| OBS-R3-002 | 空 / 纯空白标题页的 `<title>` 出现前导 `"- "`（如 "- 星云技术笔记"） | `layouts/partials/head.html` 小范围修复：`{{ with trim .Title " \\t\\r\\n" }}{{ . }} - {{ end }}{{ .Site.Title }}`（空/空白标题回退站点标题，非空标题输出不变）；`check_html_quality.py` 新增 `title-leading-dash` 规则；注入自证：回退旧模板 → 2 处红（zz-21 / zz-25）→ 还原回绿；og:title / JSON-LD headline 维持空串（二者一致，交叉校验不受影响） | **FIXED** |

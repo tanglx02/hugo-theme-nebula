@@ -3,7 +3,10 @@
 <meta http-equiv="X-UA-Compatible" content="ie=edge">
 <meta name="referrer" content="origin">
 
-<title>{{ if .IsHome }}{{ .Site.Title }}{{ if .Site.Params.subtitle }} - {{ .Site.Params.subtitle }}{{ end }}{{ else }}{{ .Title }} - {{ .Site.Title }}{{ end }}</title>
+<title>{{ if .IsHome }}{{ .Site.Title }}{{ if .Site.Params.subtitle }} - {{ .Site.Params.subtitle }}{{ end }}{{ else }}{{ with trim .Title " \t\r\n" }}{{ . }} - {{ end }}{{ .Site.Title }}{{ end }}</title>{{- /* OBS-R3-002：空 / 纯空白标题时不再输出前导 "- 星云…"，
+       回退为站点标题；非空标题输出不变（trim 处理 "   " 这类空白标题夹具）。
+       og:title / JSON-LD headline 维持空串（二者一致，
+       check_html_quality 的交叉校验不受影响） */}}
 
 {{ $desc := "" }}
 {{ with .Description }}

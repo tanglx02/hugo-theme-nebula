@@ -18,7 +18,9 @@
   RSS / 卡片 / 正文；**外链文章（6.6）**：正文页顶部提示条 + 卡片/搜索/RSS 按站外地址直达；
   **编辑此页（6.4）**：`editURL` 模板函数安全拼装（禁 javascript: 等 scheme）。
 - **作者档案页（功能四 / M16，可选启用）**：`util/author-config.html` 单点配置；
-  默认 `params.authors.pages=false`，**不输出任何作者结构，URL 与历史逐字节一致**；
+  默认 `params.authors.pages=false`：主题**不渲染任何作者资料结构**（`pages` 只控制主题资料
+  结构渲染，**不控制** Hugo taxonomy 页面生成）；**URL 与历史逐字节一致的前提是站点未注册
+  `authors` taxonomy**（Hugo 是否生成 `/authors/` 页面由 taxonomy 注册决定）；
   启用（注册 `authors` taxonomy + `pages=true`）后生成 `/authors/` 索引与 `/authors/<term>/`
   档案页并打通文章互链。CJK/特殊字符走 `site.Taxonomies` 按标题匹配（**不用 `urlize`**，规避 CJK `GetPage` NONE）。
   门禁 `check_author_pages.py` **43 项（设 `HUGO_MATRIX_DIR` 时 47 项）**。**原「M16 接受为限制」的顾虑（破坏默认 URL 结构）已由可选启用设计化解**，M16 转为已实现。

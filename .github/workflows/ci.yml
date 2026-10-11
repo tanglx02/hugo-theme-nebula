@@ -334,6 +334,9 @@ jobs:
       - name: Inventory self-consistency (URL normalization + collision guard)
         run: python3 tools/test_inventory.py
 
+      - name: Search index contentLimit modes (strict vs configured truncation, R3-011)
+        run: python3 tools/test_check_index.py
+
       - name: SEO and feeds (robots / sitemap / RSS / description / test-data leak)
         run: python3 tools/check_seo.py public
 
@@ -467,7 +470,7 @@ jobs:
       - name: Lightbox — dialog / focus trap / keyboard / linked images
         run: python3 tools/verify_lightbox.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
-      - name: Search modal accessibility — 14 checks (focus trap / inert / restore / deep link / i18n)
+      - name: Search modal accessibility — 19 checks (focus trap / inert / restore / deep link / i18n)
         env:
           SEARCH_MODAL_URLS: 'http://127.0.0.1:8081,http://127.0.0.1:8082'
           # 覆盖不足时判失败，而不是只打印提示（TEST-DEFECT-019）

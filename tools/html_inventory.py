@@ -19,6 +19,9 @@ URL 规范化
     public/posts/a/index.html            -> /posts/a/
     public/posts/page/2/index.html       -> /posts/page/2/
     public/404.html                      -> /404.html   （非 index 命名，原样保留）
+    public/authors/c++-工程师/index.html -> /authors/c++-%E5%B7%A5%E7%A8%8B%E5%B8%88/
+                                         （Hugo 对 term 保留字面 "+"，规范化保持原样，
+                                          见 TEST-DEFECT-R3-010）
 
 分类（仅用于报告，**不排除任何页面**）
 ------------------------------------
@@ -59,7 +62,16 @@ def normalize_url(rel_path):
         p = ""
     # safe 里包含 "%"：文件系统里可能已存在 percent-encoded 的目录名
     # （Hugo 某些输出），若不保留会被二次编码成 %25...
-    return "/" + quote(p, safe="/~!*()'-._%")
+    # safe 里包含 "+"：Hugo 对 taxonomy term 保留字面加号（如作者
+    # "C++ 工程师" 的产物目录就是 `authors/c++-工程师/`，sitemap / 页面
+    # 链接 / 浏览器地址栏里也都是字面 "+" —— 路径中的 "+" 不需要转义，
+    # 只有 query string 里 "+" 才按空格解码）。把它编成 %2B 会让 inventory
+    # 与 sitemap / 实际访问 URL 出现假差异（TEST-DEFECT-R3-010）。
+    # 注意语义边界：磁盘上名为 `c%2B%2B` 的目录规范化为 `/c%2B%2B/`，与
+    # `/c++/` 按 RFC 3986 是同一 URL，但 Hugo 从不生成这类目录名；inventory
+    # 以"Hugo 真实输出形态"为准（与 sitemap / 浏览器一致），冲突检测仍负责
+    # 拦截"两个不同文件规范化成同一字符串"的情况。
+    return "/" + quote(p, safe="/~!*()'-._%+")
 
 
 def classify(url, content):

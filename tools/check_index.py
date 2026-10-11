@@ -29,28 +29,40 @@ PATH = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
 BUILD_DIR = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(os.path.abspath(PATH))
 
 # contentLimit 的影响只能由**站点配置**决定，不能靠 argv 猜测（避免测试自己
-# 把"该检测"关掉）。默认按 exampleSite/hugo.toml 的实际配置解析；
-# 可用 INDEX_CONTENT_LIMIT 显式覆盖以匹配非标准站点。
+# 把"该检测"关掉）。
+# 配置感知范围（TEST-DEFECT-R3-011）：真实构建经常用 `--config a.toml,b.toml`
+# 叠加配置层（如 check_search_modes / CI 写入的 shard-override.toml），只读
+# exampleSite/hugo.toml 会漏掉叠加层里的 contentLimit -> "有意配置截断"的构建
+# 被按"未配置"严格校验 -> 末尾标记被合法截掉后**假红**。因此这里扫描：
+#   * <BUILD_DIR 上一层>/*.toml   （hugo --source exampleSite -d ../public 布局）
+#   * exampleSite/*.toml          （--source exampleSite 布局）
+# 任一层（含叠加层）设置 params.search.contentLimit > 0 即视为"配置了截断"。
+# 以 `_` 开头的文件是测试工具的临时产物（verify_multisection 等），跳过。
+# INDEX_CONTENT_LIMIT 环境变量仍可显式覆盖（优先级最高）。
 def _configured_content_limit():
     env = os.environ.get("INDEX_CONTENT_LIMIT")
     if env is not None and env.strip() != "":
         try:
             return int(env)
         except ValueError:
-            return None
-    for cfg in (os.path.join(REPO, "exampleSite", "hugo.toml"),
-                os.path.join(os.path.dirname(BUILD_DIR), "hugo.toml")):
-        if not os.path.isfile(cfg):
+            print(f"WARN INDEX_CONTENT_LIMIT={env!r} 不是整数，忽略（按站点配置判定）")
+    import glob
+    seen = 0
+    for cfg in (sorted(glob.glob(os.path.join(os.path.dirname(
+            os.path.abspath(BUILD_DIR)), "*.toml")))
+            + sorted(glob.glob(os.path.join(REPO, "exampleSite", "*.toml")))):
+        if os.path.basename(cfg).startswith("_"):
             continue
         try:
             import tomllib
             with open(cfg, "rb") as f:
                 data = tomllib.load(f)
             val = (data.get("params") or {}).get("search", {}).get("contentLimit")
-            return int(val) if val else 0
+            if val:
+                seen = max(seen, int(val))
         except Exception:
             continue
-    return 0
+    return seen
 
 
 _env_limit_raw = _configured_content_limit()
@@ -196,15 +208,24 @@ def check_truncation(data, shard_mode, merged=None, env_limit=None):
                 f"有 {len(short)} 条正文短于 2000 字符、整篇索引中又不存在任何末尾标记"
                 f"—— 判定为正文被截断（未配置 contentLimit 时不应发生）")
     else:
-        # ---- 显式配置 contentLimit：截断是预期行为，用"体积下限"兜底 ----
+        # ---- 显式配置 contentLimit：截断是预期行为，区分预期/异常 ----
         # 不按"单条是否超过 limit"判错：截断经 partial 传参后，Hugo 对传入模板的
         # 字符串其 rune 计数与直接 `countrunes` 存在**有界偏差**（实测 limit=3000、
         # 中文 + HTML 实体正文出现 3448 的条目）。这是"软上限"特性：结果**只会
         # 高于** limit（绝不因多截而丢失正文），且不会 panic 终止整站构建。
-        # 真正能证伪的是"整体小到不真实" —— 见下方 per-entry 体积检查。
+        #   预期截断 = 条目长度有界（允许软上限偏差）；
+        #   异常截断 = ① 条目大幅超出上限（> 2×limit + 2000 → limit 未被正确应用）；
+        #             ② 整体体积小到不真实（下方 per-entry 体积下限）。
         n = len(all_content) or 1
-        print(f"contentLimit = {env_limit}（显式配置：截断属预期，改为校验整体体积下限"
+        print(f"contentLimit = {env_limit}（显式配置：截断属预期，校验有界性 + 整体体积下限"
               f" {MIN_BYTES_PER_ENTRY} 字节/条）")
+        excess = [i for i, c in enumerate(all_content)
+                  if len(c) > 2 * env_limit + 2000]
+        if excess:
+            errors.append(
+                f"contentLimit={env_limit} 但有 {len(excess)} 条正文长度超过 "
+                f"2×limit+2000（最长 {max(len(all_content[i]) for i in excess)} 字符，"
+                f"条目 {excess[:5]}）—— limit 未被正确应用（预期截断应有界）")
         blob_bytes = len(raw.encode("utf-8")) + len(chunk_blob.encode("utf-8"))
         per_entry = blob_bytes / n
         print(f"体积/条目 = {per_entry:.0f} 字节"

@@ -88,11 +88,14 @@ rssLimit = 20
     provider = 'github'
 
   # 作者档案页（功能四 / M16）：**可选启用**，默认关闭。
-  # 启用条件（两者同时满足）：
+  # 两个独立开关，勿混淆：
   #   1) [taxonomies] 注册了作者 taxonomy（见文件下方 `authors = 'authors'`）
-  #   2) 这里 pages = true
-  # 不配置 / pages = false 时，主题**不输出任何作者档案相关结构**，
-  # 所有站点 URL 结构与历史完全一致（可选启用的向后兼容保证）。
+  #      —— 注册本身就会让 Hugo 生成 /authors/ 索引页与 term 页；
+  #   2) 这里 pages = true —— 只控制**主题**是否渲染作者资料结构
+  #      （资料卡 / 互链 / 档案页布局）。
+  # pages = false **不会阻止** Hugo 生成 /authors/ taxonomy 页面；
+  # 若要完全不产生 /authors/ 页面、保持原 URL 与页面数量，
+  # 请删除 [taxonomies] 中的 authors 注册。
   # profiles 为可选资料：作者名 -> { bio, role, location, avatar, url, links }
   [params.authors]
     pages = true
@@ -175,7 +178,11 @@ rssLimit = 20
   category = 'categories'
   tag = 'tags'
   # 作者档案页（功能四 / M16）：**可选启用**。
-  # 注册 author taxonomy 后，front matter 里 `authors = ["A", "B"]`（列表）
+  # ⚠ 注册 author taxonomy 本身就会让 Hugo 生成 /authors/ 索引页与
+  #   /authors/<name>/ 档案页（taxonomy 页面生成是 Hugo 机制，与
+  #   params.authors.pages 无关；pages 只控制主题的资料结构渲染）。
+  #   若要完全不产生 /authors/ 页面，请删除本行注册。
+  # 注册后，front matter 里 `authors = ["A", "B"]`（列表）
   # 会生成 /authors/<name>/ 档案页与 /authors/ 索引页。
   # ⚠ 只有**列表形式 authors** 会建立 term；单数 `author: "X"` 仅作署名回退
   #   （Hugo 既有机制，主题不改），详见 README「作者档案页」。

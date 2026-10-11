@@ -197,6 +197,75 @@ def run(h):
     else:
         h.record("CHANGELOG.md 存在", False, chg)
 
+    # ⑥ 作者档案页配置口径（DOC-R3-005）
+    check_author_pages_wording(h)
+
+
+# ---------------------------------------------------------------------------
+# DOC-R3-005：作者档案页两个独立开关的口径
+#   params.authors.pages   只控制**主题**是否渲染作者资料结构
+#   [taxonomies] authors   决定 Hugo 是否生成 /authors/ taxonomy 页面
+# 旧文档把二者混为一谈（"pages=false 时 URL 结构与历史一致"），会让用户误以为
+# pages=false 能关掉 /authors/ 页面 —— 实测（交接报告 §8.1）：已注册 taxonomy +
+# pages=false 时 Hugo 照常生成 /authors/（291 页），页面数的开关是 taxonomy 注册。
+# ---------------------------------------------------------------------------
+AUTHOR_SECTION_HEADING = "### 作者档案页"
+# README 作者档案页章节内必须出现的语义锚（章节级结构匹配，防正文散落蒙混）
+AUTHOR_SECTION_ANCHORS = [
+    "Hugo 是否生成 `/authors/` 页面",       # 三场景表的列头（结构级锚点）
+    "主题是否渲染作者资料结构",             # 三场景表的列头
+    "不会阻止",                             # pages=false 不阻止 taxonomy 页面生成
+    "唯一方法是不注册",                     # 完全去掉 /authors/ 页面的唯一途径
+]
+# 禁止回归的过时表述（旧版"URL 行为对照"表把 pages=false 写成"无任何 /authors/"）
+AUTHOR_STALE_PHRASES = [
+    "| 默认（`pages` 未设 / `false`） | 无任何 `/authors/...` |",
+    "不配置 / pages = false 时，主题**不输出任何作者档案相关结构**",
+]
+# exampleSite/hugo.toml 与 稳定基线 也必须带准确语义
+AUTHOR_TOML_ANCHOR = "不会阻止"
+AUTHOR_BASELINE_ANCHOR = "唯一方法是不注册"
+
+
+def _extract_section(text, heading):
+    """取 markdown 中 heading（### 级）到下一个同级标题之间的正文。"""
+    i = text.find(heading)
+    if i < 0:
+        return None
+    j = text.find("\n### ", i + len(heading))
+    return text[i: j if j > 0 else len(text)]
+
+
+def check_author_pages_wording(h):
+    readme_p = os.path.join(ROOT, "README.md")
+    readme = open(readme_p, encoding="utf-8").read()
+    sec = _extract_section(readme, AUTHOR_SECTION_HEADING)
+    h.record("README 存在「作者档案页」独立章节（### 级标题）", sec is not None,
+             AUTHOR_SECTION_HEADING)
+    if sec is None:
+        return
+    missing = [a for a in AUTHOR_SECTION_ANCHORS if a not in sec]
+    h.record("README 作者档案页章节说明「pages 只控制资料结构渲染 / taxonomy 注册决定页面生成」",
+             not missing, f"章节内缺少语义锚: {missing}" if missing else "三场景口径完整")
+    stale = [ph for ph in AUTHOR_STALE_PHRASES if ph in readme]
+    h.record("README 无「pages=false ⇒ 无 /authors/ 页面」类过时表述",
+             not stale, f"过时表述: {stale[:1]}" if stale else "无过时表述")
+
+    toml_p = os.path.join(ROOT, "exampleSite", "hugo.toml")
+    if os.path.isfile(toml_p):
+        toml = open(toml_p, encoding="utf-8").read()
+        toml_stale = [ph for ph in AUTHOR_STALE_PHRASES if ph in toml]
+        h.record("exampleSite/hugo.toml 注释含准确口径且无过时表述",
+                 AUTHOR_TOML_ANCHOR in toml and not toml_stale,
+                 ("缺少语义锚" if AUTHOR_TOML_ANCHOR not in toml else "")
+                 + ("；过时表述残留" if toml_stale else "") or "口径准确")
+
+    baseline_p = os.path.join(ROOT, "docs", "稳定基线.md")
+    if os.path.isfile(baseline_p):
+        baseline = open(baseline_p, encoding="utf-8").read()
+        h.record("稳定基线.md 记录「不产生 /authors/ 页面的唯一方法是不注册 taxonomy」",
+                 AUTHOR_BASELINE_ANCHOR in baseline, AUTHOR_BASELINE_ANCHOR)
+
 
 def _resolve_version(changelog_path):
     """推断"当前版本"：DOC_VERSION 环境变量 -> git tag -> CHANGELOG 首个版本号。
