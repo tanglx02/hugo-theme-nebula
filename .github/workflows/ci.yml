@@ -284,6 +284,21 @@ jobs:
       - name: "Home layouts (cards/profile/hero/landing + safe fallback + feeds unchanged)"
         run: python3 tools/check_home_layouts.py
 
+      # 阅读体验门禁（下方 check_reading_experience.py）的 B 小节是**真实浏览器**断言
+      # （Chromium + Firefox + WebKit）。本 job 非矩阵 job，必须在此一次性安装三种浏览器，
+      # 否则浏览器启动会硬失败——`_testlib.launch` 的契约是「依赖缺失即致命错误，不静默跳过」。
+      # 修复历史：此前 static-checks 从未安装浏览器，导致该门禁仅在浏览器启动处失败
+      # （静态部分 48/48 通过、3 条启动失败，合计 51；装上浏览器后恢复为文档记载的 141/141）。
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-static-${{ runner.os }}-${{ hashFiles('tools/requirements.txt') }}
+          restore-keys: pw-static-${{ runner.os }}-
+
+      - name: Install Playwright browsers (chromium / firefox / webkit)
+        run: python3 -m playwright install --with-deps chromium firefox webkit
+
       - name: "Reading experience (progress/top/focus/print + real browser checks)"
         run: python3 tools/check_reading_experience.py
 
