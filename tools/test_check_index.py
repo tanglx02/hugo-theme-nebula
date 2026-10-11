@@ -43,7 +43,7 @@ def content(chars, tail=False):
 
 
 def make_site(tmp, entries, site_limit=None):
-    """在 tmp 下构造 BUILD_DIR=public + 可选的叠加配置 hugo.toml，返回 BUILD_DIR。"""
+    """在 tmp 下构造 Hugo **源根**（含基础 hugo.toml）+ BUILD_DIR=public，返回 BUILD_DIR。"""
     build = os.path.join(tmp, "public")
     os.makedirs(build, exist_ok=True)
     idx = [{"title": f"t{i}", "url": f"/posts/p{i}/", "key": f"k{i}", "content": c}
@@ -51,8 +51,12 @@ def make_site(tmp, entries, site_limit=None):
     with open(os.path.join(build, "index.json"), "w", encoding="utf-8") as f:
         json.dump(idx, f, ensure_ascii=False)
     if site_limit:
-        # 模拟 `--config hugo.toml,overlay.toml` 的叠加层（不叫 hugo.toml，
-        # 证明配置感知真的覆盖叠加层而不只是主配置）
+        # 真实的 `--config hugo.toml,overlay.toml` 布局：基础配置与叠加层**同目录**。
+        # 基础 hugo.toml 的存在使该目录成为"Hugo 源根"，check_index 才会把
+        # contentLimit 绑定到本次构建；仅放一个孤立 TOML（无基础配置、无 content/）
+        # 不再被当作"配置了截断"（见 test_check_index 与 check_index 的 R3 绑定规则）。
+        with open(os.path.join(tmp, "hugo.toml"), "w", encoding="utf-8") as f:
+            f.write('baseURL = "http://example.org/"\n')
         with open(os.path.join(tmp, "overlay-limit.toml"), "w", encoding="utf-8") as f:
             f.write(f'[params.search]\n  contentLimit = {site_limit}\n')
     return build

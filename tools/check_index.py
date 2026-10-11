@@ -39,6 +39,30 @@ BUILD_DIR = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(os.path.abspat
 # 任一层（含叠加层）设置 params.search.contentLimit > 0 即视为"配置了截断"。
 # 以 `_` 开头的文件是测试工具的临时产物（verify_multisection 等），跳过。
 # INDEX_CONTENT_LIMIT 环境变量仍可显式覆盖（优先级最高）。
+#
+# 反向场景绑定（本轮复验新增，修复"假绿"）：单凭"输出目录上层有一个 *.toml"
+# 不足以证明它参与了本次构建 —— 一个**未被任何 hugo 命令使用**的孤立 TOML
+# （哪怕写了 contentLimit）若被采信，会让被意外截断的索引被判成"合法配置截断"。
+# 因此只有该目录**确实像一个 Hugo 源根**（见 _looks_like_build_source）时才
+# 采信其 *.toml；否则按"未配置"严格校验（末尾标记必须在）。exampleSite/ 是
+# 主题自带的真实源根，始终采信。
+
+
+def _looks_like_build_source(d):
+    """该目录是否像 Hugo 源根 —— 用于把 contentLimit **绑定到本次构建**。
+
+    判定依据（任一即可）：
+      * 存在 hugo.toml / config.toml（叠加层 `--config hugo.toml,overlay.toml`）
+      * 存在 content/ 目录（`--source <dir> -d <dir>/public` 布局）
+
+    反例（必须判为"非源根"，从而不采信其 TOML）：仅有一个孤立
+    `whatever.toml` + 输出子目录 —— 它没有参与任何构建。
+    """
+    return (os.path.isfile(os.path.join(d, "hugo.toml"))
+            or os.path.isfile(os.path.join(d, "config.toml"))
+            or os.path.isdir(os.path.join(d, "content")))
+
+
 def _configured_content_limit():
     env = os.environ.get("INDEX_CONTENT_LIMIT")
     if env is not None and env.strip() != "":
@@ -47,10 +71,13 @@ def _configured_content_limit():
         except ValueError:
             print(f"WARN INDEX_CONTENT_LIMIT={env!r} 不是整数，忽略（按站点配置判定）")
     import glob
+    cands = []
+    parent = os.path.dirname(os.path.abspath(BUILD_DIR))
+    if _looks_like_build_source(parent):
+        cands += sorted(glob.glob(os.path.join(parent, "*.toml")))
+    cands += sorted(glob.glob(os.path.join(REPO, "exampleSite", "*.toml")))
     seen = 0
-    for cfg in (sorted(glob.glob(os.path.join(os.path.dirname(
-            os.path.abspath(BUILD_DIR)), "*.toml")))
-            + sorted(glob.glob(os.path.join(REPO, "exampleSite", "*.toml")))):
+    for cfg in cands:
         if os.path.basename(cfg).startswith("_"):
             continue
         try:
