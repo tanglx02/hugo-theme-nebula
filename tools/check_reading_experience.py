@@ -19,6 +19,11 @@ B. 真实浏览器（Chromium，可选 Firefox / WebKit）
    B4 打印模拟（emulate_media print）：交互元素隐藏、正文可见；
    B5 减少动效（emulate_media reduced-motion）：返回顶部仍能回到顶部（不因动效降级而失效）。
 
+B 小节的**等待约定**：凡是要等异步 UI 更新落地的地方，都在**页面内用 requestAnimationFrame
+轮询**（settle / wait_frames），而不是用 Python 侧的固定 sleep。原因见 t_progress 上方的
+长注释：headless WebKit（CI 的 Linux 构建）渲染帧按需产出，固定 sleep 会读到更新**前**的
+旧值（同一 SHA 两次运行 5 条断言稳定变红）。断言、阈值、用例条数均不因此改变。
+
 用法：
     python tools/check_reading_experience.py
 环境变量：
@@ -428,6 +433,119 @@ class Server:
 # --------------------------------------------------------------------------- #
 # B. 浏览器断言
 # --------------------------------------------------------------------------- #
+# ---- 等待异步 UI 更新的正确姿势：不要再用固定 sleep 等浏览器"自己产帧" ----
+#
+# CI 实测（同一 SHA 两次运行，5 条断言**完全一致**地变红，Linux headless WebKit）：
+#   * headless WebKit 的渲染帧是**按需产出**的。页面空闲、且没有 rAF / 输入事件请求帧
+#     时，渲染管线不推进，于是：
+#       - `scroll` 事件迟迟不派发 -> main.js 的 onScroll 不跑，
+#         #progressBar 宽度与 #toTop.show 都停在更新**前**的状态；
+#       - `.progress-bar { transition: width .1s linear }` 的过渡停在起始值，
+#         此时 getBoundingClientRect() 读到的是 0，而不是最终宽度；
+#       - `.to-top` 的 visibility 也带 .3s 过渡，未走完时按钮**不可聚焦 / 不可点击**。
+#   * 而 Playwright 自身的可见性轮询 / click 会通过 requestAnimationFrame 驱动帧，
+#     所以同一会话里"能点到的元素"反而是正常的（B3/B4/B5 通过、B1/B2 变红）。
+#   * 页面外（Python 侧）的 wait_for_timeout 等于断言"250ms 内浏览器一定产过帧"，
+#     在 CI 上稳定不成立 —— 这是**测试脚本的时序建模缺陷**，不是产品缺陷。
+#
+# 因此：凡是要等异步更新落地的地方，一律改为**在页面内用 rAF 轮询**（rAF 会驱动渲染帧）。
+# 只等待"更新已落地"这一**中性条件**：scroll 事件已派发 / 过渡已收敛到 JS 写入的值 /
+# 滚动动画已走完指定帧数。断言、阈值、用例条数**一字不改**：
+#   - 若产品真的没更新，等待会超时，随后的断言照样如实失败（不吞错、不放水）；
+#   - rAF 轮询不假设"等 N 毫秒后状态一定就位"，因此不会再把"慢"误判成"错"。
+# 所有等待都带 setTimeout 兜底，不依赖 rAF 必然触发（避免 CI 卡死）。
+
+# 页面内条件库 + scroll 事件计数器：按**名字**引用，不用 eval（CSP 安全）
+CONDITIONS_JS = """() => {
+  window.__RX = window.__RX || {};
+  var RX = window.__RX;
+  RX.sc = 0;
+  if (!RX.installed) {
+    RX.installed = true;
+    window.addEventListener('scroll', function () { RX.sc++; }, { passive: true });
+  }
+  RX.cond = {
+    // 进度条**渲染宽度**已收敛到 JS 写入的 width（等价于"过渡动画已走完"）
+    barSettled: function () {
+      var b = document.querySelector('#progressBar');
+      if (!b) return true;
+      var authored = parseFloat(b.style.width) || 0;
+      var vw = window.innerWidth || document.documentElement.clientWidth || 1;
+      return Math.abs(b.getBoundingClientRect().width - authored / 100 * vw) <= 1;
+    },
+    // 返回顶部按钮已真正可见（visibility 过渡走完，因而可聚焦 / 可点击）
+    toTopVisible: function () {
+      var t = document.querySelector('#toTop');
+      return !t || getComputedStyle(t).visibility === 'visible';
+    }
+  };
+}"""
+
+
+def arm(page):
+    """安装页面内条件库与 scroll 事件计数器，并清零计数器。
+
+    必须在**每次导航之后**、程序化滚动之前调用（导航会清掉页面内状态）。
+    """
+    page.evaluate(CONDITIONS_JS)
+
+
+def mark_scroll(page):
+    """把 scroll 事件计数清零。
+
+    此后 `settle(page, "scrollDelivered")` 表示"本次程序化滚动产生的 scroll 事件
+    已经被浏览器派发"（即 main.js 的 onScroll 已经跑过）。
+    """
+    page.evaluate("() => { if (window.__RX) window.__RX.sc = 0; }")
+
+
+def settle(page, cond, timeout=5000):
+    """在页面内用 rAF 轮询等待中性条件 `cond` 成立（最多 timeout 毫秒）。
+
+    内置条件 `scrollDelivered` = 自 mark_scroll 之后已派发过 scroll 事件；
+    其余条件取自 CONDITIONS_JS 注册的 `window.__RX.cond`。
+    超时**不抛异常**，返回 False —— 让调用方的断言如实判定失败。
+    """
+    return bool(page.evaluate("""(arg) => new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      const fn = arg.name === 'scrollDelivered'
+        ? () => ((window.__RX || {}).sc || 0) > 0
+        : (((window.__RX || {}).cond) || {})[arg.name];
+      if (!fn) { resolve(false); return; }
+      setTimeout(() => finish(false), arg.timeout);   // 兜底：不依赖 rAF 触发
+      const tick = () => {
+        if (done) return;
+        let ok = false;
+        try { ok = !!fn(); } catch (e) { ok = false; }
+        if (ok) { finish(true); return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })""", {"name": cond, "timeout": timeout}))
+
+
+def wait_frames(page, frames, timeout=15000):
+    """等待页面产出 `frames` 个**动画帧**（而不是等固定毫秒）。
+
+    用于"动画要多久由浏览器决定"的场景（平滑滚动、visibility 过渡）：
+    等帧数能保证动画**真的推进**，等毫秒数在 headless WebKit 上可能一帧都没产。
+    同样带 setTimeout 兜底，拿不到帧也不会卡死。
+    """
+    page.evaluate("""(arg) => new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      setTimeout(() => finish(0), arg.timeout);       // 兜底
+      let i = 0;
+      const tick = () => {
+        if (done) return;
+        if (++i >= arg.frames) { finish(i); return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })""", {"frames": frames, "timeout": timeout})
+
+
 def measure_progress(page):
     """同时返回 [进度条宽度%] 与 [独立重算的期望比值%]，用于严格比对。
 
@@ -464,11 +582,13 @@ def t_progress(page, base):
     page.wait_for_timeout(250)
     # 关掉平滑滚动：否则 scrollTo 之后位置仍在动画中，测量与重算值对不上
     page.evaluate("() => { document.documentElement.style.scrollBehavior = 'auto'; }")
+    arm(page)
     m0 = measure_progress(page)
     H.record("[B1] 进度条存在", m0["bar"], f"{m0}")
     H.record("[B1] 顶部：进度≈0%", m0["actual"] <= 1.0, f"actual={m0['actual']:.2f}")
 
     # 滚动到正文阅读区中点
+    mark_scroll(page)
     page.evaluate("""() => {
       const pc = document.querySelector('.post-content') || document.querySelector('article');
       const st = window.scrollY;
@@ -476,14 +596,18 @@ def t_progress(page, base):
       const span = pc.offsetHeight - window.innerHeight;
       window.scrollTo(0, top + Math.max(1, span) * 0.5);
     }""")
-    page.wait_for_timeout(250)
+    # 先等 scroll 事件真正派发（onScroll 才会写入宽度），再等过渡收敛到该宽度
+    settle(page, "scrollDelivered")
+    settle(page, "barSettled")
     mm = measure_progress(page)
     H.record("[B1] 中点：实际宽度与按正文阅读区重算的比值一致（±3% 容差）",
              abs(mm["actual"] - mm["expected"]) <= 3.0,
              f"actual={mm['actual']:.2f} expected={mm['expected']:.2f} st={mm['st']}")
 
+    mark_scroll(page)
     page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
-    page.wait_for_timeout(350)
+    settle(page, "scrollDelivered")
+    settle(page, "barSettled")
     m1 = measure_progress(page)
     H.record("[B1] 底部：进度≈100%", m1["actual"] >= 98.5, f"actual={m1['actual']:.2f}")
     H.record("[B1] 进度始终不越界（0~100）", 0 <= m0["actual"] <= 100 and 0 <= m1["actual"] <= 100, "")
@@ -494,15 +618,24 @@ def t_progress(page, base):
 def t_to_top(page, base):
     page.goto(f"{base}/{LONG_ARTICLE}/", wait_until="load")
     page.wait_for_timeout(200)
+    # 与 t_progress 同一约定（见 measure_progress 的 docstring）：
+    # 先关掉平滑滚动，程序化滚动的位置才是确定的，不受动画时长影响。
+    page.evaluate("() => { document.documentElement.style.scrollBehavior = 'auto'; }")
+    arm(page)
     shown_top = page.evaluate("() => { const b=document.querySelector('#toTop'); return b ? b.classList.contains('show') : null; }")
     H.record("[B2] 页面顶部时返回顶部按钮隐藏",
              shown_top is False, f"show={shown_top}")
 
+    mark_scroll(page)
     page.evaluate("() => window.scrollTo(0, 1200)")
-    page.wait_for_timeout(300)
+    # 等 scroll 事件派发：onScroll 才会按 st>400 加上 .show（此处一次滚到位 st=1200）
+    settle(page, "scrollDelivered")
     shown = page.evaluate("() => document.querySelector('#toTop').classList.contains('show')")
     H.record("[B2] 下滚后返回顶部按钮出现", shown is True, "")
 
+    # `.to-top` 的 visibility 带 .3s 过渡，未走完时元素**不可聚焦**：
+    # 等它真正进入可见态（这是可聚焦/可点击的前置状态，不是"等断言成立"）
+    settle(page, "toTopVisible")
     # 键盘可达：聚焦 + Enter 触发
     focusable = page.evaluate("""() => {
       const b = document.querySelector('#toTop');
@@ -513,7 +646,9 @@ def t_to_top(page, base):
     H.record("[B2] 返回顶部是原生 button（Enter/Space 可激活）",
              focusable["tag"] == "BUTTON", f"tag={focusable['tag']}")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(900)
+    # 点击走的是 behavior:'smooth'（未降级），动画时长由浏览器决定：
+    # 等帧数而不是等固定毫秒，保证动画真的推进到终点。
+    wait_frames(page, 60)
     y = page.evaluate("() => window.scrollY || document.documentElement.scrollTop")
     H.record("[B2] 键盘 Enter 触发后回到页面顶部", y <= 5, f"scrollY={y}")
 
@@ -608,10 +743,14 @@ def t_reduced_motion(page, base):
     page.wait_for_timeout(200)
     match = page.evaluate("() => window.matchMedia('(prefers-reduced-motion: reduce)').matches")
     H.record("[B5] 减少动效媒体查询生效", match is True, "")
+    arm(page)
+    mark_scroll(page)
     page.evaluate("() => window.scrollTo(0, 1500)")
-    page.wait_for_timeout(250)
+    # 先等 scroll 事件派发（否则 .show 未置位、按钮不可点击），再等它进入可见态
+    settle(page, "scrollDelivered")
+    settle(page, "toTopVisible")
     page.click("#toTop")
-    page.wait_for_timeout(700)
+    wait_frames(page, 45)
     y = page.evaluate("() => window.scrollY || document.documentElement.scrollTop")
     H.record("[B5] 减少动效下返回顶部仍然有效（功能不因降级失效）", y <= 5, f"scrollY={y}")
     page.emulate_media(reduced_motion="no-preference")
