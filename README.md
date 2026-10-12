@@ -10,6 +10,9 @@
 | --- | --- |
 | ![首页亮色](docs/screenshots/01-home-light.jpg) | ![首页暗色](docs/screenshots/02-home-dark.jpg) |
 
+<details>
+<summary><b>展开更多界面截图（文章页 / 搜索 / 归档 / 画廊 / 内容组件 / 移动端，共 8 张）</b></summary>
+
 | 文章页（含目录） | 暗色文章页 |
 | --- | --- |
 | ![文章页](docs/screenshots/04-post-light.jpg) | ![暗色文章页](docs/screenshots/05-post-dark.jpg) |
@@ -25,6 +28,8 @@
 | 内容组件 | 移动端 |
 | --- | --- |
 | ![内容组件](docs/screenshots/08-content-components.jpg) | ![移动端](docs/screenshots/10-mobile.jpg) |
+
+</details>
 
 ## 特性
 

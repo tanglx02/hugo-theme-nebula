@@ -1222,8 +1222,9 @@ html[data-theme="dark"] .chroma .ow { color: #8be9fd; }
   font-size: 13.5px;
   color: var(--text-muted);
 }
-.footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.footer-links { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.footer-inner { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.footer-copy { line-height: 1.5; }
+.footer-links { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; }
 /* 行内小链接补足点击区域（水平内边距用负外边距抵消，不影响排版） */
 .footer-inner a {
   color: var(--text-muted);
