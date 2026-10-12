@@ -135,16 +135,41 @@
 
 ## 附录 B — 本项目本轮实际执行的完整链路（证据）
 
+> **SHA 口径**：主题代码与文档沉淀是**不同的提交**，CI 结果**按 SHA 一一绑定**，不得混用。
+
+**B.1 主题代码基线 `8363d4b89193a7dfa22bc1569918a4eb666865cd`（含全部运行时文件）**
+
 | 步骤 | 实际结果 | 证据 |
 | --- | --- | --- |
 | 冻结候选 SHA | `8363d4b89193a7dfa22bc1569918a4eb666865cd` | `git rev-parse HEAD` |
-| PR CI | `38171213190`（11 success + 1 skipped Release） | GitHub Actions |
-| dispatch CI（含 Release 三引擎） | `38171253788`（**14/14**） | GitHub Actions |
+| 该 SHA 的 PR CI | `38171213190`（11 success + 1 skipped Release） | GitHub Actions |
+| 该 SHA 的 dispatch CI | `38171253788`（**14/14**，含 Release 三引擎） | GitHub Actions |
 | 合并阻断项 | **无** | 见 `SKILL_HANDOFF.md` |
-| PR #5 | 已评论 superseded + 关闭 | GitHub |
-| PR #6 | 唯一开放、MERGEABLE/CLEAN | GitHub |
-| main / v1.0.9 | `21745162` / tag 未移动、无 Release | `git ls-remote` |
 | 最终状态 | **READY_TO_MERGE**（不自行合并） | — |
+
+**B.2 文档沉淀提交 `e03a6c801090aeaa682a2e55d671acd3578c2e17`（docs-only，`8363d4b` + 1 提交）**
+
+| 步骤 | 实际结果 | 证据 |
+| --- | --- | --- |
+| 变更范围 | 仅 `docs/skill-source/*.md`（`git diff 8363d4b..e03a6c8 --name-only`） | git |
+| 该 SHA 的 PR CI | `38188954023`（**success**，11 pass + Release skipped） | GitHub Actions |
+| 该 SHA 的 dispatch CI | `38189345376`（**14/14**，含 Release 三引擎全站审计） | GitHub Actions |
+
+**B.3 实时仓库状态（核对时间：本轮文档修订时）**
+
+| 项 | 值 | 证据 |
+| --- | --- | --- |
+| 候选分支 tip | 以 `git ls-remote origin refs/heads/feat/theme-feature-completion` 为准 | git |
+| 开放 PR | **仅 #6**（MERGEABLE / CLEAN） | `gh pr list --state open` |
+| 旧 PR #5 | **已关闭**（`2026-10-12T00:33:29Z`），修复已被 #6 覆盖 | `gh pr view 5` |
+| `main` | `21745162da343f2a0809516148b1a5680893390e`（未改动） | `git ls-remote` |
+| `v1.0.9` tag | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动） | `git ls-remote --tags` |
+| Release | 无 | `gh release list` |
+| 合并状态 | **未合并**（需所有者授权） | — |
+
+> **反例警示**：CI #112（`38145051430`, 14/14）实际跑在 `4a4ea01`，**不是** `8363d4b`；
+> 因此 `8363d4b` 的 14/14 是**重新执行**取得的，而不是沿用更早 SHA 的结果。
+> 这正是"**不得把旧 SHA 的 CI 套用到新提交**"的真实教训。
 
 ---
 

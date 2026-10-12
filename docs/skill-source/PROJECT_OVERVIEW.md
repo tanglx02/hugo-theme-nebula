@@ -135,17 +135,26 @@ hugo-theme-nebula/
 
 ## 5. 项目状态快照（写本文档时，【已证实】）
 
-| 项 | 值 |
-| --- | --- |
-| 候选分支 | `feat/theme-feature-completion` |
-| 候选 SHA | `8363d4b89193a7dfa22bc1569918a4eb666865cd` |
-| 最终 PR | #6（`feat/theme-feature-completion` → `main`） |
-| 旧 PR | #5（`fix/third-party-audit-v1.0.9-r2`）已关闭，修复已包含于候选分支 |
-| `main` | `21745162da343f2a0809516148b1a5680893390e`（未改动） |
-| `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动） |
-| Release | 无 |
+> **SHA 口径（重要）**：本项目的"主题代码"与"文档沉淀"是两个不同的提交，
+> **各自的 CI 结果只能绑定各自的 SHA，不得互相套用**。
 
-> 状态随开发推进变化，**以 GitHub / git 实时结果为准**；本文件不重复维护实时数字。
+| 项 | 值 | 说明 |
+| --- | --- | --- |
+| **主题代码基线** | **`8363d4b89193a7dfa22bc1569918a4eb666865cd`** | 含全部主题运行时文件（`layouts/ assets/ i18n/ …`） |
+| 主题代码基线的 CI | PR `38171213190`；dispatch `38171253788`（**14/14**） | 两项均绑定 `8363d4b` |
+| **文档沉淀提交（skill-source 首版，docs-only）** | **`e03a6c801090aeaa682a2e55d671acd3578c2e17`** | `8363d4b` + 1 个仅新增 `docs/skill-source/*.md` 的提交 |
+| 文档沉淀提交的 CI | PR `38188954023`；dispatch `38189345376`（**14/14**） | 两项均绑定 `e03a6c8` |
+| 候选分支 | `feat/theme-feature-completion` | 远端 tip 以 `git ls-remote` 实时结果为准 |
+| 最终 PR | **#6**（`feat/theme-feature-completion` → `main`），唯一开放、MERGEABLE / CLEAN | — |
+| 旧 PR | **#5**（`fix/third-party-audit-v1.0.9-r2`）**已关闭**（`2026-10-12T00:33:29Z`），其修复已被 `#6` 完整覆盖 | 实时核对 |
+| `main` | `21745162da343f2a0809516148b1a5680893390e`（未改动） | — |
+| `v1.0.9` 标签 | `6168bb13b68014ea18953df6c7dc40078d581868`（未移动） | — |
+| Release | 无 | — |
+
+> - 后续**纯文档**一致性修订会继续以新的 docs-only SHA 出现在候选分支上；
+>   它们同样只改 `docs/`，不触碰主题运行时文件。
+> - 状态随开发推进变化，**以 GitHub / git 实时结果为准**；本文件不重复维护实时数字，
+>   也**不得**把某个 SHA 的 CI 结论复制到另一个 SHA 名下。
 
 ---
 
