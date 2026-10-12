@@ -31,6 +31,38 @@
 
 </details>
 
+<details>
+<summary><b>目录（点击展开）</b></summary>
+
+**上手**
+- [环境要求](#环境要求) · [快速开始](#快速开始) · [部署](#部署) · [完整配置参考](#完整配置参考)
+
+**配置**
+- [全文搜索与索引模式](#全文搜索与索引模式) · [图片处理](#图片处理) · [系列文章](#系列文章series) · [多语言（i18n）](#多语言i18n) · [Front Matter 字段](#front-matter-字段) · [分享](#分享)
+
+**写作（内容组件）**
+- [Markdown 提示块](#markdown-提示块callouts) · [标签页与步骤](#标签页与步骤) · [文件树 / 徽标 / 按钮 / 折叠块](#文件树--徽标--按钮--折叠块) · [代码块](#代码块) · [图片画廊](#图片画廊功能三) · [Mermaid 图表](#mermaid-图表功能三) · [数学公式 KaTeX](#数学公式-katex功能三)
+
+**进阶功能**
+- [编辑此页](#编辑此页功能四) · [多作者](#多作者功能四) · [外链文章](#外链文章功能四) · [外观配置](#外观配置功能五) · [首页布局](#首页布局功能一) · [阅读体验](#阅读体验功能二)
+
+**开发与维护**
+- [exampleSite / 本地开发](#examplesite--本地开发) · [测试与 CI](#测试与-ci) · [更新日志](#更新日志) · [已知限制](#已知限制) · [许可证](#许可证)
+
+**常见任务速查**
+
+| 我想… | 看这一节 |
+| --- | --- |
+| 装好主题跑起来 | [快速开始](#快速开始) |
+| 发布到 GitHub Pages / Vercel / Netlify / 自己的服务器 | [部署](#部署) |
+| 改站名、头像、社交链接、导航菜单 | [完整配置参考](#完整配置参考) |
+| 开启评论 / 访问统计 / 分享 | [第三方服务说明（可选功能）](#第三方服务说明可选功能) · [分享](#分享) |
+| 在文章里插入画廊 / 图表 / 公式 / 提示块 | [写作（内容组件）](#markdown-提示块callouts) |
+| 让搜索引擎收录更好 | [Front Matter 字段](#front-matter-字段) · 见「SEO」相关特性 |
+| 换配色 / 正文宽度 / 首页布局 | [外观配置](#外观配置功能五) · [首页布局](#首页布局功能一) |
+
+</details>
+
 ## 特性
 
 ### 功能一 · 首页布局
@@ -143,13 +175,79 @@
 
 ## 快速开始
 
+### 第 0 步 · 安装 Hugo（extended）
+
+主题的图片 Pipeline（WebP 多尺寸）与 SCSS 需要 **extended** 版本，普通版无法构建。
+
+```bash
+# macOS
+brew install hugo
+
+# Windows
+winget install Hugo.Hugo.Extended
+# 或 scoop install hugo-extended
+
+# Linux（Debian/Ubuntu，装官方 extended deb 包）
+# 从 https://github.com/gohugoio/hugo/releases 下载 hugo_extended_*_linux-amd64.deb 后：
+sudo dpkg -i hugo_extended_*_linux-amd64.deb
+
+# 通用校验：输出必须含 "extended"
+hugo version
+```
+
+> 要求 **Hugo extended ≥ 0.128.0**。版本兼容矩阵与低版本行为见 [环境要求](#环境要求)。
+
+### 第 1 步 · 创建站点并安装主题
+
+**方式 A · Git submodule（推荐，便于升级）**
+
 ```bash
 hugo new site myblog && cd myblog
 git init
 git submodule add https://github.com/tanglx02/hugo-theme-nebula.git themes/hugo-theme-nebula
 ```
 
-最小配置（`hugo.toml`）：
+升级到最新版：
+
+```bash
+git submodule update --remote themes/hugo-theme-nebula
+```
+
+**方式 B · 直接 clone 到 `themes/`（不使用 submodule）**
+
+```bash
+hugo new site myblog && cd myblog
+git clone https://github.com/tanglx02/hugo-theme-nebula.git themes/hugo-theme-nebula
+```
+
+**方式 C · 手动下载 zip**：从 [Releases](https://github.com/tanglx02/hugo-theme-nebula/releases) 下载源码包，
+解压后把目录重命名为 `hugo-theme-nebula` 放进站点的 `themes/` 下。
+
+安装完成后的目录结构：
+
+```text
+myblog/
+├── hugo.toml            # 站点配置（下面要改）
+├── content/             # 你的文章
+│   └── posts/
+├── static/              # 头像、图片等静态资源
+└── themes/
+    └── hugo-theme-nebula/   # 主题本体（不要修改这里）
+```
+
+### 第 2 步 · 最小配置
+
+把主题的示例配置拷过来改，比从零写更快：
+
+```bash
+cp themes/hugo-theme-nebula/exampleSite/hugo.toml hugo.toml
+```
+
+> 拷来后**务必**改这几处：`baseURL` 换成你的域名、`title` / `params.author` / `params.description` 换成自己的；
+> 示例配置里 `params.editUrl.repo`、`params.socials`、作者档案 `profiles` 都是 demo 值，按需删除或替换。
+> 示例站把「专注模式 / 分享 / 作者档案页」开着是为了演示，主题默认是关闭的。
+
+或手写一份最小配置（`hugo.toml`）：
 
 ```toml
 baseURL = 'https://your-domain.com/'
@@ -181,14 +279,171 @@ hasCJKLanguage = true
 > 搜索会表现为"加载失败"（界面上有明确报错与重试按钮，不会白屏）。
 > 排查方式：构建后检查站点根目录是否存在 `index.json`。
 
-写文章并预览：
+### 第 3 步 · 写文章并本地预览
 
 ```bash
 hugo new content posts/hello-world.md
 hugo server -D      # 打开 http://localhost:1313
 ```
 
+- `-D` 表示同时预览草稿（`draft: true` 的文章）。
+- 文章 Front Matter 支持哪些字段（目录、封面、置顶、系列、多作者等）见 [Front Matter 字段](#front-matter-字段)。
+- 主题自带的示例站点在 `themes/hugo-theme-nebula/exampleSite/`，可直接对照它的配置与内容写法。
+
 > 生产构建请用 `hugo --gc --minify`，**不要**把 `hugo server` 的输出当作生产产物（它会注入 livereload）。
+
+## 部署
+
+主题是**纯静态输出**，构建后 `public/` 里就是可直接托管的 HTML/CSS/JS，没有服务端运行时。
+下面按「先本地构建 → 再选托管方式」说明。
+
+### 本地生产构建
+
+```bash
+hugo --gc --minify
+```
+
+产物在站点根目录的 `public/`。构建前务必确认 `baseURL` 与最终访问地址一致（含是否子路径，见下）。
+
+| 参数 | 作用 |
+| --- | --- |
+| `--gc` | 清理未使用的构建缓存，减小 `resources/` 体积 |
+| `--minify` | 压缩 HTML/CSS/JS（生产环境建议开） |
+| `-d <dir>` | 自定义输出目录，默认 `public` |
+| `--baseURL <url>` | 临时覆盖配置里的 `baseURL`（适合 CI 注入真实域名） |
+
+> **预览构建产物**：`hugo server` 默认注入 livereload 脚本，**不要**用它验证生产行为。
+> 要看真实产物，构建后用静态服务器打开：`python3 -m http.server -d public 8080`。
+
+### 关键：baseURL 与子路径
+
+`baseURL` 决定所有站内绝对路径（CSS/JS/图片/RSS/sitemap/canonical）。CI 已实测三种部署形态：
+
+| 部署形态 | `baseURL` 写法 | 说明 |
+| --- | --- | --- |
+| 根域名 | `https://example.com/` | 最常见 |
+| 子路径（GitHub Pages 项目页） | `https://<user>.github.io/<repo>/` | 必须以 `/` 结尾 |
+| 多级子路径 | `https://example.com/blog/sub/` | 同样以 `/` 结尾 |
+
+主题已断言：以上三种形态下站内链接都不会跳出 basePath，RSS / sitemap / robots / `index.json` 均正确。
+
+### 方式一 · GitHub Pages（最常见）
+
+在站点仓库里新建 `.github/workflows/deploy.yml`：
+
+```yaml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive      # 用 submodule 装主题时必需
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.167.0'      # 固定版本，保证构建可复现
+          extended: true               # 必须 extended（图片 Pipeline / SCSS）
+      - name: Build
+        run: hugo --gc --minify --baseURL "https://<user>.github.io/<repo>/"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+然后在仓库 **Settings → Pages** 里把 Source 设为 **GitHub Actions**。
+
+> - 项目页（`https://<user>.github.io/<repo>/`）**必须**用带子路径的 `baseURL`，否则资源全部 404。
+> - 想部署到根域名（`https://<user>.github.io/`），需把仓库命名为 `<user>.github.io`。
+> - 若站点内容在子目录（如本站配置放在 `blog/`），在 build 步骤加 `--source blog`。
+
+### 方式二 · Vercel / Netlify / Cloudflare Pages
+
+三者配置思路一致：**构建命令 `hugo --gc --minify`，输出目录 `public`**。
+
+| 平台 | 构建命令 | 输出目录 | 备注 |
+| --- | --- | --- | --- |
+| Vercel | `hugo --gc --minify` | `public` | 需在环境变量里指定 `HUGO_VERSION=0.167.0`（extended） |
+| Netlify | `hugo --gc --minify` | `public` | 设 `HUGO_VERSION=0.167.0`；或提交 `netlify.toml` |
+| Cloudflare Pages | `hugo --gc --minify` | `public` | 构建环境变量设 `HUGO_VERSION=0.167.0` |
+
+Netlify 也可用 `netlify.toml` 固化配置：
+
+```toml
+[build]
+  command = "hugo --gc --minify"
+  publish = "public"
+
+[build.environment]
+  HUGO_VERSION = "0.167.0"
+```
+
+> 用 submodule 装主题时，记得在这些平台开启「拉取子模块」选项（Netlify/Cloudflare 默认会拉；
+> Vercel 若拉不到，可在构建命令前加 `git submodule update --init --recursive && `）。
+> 这些平台默认构建的不是 extended 版本，**必须**显式指定 extended（如上设 `HUGO_VERSION`）。
+
+### 方式三 · 自己的服务器 / Nginx
+
+本地（或 CI）构建出 `public/`，同步到服务器即可：
+
+```bash
+hugo --gc --minify
+rsync -avz --delete public/ user@your-server:/var/www/blog/
+```
+
+Nginx 最小站点配置：
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/blog;
+    index index.html;
+
+    # 目录 → index.html；找不到则回退 404.html（主题自带）
+    location / {
+        try_files $uri $uri/ $uri.html /404.html;
+    }
+}
+```
+
+> - 主题会输出 `404.html`，多数托管平台自动使用它，Nginx 需如上显式 `try_files` 回退。
+> - 建议开启 gzip/brotli 与静态资源长缓存（`public/` 内带指纹的文件名可安全长缓存）。
+
+### 部署检查清单
+
+发布前逐项确认：
+
+- [ ] `hugo --gc --minify` 构建**无 ERROR**（WARN 可读一下，多为可选功能提示）
+- [ ] `baseURL` 与最终访问地址完全一致（**含末尾 `/`**，子路径部署尤其注意）
+- [ ] 构建产物里存在 `index.json`（搜索索引）与 `index.xml`（RSS）—— 缺 `index.json` 说明漏配 `[outputs]`
+- [ ] 站点能打开，浏览器控制台**无 404 资源**、无 JS 报错
+- [ ] 搜索框可用（`Ctrl+K` / `/`），能搜到正文深处的关键词
+- [ ] 若启用评论/统计，第三方资源按预期加载（见 [第三方服务说明](#第三方服务说明可选功能)）
 
 ## 完整配置参考
 
