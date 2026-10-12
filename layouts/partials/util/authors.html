@@ -1,0 +1,40 @@
+{{- /* 作者解析（功能四 / 6.5）—— 统一"作者优先级 + 回退 + 转义"，供正文 / 卡片 /
+     搜索索引 / RSS / JSON-LD 共用，保证各处**一致**且**空不虚构**。
+
+     优先级（高 → 低）：
+       1) 文章级多作者   Front Matter `authors = ["A", "B"]`
+       2) 文章级单作者   Front Matter `author = "A"`
+       3) 站点级默认作者 site.Params.author
+       4) 无 → 返回空列表（**绝不虚构姓名**，也不产生 author.name:null）
+
+     返回 dict（partial 返回值恒为字符串，故必须用 dict 包装）：
+       .names    : []string 原始姓名（已 trim，剔除空串）
+       .primary  : string   首位作者（用于 meta author / JSON-LD）
+       .csv      : string   逗号分隔（用于 meta / RSS）
+
+     安全：姓名由调用方按上下文转义（HTML 用 {{ }}，属性用 {{ }} 自动转义，
+     JSON-LD 走整体 jsonify）。本 partial 只做取值与清洗，不拼接 HTML。 */ -}}
+
+{{- $page := .page -}}
+{{- $names := slice -}}
+{{- with $page.Params.authors -}}
+  {{- range . -}}
+    {{- $n := trim (printf "%v" .) " \t\r\n" -}}
+    {{- if $n -}}{{- $names = $names | append $n -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if not $names -}}
+  {{- with $page.Params.author -}}
+    {{- $n := trim (printf "%v" .) " \t\r\n" -}}
+    {{- if $n -}}{{- $names = $names | append $n -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if not $names -}}
+  {{- with site.Params.author -}}
+    {{- $n := trim (printf "%v" .) " \t\r\n" -}}
+    {{- if $n -}}{{- $names = $names | append $n -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $primary := "" -}}
+{{- if $names -}}{{- $primary = index $names 0 -}}{{- end -}}
+{{- return (dict "names" $names "primary" $primary "csv" (delimit $names ", ")) -}}

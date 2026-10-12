@@ -26,6 +26,7 @@
       data-input-position="bottom"
       data-theme="{{ $c.giscus.theme | default "preferred_color_scheme" }}"
       data-lang="{{ $c.giscus.lang | default $loc }}"
+      {{- with $c.giscus.integrity }} integrity="{{ . }}"{{ end }}
       crossorigin="anonymous"
       async>
     </script>
@@ -45,7 +46,8 @@
     </script>
   {{ else if eq $c.provider "twikoo" }}
     <div id="tcomment"></div>
-    <script src="https://cdn.jsdelivr.net/npm/twikoo@1.6.39/dist/twikoo.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/twikoo@1.6.39/dist/twikoo.all.min.js"
+      {{- with $c.twikoo.integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }}></script>
     <script>
       twikoo.init({ envId: '{{ $c.twikoo.envId }}', el: '#tcomment', lang: '{{ $c.twikoo.lang | default $loc }}' });
     </script>

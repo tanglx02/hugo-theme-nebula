@@ -1,0 +1,24 @@
+{{- /* 嵌套块占位符：把一个**已经渲染好的 HTML 片段**登记到父组件的 Scratch，
+     并返回一个纯文本 token 作为它在原位置的替身。
+
+     为什么需要它（这是实测出来的真实缺陷，不是预防性设计）：
+       本主题默认 `markup.goldmark.renderer.unsafe = false`（安全默认值）。
+       在这种配置下，`{{ .Inner | markdownify }}` 会把内容里的**原始 HTML 全部
+       丢弃**并替换成 `<!-- raw HTML omitted -->`。当标签页里再放一个步骤组件时，
+       子组件的输出就是"原始 HTML"（在 markdownify 的视角下），于是整段被丢掉 ——
+       页面会静默少一大块内容。
+
+       解决办法：子组件不直接输出 HTML，而是
+         1) 把 HTML 登记进父组件的 Scratch；
+         2) 在原位置输出一个纯文本 token。
+       父组件对 inner 做 markdownify（markdown 不会动纯文本 token），
+       之后再把 token 换回真正的 HTML。这样既保留了 markdown 渲染，
+       又让任意层级的组件嵌套都不丢内容。
+
+     用法（子组件侧）：
+       {{ partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) }} */ -}}
+{{- $scratch := .scratch -}}
+{{- $list := $scratch.Get "nebula_nested" | default slice -}}
+{{- $token := printf "NEBULABLOCKTOKEN%dEND" (len $list) -}}
+{{- $scratch.Add "nebula_nested" (slice (dict "token" $token "html" .html)) -}}
+{{- $token -}}

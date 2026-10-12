@@ -1,0 +1,61 @@
+{{- /* 作者资料卡（功能四 / M16）—— 作者档案页头部的"作者详情"展示。
+
+     数据来源：site.Params.authors.profiles.<作者名>（可选）。未配置任何资料时
+     只显示姓名 + 文章数，**不输出空的资料区块**（与"空不虚构"原则一致）。
+
+     字段（全部可选）：
+       bio       string  简介
+       avatar    string  头像 URL（走 util/avatar-url.html 校验，拒绝空/危险 scheme）
+       url       string  个人主页（走 util/external-url.html 校验 scheme）
+       location  string  所在地
+       role      string  头衔 / 角色
+       links     []map   额外链接，每项 { name, url }
+
+     返回：无（直接输出 HTML）。 */ -}}
+{{- $page := .page -}}
+{{- $name := .name -}}
+{{- $cfg := partial "util/author-config.html" (dict) -}}
+{{- $profile := dict -}}
+{{- range $k, $v := $cfg.profiles -}}
+  {{- if eq (lower (printf "%v" $k)) (lower $name) -}}{{- $profile = $v -}}{{- end -}}
+{{- end -}}
+{{- $bio := "" -}}{{- with $profile.bio -}}{{- $bio = printf "%v" . -}}{{- end -}}
+{{- $role := "" -}}{{- with $profile.role -}}{{- $role = printf "%v" . -}}{{- end -}}
+{{- $loc := "" -}}{{- with $profile.location -}}{{- $loc = printf "%v" . -}}{{- end -}}
+{{- $avatar := partial "util/avatar-url.html" ($profile.avatar | default "") -}}
+{{- $home := "" -}}
+{{- with $profile.url -}}
+  {{- $u := printf "%v" . -}}
+  {{- if or (hasPrefix $u "http://") (hasPrefix $u "https://") -}}{{- $home = $u -}}{{- end -}}
+{{- end -}}
+{{- $links := slice -}}
+{{- with $profile.links -}}
+  {{- range . -}}
+    {{- $ln := printf "%v" (.name | default "") -}}
+    {{- $lu := printf "%v" (.url | default "") -}}
+    {{- if and $ln (or (hasPrefix $lu "http://") (hasPrefix $lu "https://")) -}}
+      {{- $links = $links | append (dict "name" $ln "url" $lu) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $hasDetail := or $bio $role $loc $avatar $home $links -}}
+{{- if $hasDetail }}
+<div class="author-profile">
+  {{ if $avatar }}
+    <img class="author-profile-avatar" src="{{ $avatar | safeURL }}" alt="{{ $name }}" width="72" height="72" loading="lazy" decoding="async">
+  {{ else }}
+    <span class="author-profile-avatar author-profile-initial" aria-hidden="true">{{ partial "util/slice-runes.html" (dict "text" $name "n" 1) }}</span>
+  {{ end }}
+  <div class="author-profile-body">
+    <p class="author-profile-name">{{ $name }}{{ with $role }}<span class="author-profile-role">{{ . }}</span>{{ end }}</p>
+    {{ with $bio }}<p class="author-profile-bio">{{ . }}</p>{{ end }}
+    {{ if or $loc $home $links }}
+    <p class="author-profile-meta">
+      {{ with $loc }}<span class="author-profile-loc">{{ . }}</span>{{ end }}
+      {{ with $home }}<a href="{{ . | safeURL }}" target="_blank" rel="noopener nofollow">{{ . }}</a>{{ end }}
+      {{ range $links }}<a href="{{ .url | safeURL }}" target="_blank" rel="noopener nofollow">{{ .name }}</a>{{ end }}
+    </p>
+    {{ end }}
+  </div>
+</div>
+{{- end -}}

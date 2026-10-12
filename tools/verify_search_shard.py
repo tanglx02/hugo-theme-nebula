@@ -91,8 +91,38 @@ def pick_content_only_keyword(content, meta, length=10):
 
 
 # --------------------------------------------------------------- 用例执行
-def run_case(browser, name, rules, keyword, check):
-    """rules: [(pattern, handler)]；check(page) -> (ok, detail)"""
+def _retry_visible(pg):
+    try:
+        return pg.locator("#searchRetry").is_visible()
+    except Exception:
+        return False
+
+
+def read_state(pg):
+    """一次性快照页面状态。
+
+    为什么必须一次读全（TEST-DEFECT-R2-010）：旧实现里每个断言都写成
+    `count_items(pg) > 0 and status_text(pg) == ""`，随后详情串又各自再读一次
+    `count_items` / `status_text`。异步搜索在两次读取之间改变状态时，会出现
+    "判定用到的值"与"详情打印的值"不一致 —— 例如判定时 status 尚为"部分失败"
+    （判红），打印详情时已变回 ""（看起来完全正常），产生**自相矛盾的假红**。
+    先快照再判定，保证判定与详情取自同一时刻。
+    """
+    return {
+        "count": count_items(pg),
+        "status": status_text(pg),
+        "empty": empty_text(pg),
+        "retry": _retry_visible(pg),
+    }
+
+
+def run_case(browser, name, rules, keyword, check, tries=3, wait=800):
+    """rules: [(pattern, handler)]；check(state) -> (ok, detail)
+
+    对异步搜索做**有界稳定重试**：首次判定失败时，等 UI 再次稳定后重判，最多
+    `tries` 次。真实缺陷的状态是**稳定地坏**的，重试仍判红，断言强度不变；
+    仅消除"读得太早"造成的偶发假红（flakiness），不掩盖真实缺陷。
+    """
     ctx = browser.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
     page = ctx.new_page()
     for pattern, handler in rules:
@@ -102,7 +132,12 @@ def run_case(browser, name, rules, keyword, check):
         page.click("#searchTrigger")
         page.fill("#search-input", keyword)
         page.wait_for_timeout(2200)
-        ok, detail = check(page)
+        ok, detail = check(read_state(page))
+        attempt = 1
+        while not ok and attempt < tries:
+            page.wait_for_timeout(wait)
+            ok, detail = check(read_state(page))
+            attempt += 1
         rec(name, ok, detail)
     except Exception as e:
         rec(name, False, f"异常: {str(e)[:110]}")
@@ -161,9 +196,9 @@ def _run_all():
             return
 
         # ---------------------------------------------------------- 全部成功
-        run_case(browser, "全部成功：有结果且无状态提示", [], DEEP_MARKERS[-1], lambda pg: (
-            count_items(pg) > 0 and status_text(pg) == "",
-            f'{count_items(pg)} 条, status="{status_text(pg)}"'))
+        run_case(browser, "全部成功：有结果且无状态提示", [], DEEP_MARKERS[-1], lambda s: (
+            s["count"] > 0 and s["status"] == "",
+            f'{s["count"]} 条, status="{s["status"]}"'))
 
         # ---------------------------------------------------------- 主索引失败
         def fail_main(status, label):
@@ -171,9 +206,9 @@ def _run_all():
                 route.fulfill(status=status, body="boom")
             run_case(browser, f"主索引 {label}：明确报错 + 有重试按钮",
                      [("**/index.json", handler)], DEEP_MARKERS[-1],
-                     lambda pg: ("失败" in status_text(pg) and pg.locator("#searchRetry").is_visible()
-                                 and "没有找到" not in empty_text(pg),
-                                 f'status="{status_text(pg)}" empty="{empty_text(pg)[:24]}"'))
+                     lambda s: ("失败" in s["status"] and s["retry"]
+                                and "没有找到" not in s["empty"],
+                                f'status="{s["status"]}" empty="{s["empty"][:24]}"'))
 
         fail_main(404, "404")
         fail_main(500, "500")
@@ -181,8 +216,8 @@ def _run_all():
         def corrupt_main(route):
             route.fulfill(status=200, body="{ this is not json", content_type="application/json")
         run_case(browser, "主索引 JSON 损坏：明确报错", [("**/index.json", corrupt_main)], DEEP_MARKERS[-1],
-                 lambda pg: ("失败" in status_text(pg) and "没有找到" not in empty_text(pg),
-                             f'status="{status_text(pg)}"'))
+                 lambda s: ("失败" in s["status"] and "没有找到" not in s["empty"],
+                            f'status="{s["status"]}"'))
 
         # ---------------------------------------------------------- 部分分块失败
         def partial_shard(status, label, delay=0):
@@ -204,9 +239,9 @@ def _run_all():
             # 用标题关键词验证：正文分块失败不应影响标题/摘要匹配，且不得误报无结果
             run_case(browser, f"部分分块 {label}：提示部分失败且标题匹配仍可用",
                      [("**/search/*.json", selective)], TITLE_KEYWORD,
-                     lambda pg: (("部分" in status_text(pg)) and count_items(pg) > 0
-                                 and "没有找到" not in empty_text(pg),
-                                 f'{count_items(pg)} 条, status="{status_text(pg)[:40]}"'))
+                     lambda s: (("部分" in s["status"]) and s["count"] > 0
+                                and "没有找到" not in s["empty"],
+                                f'{s["count"]} 条, status="{s["status"][:40]}"'))
 
         partial_shard(404, "404")
         partial_shard(500, "500")
@@ -222,8 +257,8 @@ def _run_all():
                     route.continue_()
             run_case(browser, "部分分块 JSON 损坏：提示部分失败且标题匹配仍可用",
                      [("**/search/*.json", handler)], TITLE_KEYWORD,
-                     lambda pg: (("部分" in status_text(pg)) and count_items(pg) > 0,
-                                 f'{count_items(pg)} 条, status="{status_text(pg)[:40]}"'))
+                     lambda s: (("部分" in s["status"]) and s["count"] > 0,
+                                f'{s["count"]} 条, status="{s["status"][:40]}"'))
         corrupt_shard()
 
         # ---------------------------------------------------------- 分块失败的关键词语义（核心）
@@ -258,29 +293,28 @@ def _run_all():
 
                 # 基线：不注入失败时，victim 关键词应可检索（证明它确实可被搜到）
                 run_case(browser, f"基线：正文深层关键词可检索（{victim_kw}）", [], victim_kw,
-                         lambda pg: (count_items(pg) > 0, f'{count_items(pg)} 条'))
+                         lambda s: (s["count"] > 0, f'{s["count"]} 条'))
 
                 rules = [fail_chunk_rule(victim_url)]
 
                 # ① 失败分块内的正文深层关键词 -> 不命中 + 明确提示（不得显示"没有找到"）
                 run_case(browser, f"失败分块①：其正文深层关键词不命中且明确提示（{victim_kw}）",
                          rules, victim_kw,
-                         lambda pg: (count_items(pg) == 0
-                                     and "没有找到" not in empty_text(pg)
-                                     and ("部分" in status_text(pg) or "失败" in status_text(pg)),
-                                     f'{count_items(pg)} 条, status="{status_text(pg)[:46]}", empty="{empty_text(pg)[:34]}"'))
+                         lambda s: (s["count"] == 0
+                                    and "没有找到" not in s["empty"]
+                                    and ("部分" in s["status"] or "失败" in s["status"]),
+                                    f'{s["count"]} 条, status="{s["status"][:46]}", empty="{s["empty"][:34]}"'))
 
                 # ② 未失败分块内的正文关键词 -> 正常命中（证明其余分块已加载且正文可搜）
                 run_case(browser, f"失败分块②：其他分块正文关键词仍命中（{ok_kw}）",
                          rules, ok_kw,
-                         lambda pg: (count_items(pg) > 0,
-                                     f'{count_items(pg)} 条, status="{status_text(pg)[:40]}"'))
+                         lambda s: (s["count"] > 0,
+                                    f'{s["count"]} 条, status="{s["status"][:40]}"'))
 
                 # ③ 标题关键词 -> 不受正文分块失败影响
                 run_case(browser, f"失败分块③：标题关键词不受影响（{TITLE_KEYWORD}）",
                          rules, TITLE_KEYWORD,
-                         lambda pg: (count_items(pg) > 0,
-                                     f'{count_items(pg)} 条'))
+                         lambda s: (s["count"] > 0, f'{s["count"]} 条'))
         else:
             H.fatal_error("站点分块数不足 2",
                           f"chunks={0 if not chunks else len(chunks)}，无法验证部分分块失败语义"
@@ -290,9 +324,9 @@ def _run_all():
         run_case(browser, "全部分块失败：明确提示且标题匹配仍可用",
                  [("**/search/*.json", lambda route: route.fulfill(status=404, body="nope"))],
                  TITLE_KEYWORD,
-                 lambda pg: (("部分" in status_text(pg)) and count_items(pg) > 0
-                             and "没有找到" not in empty_text(pg),
-                             f'{count_items(pg)} 条, status="{status_text(pg)[:40]}"'))
+                 lambda s: (("部分" in s["status"]) and s["count"] > 0
+                            and "没有找到" not in s["empty"],
+                            f'{s["count"]} 条, status="{s["status"][:40]}"'))
 
         # ---------------------------------------------------------- 重试恢复
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")

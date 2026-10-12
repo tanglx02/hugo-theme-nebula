@@ -19,6 +19,9 @@ URL 规范化
     public/posts/a/index.html            -> /posts/a/
     public/posts/page/2/index.html       -> /posts/page/2/
     public/404.html                      -> /404.html   （非 index 命名，原样保留）
+    public/authors/c++-工程师/index.html -> /authors/c++-%E5%B7%A5%E7%A8%8B%E5%B8%88/
+                                         （Hugo 对 term 保留字面 "+"，规范化保持原样，
+                                          见 TEST-DEFECT-R3-010）
 
 分类（仅用于报告，**不排除任何页面**）
 ------------------------------------
@@ -59,7 +62,16 @@ def normalize_url(rel_path):
         p = ""
     # safe 里包含 "%"：文件系统里可能已存在 percent-encoded 的目录名
     # （Hugo 某些输出），若不保留会被二次编码成 %25...
-    return "/" + quote(p, safe="/~!*()'-._%")
+    # safe 里包含 "+"：Hugo 对 taxonomy term 保留字面加号（如作者
+    # "C++ 工程师" 的产物目录就是 `authors/c++-工程师/`，sitemap / 页面
+    # 链接 / 浏览器地址栏里也都是字面 "+" —— 路径中的 "+" 不需要转义，
+    # 只有 query string 里 "+" 才按空格解码）。把它编成 %2B 会让 inventory
+    # 与 sitemap / 实际访问 URL 出现假差异（TEST-DEFECT-R3-010）。
+    # 注意语义边界：磁盘上名为 `c%2B%2B` 的目录规范化为 `/c%2B%2B/`，与
+    # `/c++/` 按 RFC 3986 是同一 URL，但 Hugo 从不生成这类目录名；inventory
+    # 以"Hugo 真实输出形态"为准（与 sitemap / 浏览器一致），冲突检测仍负责
+    # 拦截"两个不同文件规范化成同一字符串"的情况。
+    return "/" + quote(p, safe="/~!*()'-._%+")
 
 
 def classify(url, content):
@@ -79,6 +91,26 @@ class InventoryCollision(Exception):
         self.collisions = collisions
         self.build_dir = build_dir
         super().__init__(f"{len(collisions)} 组 URL 冲突")
+
+
+def build_fingerprint(files):
+    """构建产物的指纹：由 (相对路径, 字节数) 列表推导。
+
+    TEST-DEFECT-R2-007：inventory JSON 会被 audit.py 读取做交叉验证，
+    但它此前**没有任何"属于哪次构建"的标识** —— 一旦两次构建互相覆盖
+    （或复用了上一次留下的 inventory），交叉验证就在比较两份不同构建的
+    结果，却仍然判定"一致"。把指纹写进 inventory 并在读取端校验，
+    才能保证比较的是**同一份构建产物**。
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for rel, full in sorted(files):
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            size = -1
+        h.update(f"{rel}\0{size}\n".encode("utf-8"))
+    return h.hexdigest()[:16]
 
 
 def scan(build_dir, read_content=True):
@@ -121,6 +153,7 @@ def scan(build_dir, read_content=True):
         raise InventoryCollision(collisions, build_dir)
     return {
         "build_dir": os.path.abspath(build_dir),
+        "build_id": build_fingerprint(files),
         "public_html_files": len(files),
         "expected_html_urls": urls,
         "expected_count": len(urls),
@@ -138,6 +171,7 @@ def scan(build_dir, read_content=True):
 def report(inv):
     print(f"PUBLIC HTML FILES = {inv['public_html_files']}")
     print(f"EXPECTED HTML URLS = {inv['expected_count']}")
+    print(f"BUILD ID = {inv.get('build_id')}  （构建指纹；audit 交叉验证会比对）")
     print("分类明细（仅用于报告，不排除任何页面）:")
     for k, v in inv["by_class"].items():
         samples = inv["class_samples"].get(k, [])
@@ -156,7 +190,9 @@ def report(inv):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("build_dir", nargs="?", default="public")
+    # 默认路径统一为 <repo>/public（TEST-DEFECT-R2-003）
+    _repo = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    ap.add_argument("build_dir", nargs="?", default=os.path.join(_repo, "public"))
     ap.add_argument("--json", help="把 inventory 写入该 json 文件")
     args = ap.parse_args()
     try:

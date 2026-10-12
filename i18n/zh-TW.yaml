@@ -10,6 +10,7 @@ nav:
 common:
   close: 關閉
   copy: 複製
+  copyCode: 複製程式碼
   copied: 已複製
   copyFailed: 複製失敗，請手動複製
   retry: 重試
@@ -27,11 +28,14 @@ common:
   tags: 標籤
   minutes: '{{ .n }} 分鐘'
   dateFormat: '2006年1月2日'
+  noDate: 未標註日期
+  noScript: 搜尋與主題切換需要啟用 JavaScript；正文、目錄與圖片在無指令碼時仍可正常閱讀。
   anchor: 錨點連結
   licenseDefault: 轉載請註明出處。
   pagination: 分頁導覽
   prevPage: 上一頁
   nextPage: 下一頁
+  listSep: '、'
 
 search:
   hint: 輸入關鍵字開始搜尋，支援標題 / 標籤 / 內文全文比對
@@ -59,6 +63,16 @@ post:
   license: 版權聲明
   author: 作者
   toTop: 回到頂部
+  external: 外鏈
+  externalNotice: 本文為外鏈文章，點擊將跳轉到站外
+  externalHost: 來源
+
+# 閱讀體驗（功能二）：進度條 / 回到頂部 / 專注模式 / 編輯入口
+reading:
+  focusMode: 專注模式
+  focusExit: 退出專注模式
+  editPage: 編輯此頁
+  authors: 作者
 
 home:
   latest: 最新文章
@@ -126,3 +140,41 @@ menu:
   archives: 歸檔
   about: 關於
   aboutMe: 關於我
+
+# Markdown 提示塊（功能三）：預設標題
+alert:
+  note: 說明
+  tip: 提示
+  important: 重要
+  warning: 警告
+  caution: 注意
+
+# 技術內容元件（功能三）：標籤頁 / 步驟的輔助文案
+tabs:
+  label: 內容切換
+  untitled: 未命名
+steps:
+  label: 操作步驟
+
+# 技術內容元件（功能三）：按鈕被攔截時的佔位提示
+components:
+  linkBlocked: 連結無法使用（已攔截不安全位址）
+
+# 響應式圖片畫廊（功能三 / 6.1）
+gallery:
+  label: 圖片畫廊
+  missing: 找不到圖片
+  caption: 檢視大圖
+
+# 多作者與作者檔案（功能四 / 6.5）
+authors:
+  title: 作者
+  by: 作者
+
+# 技術圖表與公式（功能四 / 6.2 / 6.3）
+mermaid:
+  loading: 圖表渲染中…
+  error: 圖表渲染失敗
+math:
+  loading: 公式渲染中…
+  error: 公式渲染失敗

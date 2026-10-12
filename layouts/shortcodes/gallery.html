@@ -1,0 +1,87 @@
+{{- /* 响应式图片画廊（功能三 / 6.1）。
+
+     用法（块级 shortcode，必须成对闭合；只支持 {{< >}} 形式）：
+
+       {{< gallery >}}
+       photo-a.jpg | 图片 A 的替代文本 | 这是 A 的题注
+       photo-b.jpg | 图片 B
+       https://example.com/c.jpg | 外链图片 | 外链题注
+       {{< /gallery >}}
+
+     每行一项，用 `|` 分隔三段：`源 | alt | 题注`（alt / 题注可省略）。
+     可选首行参数（全部具名，Hugo 不允许混用位置/具名参数）：
+       列数由 <figure> 的 class 控制，默认自适应：
+       {{< gallery cols="3" label="项目截图" >}}
+       …
+       {{< /gallery >}}
+
+     设计要点：
+       1. **复用现有图片管线与灯箱** —— 每张图交给 util/image-figure.html 渲染，
+          page bundle 图自动获得多尺寸 WebP + srcset + width/height（防 CLS）；
+          图**不被 <a> 包裹**，因此 main.js 的灯箱逻辑（选择 .post-content img）
+          自动接管，键盘可聚焦、可放大 —— **不重复建设灯箱**。
+       2. **三种来源**：page bundle 相对名 / static 路径 / 外链 URL。
+       3. **缺图与错误路径有回退**：解析不到资源且 static 下也不存在时，
+          渲染为带 alt 文本的占位块（不产生破损图，不横向溢出）。
+       4. **零 JavaScript、零第三方**：纯 CSS grid 布局。
+       5. 可嵌套：被嵌在其它组件里时以占位符 token 返回（同 tabs/steps/filetree）。
+
+     安全：alt / 题注 / label 一律 htmlEscape 或交由 markdownify（对题注）；
+     源走 util/image-figure → util/rel-url（scheme 白名单，拒绝 javascript: 等）。 */ -}}
+{{- $raw := .InnerDeindent | default "" -}}
+{{- $lines := split (replaceRE `\r` "" $raw) "\n" -}}
+{{- $cols := .Get "cols" | default "" -}}
+{{- $label := .Get "label" | default "" -}}
+{{- /* 捕获 Page：range 会把 `.` 重绑为当前项（字符串），届时 .Page 不再可用。 */ -}}
+{{- $page := .Page -}}
+{{- $items := slice -}}
+{{- range $lines -}}
+  {{- $line := trim . " \t" -}}
+  {{- if ne $line "" -}}
+    {{- $items = $items | append $line -}}
+  {{- end -}}
+{{- end -}}
+{{- $colsN := 0 -}}
+{{- if findRE `^[1-6]$` (printf "%v" $cols) 1 -}}{{- $colsN = int $cols -}}{{- end -}}
+{{- if $items -}}
+  {{- $html := slice -}}
+  {{- range $items -}}
+    {{- $parts := split . "|" -}}
+    {{- $src := trim (index $parts 0) " \t" -}}
+    {{- $alt := "" -}}{{- $cap := "" -}}
+    {{- if gt (len $parts) 1 -}}{{- $alt = trim (index $parts 1) " \t" -}}{{- end -}}
+    {{- if gt (len $parts) 2 -}}{{- $cap = trim (index $parts 2) " \t" -}}{{- end -}}
+    {{- if $src -}}
+      {{- /* 解析来源并判定"是否可解析"。外链一律可渲染。 */ -}}
+      {{- $probe := lower (replaceRE `[\x00-\x20]+` "" $src) -}}
+      {{- $isExt := or (hasPrefix $probe "http://") (hasPrefix $probe "https://") (hasPrefix $probe "//") -}}
+      {{- $res := $page.Resources.GetMatch $src -}}
+      {{- $staticPath := strings.TrimPrefix "/" $src -}}
+      {{- $staticOK := false -}}
+      {{- if not (or $isExt $res) -}}
+        {{- $staticOK = os.FileExists (printf "static/%s" $staticPath) -}}
+      {{- end -}}
+      {{- if or $isExt $res $staticOK -}}
+        {{- $html = $html | append (partial "util/image-figure.html" (dict
+              "page" $page "dest" $src "alt" $alt "title" $cap "cls" "nb-gallery-item")) -}}
+      {{- else -}}
+        {{- /* 缺图 / 错误路径：占位块（保留 alt / 题注，避免破损图与横向溢出） */ -}}
+        {{- $html = $html | append (printf "<figure class=\"nb-figure nb-gallery-item nb-gallery-missing\"><div class=\"nb-gallery-ph\" role=\"img\" aria-label=\"%s\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 16l5-5 4 4 3-3 6 6\"/><circle cx=\"9\" cy=\"9\" r=\"1.4\"/></svg><span>%s</span></div>%s</figure>"
+              (htmlEscape $alt)
+              (htmlEscape (cond (ne $alt "") $alt $src))
+              (cond (ne $cap "") (printf "<figcaption>%s</figcaption>" (htmlEscape $cap)) "")) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $cls := "nb-gallery" -}}
+  {{- if $colsN -}}{{- $cls = printf "%s nb-gallery-cols-%d" $cls $colsN -}}{{- end -}}
+  {{- $aria := cond (ne $label "") (printf " role=\"group\" aria-label=\"%s\"" (htmlEscape $label)) " role=\"group\"" -}}
+  {{- $out := printf "<figure class=\"%s\"%s><div class=\"nb-gallery-grid\">%s</div></figure>" $cls $aria (delimit $html "") | safeHTML -}}
+  {{- if .Parent -}}
+    {{- partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) -}}
+  {{- else -}}
+    {{- $out -}}
+  {{- end -}}
+{{- else -}}
+  {{- warnf "shortcode gallery: 未检测到任何图片行（位置 %s）" .Position -}}
+{{- end -}}

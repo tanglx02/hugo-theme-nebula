@@ -6,19 +6,73 @@
 
 面向技术博客的 Hugo 主题：**卡片流首页 + 焦点图、完整全文搜索、暗色模式、文章目录、图片 Pipeline、系列文章、代码高亮与一键复制**。零运行时依赖；默认配置下无外部 CDN 请求（启用可选评论/统计功能后会加载对应第三方服务资源，见下方说明）。
 
-| 亮色 | 暗色 |
+| 亮色首页 | 暗色首页 |
 | --- | --- |
-| ![首页亮色](docs/screenshots/01-home-light.png) | ![首页暗色](docs/screenshots/04-home-dark.png) |
+| ![首页亮色](docs/screenshots/01-home-light.jpg) | ![首页暗色](docs/screenshots/02-home-dark.jpg) |
 
-| 文章页（含目录） | 全站搜索 |
+| 文章页（含目录） | 暗色文章页 |
 | --- | --- |
-| ![文章页](docs/screenshots/03-post-dark.png) | ![搜索](docs/screenshots/05-search.png) |
+| ![文章页](docs/screenshots/04-post-light.jpg) | ![暗色文章页](docs/screenshots/05-post-dark.jpg) |
 
-| 归档页 | 移动端 |
+| 全站搜索 | 归档页 |
 | --- | --- |
-| ![归档](docs/screenshots/06-archive.png) | ![移动端](docs/screenshots/07-mobile.png) |
+| ![搜索](docs/screenshots/03-search.jpg) | ![归档](docs/screenshots/09-archive.jpg) |
+
+| 画廊 / Mermaid / KaTeX | 多作者与外观 |
+| --- | --- |
+| ![媒体与图表](docs/screenshots/06-media-diagrams.jpg) | ![作者与外观](docs/screenshots/07-authors-appearance.jpg) |
+
+| 内容组件 | 移动端 |
+| --- | --- |
+| ![内容组件](docs/screenshots/08-content-components.jpg) | ![移动端](docs/screenshots/10-mobile.jpg) |
 
 ## 特性
+
+### 功能一 · 首页布局
+
+- 🎴 **多种首页布局**：`params.home.layout` 可选 `cards`（默认）/ `profile` / `hero` / `landing`；
+  非法或空值**安全回退 `cards`**（不空白、不报错）；切换布局**不影响**分类页 / 标签页 / 搜索索引 / RSS
+  （`index.json` 与 `index.xml` 逐字节一致）
+
+### 功能二 · 阅读体验
+
+- 📊 **阅读进度条**：按**正文阅读区**映射（顶部≈0、底部≈100），可站点级 / 文章级开关
+- ⬆️ **返回顶部**：顶部时隐藏、下滚出现，**键盘可聚焦并用 Enter 触发**
+- 🎯 **专注模式**：`html.focus-on` + `aria-pressed`，收敛次要区块但**正文与站点导航始终可见**；
+  刷新保持状态、Escape 退出、键盘可切换
+- 🖨️ **打印样式**：仅作用于 `@media print`，自动展开折叠块、隐藏交互元素
+
+### 功能三 · 技术内容组件
+
+- 🖼️ **响应式图片画廊**：`{{< gallery cols="3" >}}`，每行 `源 | alt | 题注`；
+  复用图片 Pipeline（多尺寸 WebP `srcset` + 宽高）与内置灯箱；支持 page bundle 资源 / static 路径 / 外链三种来源；
+  **缺图有占位回退**（不产生破损图、不横向溢出）
+- 📈 **Mermaid 图表**：```mermaid 围栏即用；**按需加载**（仅含语法的页面注入脚本）；
+  自托管优先、CDN 需 SRI；浅深主题跟随；**渲染失败保留原始代码**（不空白）
+- 🧮 **KaTeX 数学公式**：`$...$` 行内与 `$$...$$` 块级；构建期探测定界符，**按需加载**；
+  支持逐页关闭（`math: false` 或 `<!-- nebula:no-math -->`）；`\$` 货币符号不误触发
+
+### 功能四 · 编辑与作者工作流
+
+- ✏️ **编辑此页**：`params.editUrl` 配置后正文底部出现入口，直接跳到**源文件**（github / gitlab / gitee / custom）；
+  支持逐文章关闭（`editUrl: false`）；未配置时**不输出任何元素**
+- 👥 **多作者**：`authors`（列表）→ `author` → `site.Params.author` 逐级回退，**空不虚构**；
+  贯通 `<meta>`、JSON-LD（单人 Person / 多人 Person 数组）、RSS（每位作者一个 `<author>`）、卡片与正文
+- 🗂️ **作者档案页（可选启用）**：`params.authors.pages = true` + 注册 `authors` taxonomy 后生成
+  `/authors/` 索引与 `/authors/<名称>/` 档案页（含资料卡、文章互链）；**未注册 `authors` taxonomy 时
+  不生成任何 `/authors/` 页面，产物与历史版本一致（规范化打包 CSS 指纹与 RSS 时间戳后逐字节相同，BC1）**，
+  支持 CJK/特殊字符作者名、多语言 hreflang/canonical/RSS/sitemap
+- 🔗 **外链文章**：Front Matter 写 `externalUrl` 即成为"推荐阅读"——
+  卡片带徽标与 `target="_blank" rel="noopener"`、canonical 指向站外、RSS `guid isPermaLink="false"`、
+  搜索索引 `external:true`；scheme 白名单（`javascript:` 等危险 scheme 视为普通文章）
+
+### 功能五 · 外观配置
+
+- 🎨 **外观配置**：`params.appearance` 可调 `accent` / `accentColor` / `contentWidth` / `lineHeight` /
+  `fontFamily` / `cardDensity`；预设色板白名单 + hex 校验（亮度感知自动压深以保证对比度）；
+  **未配置时不输出任何 `<style>`**（默认外观逐字节不变）
+
+### 基础能力
 
 - 🎴 **焦点图 + 卡片流首页**：置顶文章自动进入焦点区
 - 🔍 **完整全文搜索**：正文任意位置（含数万字长文末尾）均可检索；`Ctrl+K` / `/` 呼出；支持 `?q=` 深链
@@ -28,6 +82,17 @@
 - 🖼️ **图片 Pipeline**：page bundle 图片自动生成 WebP 多尺寸 `srcset`，带 `width/height` 防 CLS；static 路径保持原样
 - 📚 **系列文章**：`series` + `series_order`，显示进度与系列内上下篇
 - 💻 **代码块**：macOS 风格窗口、语言标签、`filename` / 行号 / 指定行高亮、一键复制
+- 💡 **Markdown 提示块**：GitHub / Obsidian 风格的 `> [!NOTE]` 五种语义类型（Note/Tip/Important/Warning/Caution），
+  纯 Render Hook + CSS、**零 JavaScript**；默认标题走 i18n，可自定义标题；未知类型自动退化为普通引用（**不会让构建失败**）；
+  非提示块的普通引用与历史输出**逐字节相同**
+- 🗂️ **标签页**：`{{< tabs >}}` / `{{< tab >}}`，服务端渲染 WAI-ARIA tablist；**无 JS 时全部面板顺序展开、内容零丢失**；
+  面板内代码块自动带语言标签与一键复制；可与其他组件**互相嵌套**
+- 🪜 **步骤**：`{{< steps >}}` / `{{< step >}}`，输出 `<ol>` 语义 + CSS 计数器编号（**零 JavaScript**），标题可选
+- 🗃️ **文件树**：`{{< filetree >}}`，目录结构原样渲染；**不做 Markdown 解析 + 显式转义**，文件名特殊字符安全（零 JS）
+- 🏷️ **徽标**：`{{< badge >}}` 行内小标签，六个变体，未知变体回退 `default`（变体白名单防 class 注入）
+- 🔘 **按钮**：`{{< button >}}` 带 **URL scheme 白名单校验**（拦截 `javascript:`/`data:` 等的**空白绕过**，
+  被拒时输出不可点击占位而非空 `href`；外链自动 `rel="noopener"`）
+- 📂 **折叠块**：`{{< details >}}` 原生 `<details>`（零 JS），替代会被 goldmark 丢弃的裸 `<details>`；打印自动展开
 - 🖼️ **灯箱**：`role=dialog` + Focus Trap（Tab 循环、背景 inert、Esc 关闭、焦点归还）
 - 🌍 **i18n**：内置 `zh-CN` / `zh-TW` / `en`
 - 🔀 **多 Section**：内容范围通过 `params.content.sections` 配置，不写死 `posts`
@@ -50,14 +115,26 @@
 
 最低版本不是估计值：CI 用多个真实 Hugo 版本对 `exampleSite` 做生产构建。
 
-| Hugo 版本 | 构建结果 |
-| --- | --- |
-| 0.128.0 | ✅ 通过 |
-| 0.162.0 | ✅ 通过 |
-| 0.167.0 | ✅ 通过 |
-| latest | ✅ 通过 |
+| Hugo 版本 | 默认配置（auto） | 显式 `mode = "shard"` |
+| --- | --- | --- |
+| 0.128.0 | ✅ 通过 | ❌ 明确报错（不支持） |
+| 0.148.0 | ✅ 通过 | ❌ 明确报错（不支持） |
+| 0.162.0 | ✅ 通过 | ❌ 明确报错（不支持） |
+| 0.166.0 | ✅ 通过 | ✅ 通过 |
+| 0.167.0 | ✅ 通过 | ✅ 通过 |
+| latest | ✅ 通过 | ✅ 通过 |
 
-> 搜索分片（`mode = "shard"` / auto 触发分片）依赖较新的 `resources.Publish`，实测 **0.167+ 可用**；单文件索引模式在所有支持版本均可用。
+> **默认 `auto` 模式的兼容行为（重要）**
+> `auto` 会按正文总体积在 single / shard 之间自动选择。分片依赖 `resources.Publish`，
+> 该 API 从 **Hugo 0.166.0** 起提供。因此在 0.128–0.162 上：
+> - **默认 `auto`**：超过 `autoThreshold` 时**自动回退为单文件索引**（打一条 WARN），
+>   构建照常成功，**全文搜索能力不变**（单文件同样收录完整正文）；
+> - **显式 `mode = "shard"`**：仍然**明确报错**并给出升级 / 改用 single 的提示
+>   ——不静默降级，避免你以为已启用分片。
+>
+> 也就是说：**默认配置在声明的最低版本 0.128.0 上始终能构建**（v1.0.9 之前
+> 这里会直接构建失败，是独立测试发现的 P1 缺陷）。若你希望在大体量站点上真正启用
+> 分片，请使用 Hugo ≥ 0.166.0。
 
 ## 快速开始
 
@@ -93,6 +170,11 @@ hasCJKLanguage = true
   author = '你的名字'
   description = '博客描述'
 ```
+
+> ⚠️ **漏配 `outputs` 的后果（DOC-02）**：Hugo **不会**把主题自带的配置合并进你的站点配置。
+> 如果你的站点配置里没有写上面那段 `[outputs]`，`home` 就只输出 HTML，**不会生成 `index.json`**，
+> 搜索会表现为"加载失败"（界面上有明确报错与重试按钮，不会白屏）。
+> 排查方式：构建后检查站点根目录是否存在 `index.json`。
 
 写文章并预览：
 
@@ -170,6 +252,77 @@ hugo server -D      # 打开 http://localhost:1313
     enable = false
   [params.busuanzi]
     enable = false
+
+  # ---------- 首页布局（功能一） ----------
+  [params.home]
+    layout = 'cards'                     # cards（默认）| profile | hero | landing
+                                         # 非法/空值会安全回退为 cards
+
+  # ---------- 阅读体验（功能二） ----------
+  [params.reading]
+    progressBar = true                   # 阅读进度条
+    backToTop = true                     # 返回顶部
+    focusMode = false                    # 专注阅读模式（默认关闭，可按文章覆盖）
+
+  # ---------- 外观（功能五） ----------
+  # 全部可选。**不配置时输出与历史版本逐字节相同**。
+  [params.appearance]
+    accent = 'blue'                      # 预设：blue|teal|violet|rose|amber|emerald|custom
+    accentColor = ''                     # accent='custom' 时用 hex，如 '#0ea5e9'
+    contentWidth = '900px'               # 正文最大宽度
+    lineHeight = '1.75'                  # 正文行高
+    fontFamily = ''                      # 自定义字体栈（留空用默认）
+    cardDensity = 'comfortable'          # comfortable（默认）| compact
+
+  # ---------- 编辑此页（功能四） ----------
+  [params.editUrl]
+    repo = 'https://github.com/you/repo' # 必填；未配置则**不渲染任何入口**
+    branch = 'main'
+    contentDir = 'content'               # 源文件在仓库中的根目录
+    provider = 'github'                  # github | gitlab | gitee | custom
+    # urlTemplate = 'https://git.example.com/{repo}/-/edit/{branch}/{path}'
+                                         # provider='custom' 时使用
+                                         # 占位符：{repo} {branch} {path} {file}
+
+  # ---------- 作者档案页（功能四 · 可选启用） ----------
+  # 默认关闭：不输出任何作者档案结构；未注册 authors taxonomy 时 URL 与历史版本一致（BC1 规范化后逐字节相同）。
+  # 启用需同时注册 [taxonomies] authors（见下方）并设 pages = true。
+  # 注意：pages 只控制主题资料结构渲染；是否生成 /authors/ 页面由 taxonomy 注册决定（详见「作者档案页」章节）。
+  [params.authors]
+    pages = false                        # true = 主题渲染资料卡/互链等档案结构（前提：已注册 taxonomy）
+    taxonomy = 'authors'                 # 自定义 taxonomy 键名时同步指定（默认 authors）
+    [params.authors.profiles.Tanglx]     # 键名 = 作者名（全部字段可缺省）
+      bio = '作者简介'
+      role = 'Author'
+      location = 'China'
+      avatar = '/images/avatar.png'      # 站内路径；缺失/非法则不渲染
+      url = 'https://example.com'        # 仅接受 http(s)
+      links = [
+        { name = 'GitHub', url = 'https://github.com/you' },
+      ]
+
+  # ---------- Mermaid（功能三） ----------
+  [params.mermaid]
+    enable = true
+    local = 'js/vendor/mermaid.min.js'   # 自托管（相对 static/）；留空则用 loader
+    loader = ''                          # CDN 地址（需 http(s)），仅在 local 缺失时使用
+    integrity = ''                       # CDN 场景的 SRI
+    crossorigin = 'anonymous'
+    themeLight = 'default'
+    themeDark = 'dark'
+    fontFamily = ''
+
+  # ---------- KaTeX（功能三） ----------
+  [params.math]
+    enable = true
+    css = '/vendor/katex/katex.min.css'                    # 可换 CDN 绝对地址
+    js = '/vendor/katex/katex.min.js'
+    autoRender = '/vendor/katex/contrib/auto-render.min.js'
+    integrityCss = ''
+    integrityJs = ''
+    integrityAutoRender = ''
+    crossorigin = 'anonymous'
+    selector = '.post-content'           # 渲染范围
 ```
 
 ### 第三方服务说明（可选功能）
@@ -189,6 +342,49 @@ hugo server -D      # 打开 http://localhost:1313
 评论组件语言映射：站点语言 `zh` / `zh-cn` / `zh-hans` → `zh-CN`；
 `zh-tw` / `zh-hant` / `zh-hk` → `zh-TW`；`en` / `en-us` / `en-gb` → `en`。
 未命中映射的语言会原样传给第三方组件，不会强造不存在的 locale。
+
+#### 供应链与 CSP 建议（SEC-02）
+
+以上第三方脚本**默认全部关闭**；一旦启用，脚本来自第三方 CDN，属于供应链风险面。
+本主题提供两项可选强化：
+
+1. **子资源完整性（SRI）**：可为你选择的版本提供 `integrity` 值，主题会连同
+   `crossorigin="anonymous"` 一起输出：
+
+   ```toml
+   [params.busuanzi]
+     enable = true
+     integrity = 'sha384-……'      # 取自你锁定的脚本版本
+
+   [params.comments.giscus]
+     integrity = 'sha384-……'
+
+   [params.comments.twikoo]
+     integrity = 'sha384-……'
+   ```
+
+   > 主题**不预置** integrity 值：这需要锁定具体版本并逐版本更新，硬编码过期哈希
+   > 会让脚本直接加载失败。Waline（ESM `import`）与 Disqus（运行时拼 `src`）
+   > 无法用 `<script integrity>` 覆盖，建议自托管或在上游加代理。
+
+2. **CSP**：主题不写死 CSP（不同站点启用/禁用的服务不同）。推荐在托管方以
+   **响应头**下发，示例（按需删减）：
+
+   ```text
+   Content-Security-Policy:
+     default-src 'self';
+     script-src  'self' https://giscus.app https://cdn.jsdelivr.net https://busuanzi.ibruce.info;
+     style-src   'self' https://unpkg.com;
+     frame-src   https://giscus.app;
+     img-src     'self' data: https:;
+   ```
+
+   > 注意：主题在 `<head>` 有一段防主题闪烁（FOUC）的内联脚本、以及注入 i18n
+   > 文案的内联脚本，因此 `script-src` 需要 `'unsafe-inline'` 或以 nonce/hash 放行，
+   > 否则主题切换与搜索会失效。
+
+不蒜子统计使用 **`https://` 绝对地址**（而非协议相对 `//host/...`），
+避免在 HTTP 环境下退化为明文加载。
 
 ### 多语言站点
 
@@ -340,6 +536,10 @@ lastmod: 2026-10-08
 draft: false
 description: "摘要：用于列表卡片、搜索片段与 SEO"
 author: ""                # 留空使用站点 author
+authors: ["Tanglx", "Co-author"]   # 可选：多作者（优先于 author，二者都无则用站点 author）
+externalUrl: ""           # 可选：外链文章（本站只做"推荐阅读"卡片，canonical 指向站外）
+editUrl: false            # 可选：本页关闭"编辑此页"入口（站点已配 params.editUrl 时生效）
+math: true                # 可选：本页是否注入数学渲染（false 可逐页关闭）
 tags: ["Hugo"]
 categories: ["效率工具"]
 series: ["Hugo 建站系列"] # 可选
@@ -360,6 +560,10 @@ showNav: true             # 上下篇导航
 showSeries: true          # 系列卡片
 showShare: false          # 分享（也可用 params.share.enable 全局开启）
 lightbox: true            # 图片灯箱
+breadcrumb: true          # 面包屑（可选）
+showProgress: true        # 阅读进度条（可选，默认取 params.reading.progressBar）
+showBackToTop: true       # 返回顶部（可选，默认取 params.reading.backToTop）
+showFocusMode: false      # 专注模式入口（可选，默认取 params.reading.focusMode）
 ---
 ```
 
@@ -372,6 +576,195 @@ lightbox: true            # 图片灯箱
   enable = true
   providers = ["copy", "x", "telegram", "facebook", "weibo", "wechat"]
 ```
+
+## Markdown 提示块（Callouts）
+
+写法与 GitHub / Obsidian 的 alert 语法一致，**纯 Render Hook + CSS、零 JavaScript、零第三方请求**：
+
+```markdown
+> [!NOTE]
+> 有用的补充信息。
+
+> [!TIP]
+> 更推荐的做法。
+
+> [!IMPORTANT]
+> 必须知道的关键信息。
+
+> [!WARNING]
+> 可能造成问题的内容。
+
+> [!CAUTION]
+> 存在风险，行动前请确认。
+
+> [!WARNING] 自定义标题
+> 类型标记后跟文字即可替换默认标题（类型与图标不变）。
+```
+
+| 类型 | 简体中文 | 繁體中文 | English |
+| --- | --- | --- | --- |
+| `NOTE` | 说明 | 說明 | Note |
+| `TIP` | 提示 | 提示 | Tip |
+| `IMPORTANT` | 重要 | 重要 | Important |
+| `WARNING` | 警告 | 警告 | Warning |
+| `CAUTION` | 注意 | 注意 | Caution |
+
+行为约定（均有测试断言，见 `tools/check_content_components.py`）：
+
+- **默认外观不变**：没有类型标记的普通引用与开启本功能前**逐字节相同**（全站产物 diff = 0）；
+- **未知类型不报错**：`> [!BOGUS]` 之类不在上表内的类型**退化为普通引用**，绝不生成错误的提示块，
+  也不会让构建失败（Hugo 会把任意 `> [!XXX]` 都放进 `.AlertType`，主题自行守卫）；
+- **零 JS / 零外部依赖**：图标是内联 SVG，配色复用主题设计变量，暗色模式自动适配；
+- **版本兼容**：blockquote 渲染钩子自 **Hugo 0.148.0** 起生效；在 **0.128.0** 上该文件被 Hugo
+  静默忽略，提示块退化为普通引用（`[!NOTE]` 标记行原样显示），**构建不报错**，因此最低版本仍为 0.128.0。
+
+演示页：`exampleSite/content/posts/alerts-and-callouts.md`（英文：`content-en/posts/alerts-and-callouts.md`）。
+
+## 标签页与步骤
+
+同一件事的多种做法（多平台命令、多种安装方式）用**标签页**并列；一次完整流程用**步骤**。两者都是 shortcode，
+**服务端渲染标记、零第三方请求**，且**无 JavaScript 时内容不丢失**。
+
+### 标签页 tabs / tab
+
+```markdown
+{{< tabs >}}
+{{< tab "Linux" >}}
+```bash
+sudo apt install nginx
+```
+{{< /tab >}}
+{{< tab "macOS" >}}
+```bash
+brew install nginx
+```
+{{< /tab >}}
+{{< /tabs >}}
+```
+
+- **服务端就写好 WAI-ARIA 语义**（`role=tablist/tab/tabpanel` + `aria-selected/controls/labelledby`），
+  `assets/js/tabs.js` 只负责“切换”这一动作，**不生成结构**；
+- **无 JS 时全部面板顺序展开**（导航条隐藏，避免“点了没反应”的按钮），因此**内容零丢失**；
+  脚本生效后给容器加 `.tabs-enhanced` 才收成标签页；
+- 脚本按需加载：页面用了 `tabs` 才会注入 `tabs.js`（带 fingerprint `integrity`）；
+- 键盘遵循 WAI-ARIA APG：`←/→`（窄屏纵向时 `↑/↓`）移动并激活、`Home/End` 跳首尾、整条标签栏只占**一个** Tab 位；
+- 打印时全部面板展开；`prefers-reduced-motion` 下取消切换过渡。
+
+> ⚠ 只支持 `{{< >}}` 形式，**不要**写成 `{{% %}}`（后者会破坏嵌套输出）。
+
+### 步骤 steps / step
+
+```markdown
+{{< steps >}}
+{{< step "准备环境" >}}
+先确认系统与版本。
+{{< /step >}}
+{{< step >}}
+标题可以省略，此时只显示序号。
+{{< /step >}}
+{{< /steps >}}
+```
+
+- 输出 `<ol class="steps">`，序号由 CSS `counter` 生成 —— **零 JavaScript**，无脚本时与有脚本时**完全一致**；
+- 步骤标题**可选**（不写就只有序号圆点）；读屏软件按“第 N 步 / 共 M 步”朗读；
+- 圆点用 `--brand-solid` 承载白字，对比度 ≥ 4.5:1；打印时改为高对比度黑白。
+
+### 互相嵌套与代码块
+
+`tabs` 与 `steps` 可以**互相嵌套**（标签页里放步骤，或步骤里放标签页）。嵌套时子组件的 HTML 通过
+**占位符 token** 机制登记到父组件，避免在 `unsafe = false`（主题默认）下被父级 `markdownify` 当作
+原始 HTML 丢弃 —— 这是本功能实现中修掉的一个真实缺陷，回归断言见 `tools/check_content_components.py`
+的 C4/C11 小节（含"去掉该机制后内容必须真的丢失"的反证）。
+
+面板/步骤内的代码块走主题**统一的代码块渲染管线**，自动获得语言标签与一键复制按钮，无需任何额外配置。
+
+行为约定（均有测试断言，见 `tools/check_content_components.py`）：
+
+- **默认外观不变**：未使用这两个组件时页面产物与开启前一致；
+- **零 JS / 零第三方请求**：`tabs.js` 仅在本页用到标签页时注入，且是主题自有静态资源；
+- **版本兼容**：`tabs/tab/steps/step` 在 **Hugo 0.128.0 ~ 0.167.0** 上产物结构签名完全一致（CI 逐版本断言）。
+
+演示页：`exampleSite/content/posts/tabs-and-steps.md`（英文：`content-en/posts/tabs-and-steps.md`）。
+
+## 文件树 / 徽标 / 按钮 / 折叠块
+
+另外四个轻量内容组件，全部**零 JavaScript、零第三方请求**，输出语义化 HTML：
+
+### 文件树 filetree
+
+```markdown
+{{< filetree "项目结构" >}}
+my-app/
+├── package.json
+├── src/
+│   └── index.ts
+└── README.md
+{{< /filetree >}}
+```
+
+- 把目录结构**原样**渲染成等宽树块，解决 Markdown 里"缩进被吞 / 换行被合并 / 多空格被折叠"三个痛点；
+- **不做 Markdown 解析**，并对内容显式转义：文件名里的 `` ` `` `*` `_` `[` `]` `&` `<` `>` 引号
+  **要么逐字保留、要么转义为实体**，绝不变成标签，也绝不被当 Markdown 标记解析（路径特殊字符安全）；
+- 标题可选（第一参数）；可嵌套进 tabs / steps。
+
+### 徽标 badge
+
+```markdown
+{{< badge "v1.0.9" >}}                  {{/* 默认样式 */}}
+{{< badge "稳定" "success" >}}           {{/* 指定变体 */}}
+{{< badge text="已弃用" type="danger" >}} {{/* 具名参数 */}}
+```
+
+- 行内小标签，六个变体：`default` / `info` / `success` / `warning` / `danger` / `muted`；
+- **未知变体静默回退 `default`**（不让笔误中断构建），变体值受白名单约束，
+  越界值一律归一 —— 从根上断掉借 class 属性注入脚本的路径。
+
+### 按钮 button（含 URL scheme 校验）
+
+```markdown
+{{< button "GitHub 主页" "https://github.com/tanglx02" >}}
+{{< button "邮箱联系" "mailto:tanglx@aliyun.com" >}}
+{{< button "查看文档" "/posts/" >}}
+```
+
+- **白名单**：`http` / `https` / 协议相对 `//` / `mailto:` / `tel:`，以及**无 scheme** 的相对路径、根路径、锚点；
+- **拒绝** `javascript:` / `vbscript:` / `data:` / `file:` / `ftp:` 等一切其它 scheme 与空值，
+  此时**不输出 `<a>`**，改为 `<span class="btn btn-disabled" aria-disabled="true">` 并给出 i18n 提示；
+- **空白绕过防御**：判定前剥离所有空白与控制字符，`java<TAB>script:` 同样被拦；
+- **外链**自动加 `target="_blank" rel="noopener"`；`mailto:` / `tel:` 与站内链接不加 `target`；
+  站内路径统一规范化，**子目录 baseURL** 下亦正确。
+
+> ⚠ ⚠️ 裸换行绕过无法构造：Hugo 的词法分析器**拒绝**带裸换行的引号参数
+> （`unterminated quoted string`），因此 `java<NL>script:` 这类 URL 从短代码入口根本送不进来
+> （见 `tools/check_content_components.py` 的 D9b 断言）。
+
+### 折叠块 details
+
+```markdown
+{{< details "为什么默认折叠？" >}}
+补充说明……
+{{< /details >}}
+
+{{< details title="默认展开" open="true" >}}   {{/* 展开时必须全用具名参数 */}}
+正文……
+{{< /details >}}
+```
+
+- 基于原生 `<details>` / `<summary>`，**零 JavaScript**，键盘与读屏天然可用；
+- `open` 只接受真值（`true` / `1` / `yes` / `on`）；打印时**自动展开正文**（否则内容漏印）；
+- **用来替代裸 `<details>`**：主题默认 `unsafe = false`，直接写在 Markdown 里的裸 `<details>`
+  会被 goldmark **整段丢弃**（内容静默消失、构建却成功）。这是本功能修掉的一个真实内容丢失缺陷。
+
+> ⚠ **Hugo 短代码不允许混用位置参数与具名参数**（对所有 shortcode 生效，不只本组件）：
+> `{{< details "标题" open="true" >}}` 会构建失败（`Cannot mix named and positional parameters`），
+> 要指定 `open` 必须全部用具名写法。回归断言见 `tools/check_content_components.py` 的 D9 小节。
+
+行为约定（均有断言，见 `tools/check_content_components.py`）：
+
+- **零 JS / 零第三方请求 / 可嵌套**；
+- **版本兼容**：`filetree` / `badge` / `button` / `details` 在 **Hugo 0.128.0 ~ 0.167.0** 上结构签名一致（CI 逐版本断言）。
+
+演示页：`exampleSite/content/posts/content-components.md`（英文：`content-en/posts/content-components.md`）。
 
 ## 代码块
 
@@ -388,6 +781,196 @@ print(2)
 ````
 
 支持 `filename`（显示文件名）、`linenos`（行号）、`hl_lines`（高亮行）、未知语言与无语言代码块（安全降级为纯文本）。
+
+## 图片画廊（功能三）
+
+```markdown
+{{</* gallery cols="3" label="现场记录" */>}}
+shot-a.png | 目标机信息收集 | 信息收集阶段
+shot-b.jpg | 边界突破尝试
+/images/path.png | static 绝对路径
+https://example.com/x.png | 外链图片 | scheme 白名单校验
+{{</* /gallery */>}}
+```
+
+每行写 `源 | alt | 题注`（后两段可省略）。来源支持 **page bundle 资源**（相对文件名）、
+**static 路径**（以 `/` 开头）、**外链 URL**（`http(s)://`）。
+
+- 复用图片 Pipeline：bundle 图片自动获得多尺寸 WebP `srcset` + 宽高（防 CLS）；
+- **不套 `<a>`** —— 因此点任意图片都进入主题内置**灯箱**（与正文图片一致，无需重复建设）；
+- 引用了不存在的图片 → 渲染为带 alt 的**占位块**（不产生破损图、不横向溢出）；
+- `cols` 支持 2 / 3 / 4（其它值回退 3）。
+
+## Mermaid 图表（功能三）
+
+````markdown
+```mermaid
+flowchart TD
+    A[开始] --> B{可复现?}
+    B -- 是 --> C[抓包]
+```
+````
+
+**按需加载**：只有页面出现 ```mermaid 围栏时才注入脚本；未配置 `params.mermaid` 的站点完全不加载。
+`local` 优先（相对 `static/` 的自托管文件），其次 `loader`（CDN，须 http(s) + 建议配 `integrity`）。
+浅色/深色主题各自跟随，渲染失败会保留原始代码（加 `.mermaid-error`，不空白）。
+
+## 数学公式 KaTeX（功能三）
+
+正文里写 `$...$`（行内）或 `$$...$$`（块级）即可。主题在**构建期探测**正文中的数学定界符，
+只有确实含公式的页面才注入 CSS / JS / auto-render（**按需加载**）。
+
+- 逐页关闭：Front Matter `math: false`，或正文写 `<!-- nebula:no-math -->`；
+- `\$` 货币符号会被正确识别，**不触发**公式渲染；
+- `params.math.{css,js,autoRender}` 三项可为本地路径或 CDN 绝对地址，均可配 SRI。
+
+## 编辑此页（功能四）
+
+```toml
+[params.editUrl]
+  repo = 'https://github.com/you/repo'
+  branch = 'main'
+  contentDir = 'content'
+  provider = 'github'        # github | gitlab | gitee | custom
+```
+
+配置后文章底部出现"编辑此页"入口，指向**源文件**（路径逐段 URL 编码，Windows 反斜杠自动归一）；
+**未配置时不输出任何元素**；单篇可用 Front Matter `editUrl: false` 关闭。
+
+## 多作者（功能四）
+
+```yaml
+authors: ["Tanglx", "Co-author"]   # 优先于 author
+```
+
+回退顺序：`authors`（列表）→ `author` → `site.Params.author` → 空（**不虚构**）。
+作者信息会贯通 `<meta name="author">`（逗号并列）、JSON-LD（单人 Person / 多人 Person 数组）、
+RSS（每位作者一个 `<author>` 元素）、首页卡片与正文元信息，全文一致。
+
+### 作者档案页（功能四 · 可选启用）
+
+> **默认关闭，URL 结构零改变。** 作者档案页是一个**可选启用**功能：不配置时主题
+> **不输出任何作者档案结构**；只要站点**不注册 `authors` taxonomy**，站点 URL 结构与页面数量
+> 就与历史版本一致（门禁 BC1：规范化打包 CSS 指纹与 RSS 时间戳后**逐字节一致**）。
+> 只有你显式开启后，才会额外生成 `/authors/` 与 `/authors/<名称>/` 页面。
+
+**启用方法（两个条件必须同时满足）**：
+
+```toml
+# 1) 注册一个作者 taxonomy（键名 = Front Matter 字段名，值 = URL 路径）
+[taxonomies]
+  tag = 'tags'
+  category = 'categories'
+  authors = 'authors'          # ← 新增：注册作者 taxonomy（注册本身即生成 /authors/ 页面，
+                               #    与下方 pages 无关；要完全不产生 /authors/ 页面就删掉这行）
+
+# 2) 显式打开档案页（主题资料结构：资料卡 / 互链；前提是上面已注册 taxonomy）
+[params.authors]
+  pages = true                 # ← 默认 false；false 时 Hugo 仍生成 /authors/ 页面，
+                               #    但主题不渲染资料结构
+  # taxonomy = 'authors'       # 可选：自定义 taxonomy 键名时同步指定（默认 authors）
+```
+
+**URL 行为对照（三个场景，勿混淆）**：
+
+> `params.authors.pages` 与 taxonomy 注册是**两个独立开关**：`pages` 只控制
+> **主题是否渲染作者资料结构**（资料卡 / 互链 / 档案页布局）；Hugo 是否生成
+> `/authors/` taxonomy 页面，**只由 taxonomy 注册决定** —— `pages=false`
+> **不会阻止** Hugo 为已注册的 `authors` taxonomy 生成 `/authors/` 索引页与
+> term 页。**不产生 `/authors/` 页面、完全保持原 URL 与页面数量的
+> 唯一方法是不注册 `authors` taxonomy**。已注册 taxonomy 但关闭主题资料结构时的页面
+> 行为、URL 与产物差异以实测为准（exampleSite 实测：启用 291 页 =
+> 注册 taxonomy + `pages=false` 的 291 页；不注册 taxonomy 为 286 页）。
+
+| 场景 | Hugo 是否生成 `/authors/` 页面 | 主题是否渲染作者资料结构 |
+| --- | --- | --- |
+| 未注册 `authors` taxonomy（`pages` 任意） | **否**（页面数不变，URL 与历史版本逐字节一致，BC1） | 否 |
+| 注册 taxonomy + `pages=false`（或缺省） | **是**（Hugo taxonomy 机制照常生成索引页与 term 页） | 否（无资料卡 / 互链，term 页回退通用列表布局） |
+| 注册 taxonomy + `pages=true` | 是 | 是（完整档案功能） |
+
+**单数 `author` 与复数 `authors` 的语义差异（重要）**：
+
+- 只有**复数列表**会在 Hugo taxonomy 中建立 term，例如 `authors: ["Tanglx", "Co-author"]`
+  → 生成 `/authors/tanglx/` 与 `/authors/co-author/` 两个档案页；
+- **单数** `author: "Tanglx"` 仅作**署名回退**（用于 meta / JSON-LD / RSS），
+  **不会**建立 taxonomy term，因此**不会**凭空生成档案页。
+
+**作者资料卡（可选，全部字段可缺省）**：
+
+```toml
+[params.authors.profiles.Tanglx]      # 键名 = 作者名（与 Front Matter 中的写法对应）
+  bio = '独立开发者，关注网络空间安全。'
+  role = 'Author'
+  location = 'China'
+  avatar = '/images/avatar-tanglx.png' # 站内资源路径；走尺寸校验，缺失/非法则不渲染
+  url = 'https://example.com/about'    # 仅接受 http(s)
+  links = [                            # ⚠ links.url 仅接受 http(s)；相对链接（如 '/index.xml'）会被忽略
+    { name = 'GitHub', url = 'https://github.com/you' },
+    { name = 'Blog', url = 'https://blog.example.com' },
+  ]
+```
+
+档案页中每位作者的资料卡来自 `params.authors.profiles.<作者名>`；**无任何资料时不输出空卡片**。
+文章页作者处会渲染为指向档案页的链接（`class="author-link"`）。
+
+**国际化与中文作者名**：档案页标题直接取 taxonomy term 的 **Title**（保留原始写法，如「张伟」），
+因此中文/CJK/特殊字符（`张伟`、`C++ 工程师`、`José` 等）均正常生成；URL 由 Hugo 规范化
+（CJK 为 percent-encoded，如 `/authors/%E5%BC%A0%E4%BC%9F/`），文章页↔档案页链接经
+`site.Taxonomies` 按标题匹配，**不依赖 `urlize`**（后者对 CJK 会返回 NONE）。
+多语言站点下档案页会随当前语言生成，`hreflang`、`canonical`、RSS 与 sitemap 一并生效。
+
+> 示例：`exampleSite` 已启用本功能（作者 `Tanglx` 与 `Nebula Bot`），
+> 构建后访问 `/authors/` 查看索引、`/authors/tanglx/` 查看档案页。
+> 可用门禁 `python tools/check_author_pages.py` 复现全部断言（含 BC1："不注册 taxonomy 时与
+> 「无本功能」基线主题 `37c3da6` 规范化后逐字节一致"，43 项；设 `HUGO_MATRIX_DIR` 时 47 项）。
+
+## 外链文章（功能四）
+
+```yaml
+externalUrl: "https://attack.mitre.org/"
+```
+
+本站只做"推荐阅读"卡片：卡片带外链徽标与 `target="_blank" rel="noopener"`、
+`canonical` 指向站外、RSS `guid isPermaLink="false"`、搜索索引 `external: true`。
+scheme 白名单为 `http(s)` 与协议相对；`javascript:` 等危险 scheme 会被**当作普通文章**处理。
+
+## 外观配置（功能五）
+
+```toml
+[params.appearance]
+  accent = 'teal'          # blue|teal|violet|rose|amber|emerald|custom
+  accentColor = ''         # accent='custom' 时的 hex
+  contentWidth = '900px'
+  lineHeight = '1.75'
+  fontFamily = ''
+  cardDensity = 'comfortable'   # comfortable | compact
+```
+
+预设色板带白名单，自定义色值做 hex 校验并**按亮度自动压深/加亮**以保证正文对比度；
+宽度/行高/字体均做区间与安全字符校验，非法值安全回退。
+**未配置时输出与历史版本逐字节相同**（不产生任何 `<style>`）。
+
+## 首页布局（功能一）
+
+```toml
+[params.home]
+  layout = 'cards'   # cards（默认）| profile | hero | landing
+```
+
+非法或空值**安全回退 `cards`**。切换布局**不影响**分类页、标签页、搜索索引与 RSS
+（`index.json` 与 `index.xml` 逐字节一致，已由门禁断言）。
+
+## 阅读体验（功能二）
+
+```toml
+[params.reading]
+  progressBar = true     # 阅读进度条（按正文阅读区映射）
+  backToTop = true       # 返回顶部（键盘可达）
+  focusMode = false      # 专注阅读模式（默认关闭）
+```
+
+文章级可用 `showProgress` / `showBackToTop` / `showFocusMode` 覆盖（**显式 `false` 会真正生效**）。
+打印样式仅作用于 `@media print`，并遵循 `prefers-reduced-motion`。
 
 ## exampleSite / 本地开发
 
@@ -436,10 +1019,10 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 
 | Job | 内容 | 展开数量 |
 | --- | --- | --- |
-| Build (0.128 / 0.162 / 0.167 / latest) | 生成压力数据 → 生产构建 → 产物校验 → 索引完整性 → 草稿/未来排除 → livereload 检查 | 4 |
+| Build (0.128 / 0.148 / 0.162 / 0.166 / 0.167 / latest) | 生成压力数据（含**边界夹具**与 page bundle 图片）→ 生产构建 → **边界产物与图片管线断言** → 产物校验 → 索引完整性 → **搜索模式与 auto 阈值边界** → 草稿/未来排除 → livereload 检查 | 6 |
 | Sub-directory baseURL | `/blog/` 构建 + 断言无越界路径、无 basePath 重复 | 1 |
-| Static checks | 死链、索引完整性、功能断言、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、多 Section 回归、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**CI job inventory**、**workflow 策略（权限/runner/Node24）**、auto 阈值分片 | 1 |
-| Browser tests (chromium / firefox / webkit) | 响应式审计（320–1440）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
+| Static checks | 死链、索引完整性（含分片 chunk 正文）、功能断言（含 **i18n 语言键↔文件名一致性静态+行为断言**、**[languages.*] 顶层字段跨版本静态禁止**）、i18n 静态硬编码扫描、i18n 三语言构建与文案校验、**语言配置跨版本行为（5 版本零告警 / NEBULA_I18N 非空 / og:locale BCP47 + 反证）**、多 Section 回归（含**首页数据源跟随 `params.content.sections` 的可证伪断言**）、**搜索日期三语言契约**、**文章页判定与 pagination.path 兼容**、**alias 页结构检查**、**首页布局（默认与显式 cards 一致 / 四布局结构标记 / 非法值回退 / feeds 逐字节不变）**、**阅读体验（进度条按正文区映射 / 返回顶部键盘可达 / 专注模式 / 打印 / reduced-motion）**、**新增功能（画廊 / 外链文章 / 多作者 / 编辑入口 / 外观 / Mermaid+KaTeX 按需加载 40 项，含 4 类故障注入自证）**、**作者档案页（可选启用 / 索引页+档案页+文章互链 / CJK 与特殊字符 / 多语言 hreflang·canonical / 搜索索引不含 taxonomy / 不注册 taxonomy 时与「无本功能」基线主题规范化后逐字节一致（BC1）/ 构建产物 CSS 触控目标契约，43 项）**、**CI job inventory（含结构契约）**、**workflow 策略（权限/runner/Node24/SHA）**、**内容组件（提示块 5 类型/i18n/未知类型/普通引用逐字节等价 + 标签页/步骤结构/零 JS 展开/交叉嵌套不丢内容 + 文件树/徽标/按钮 scheme 校验/折叠块 + Hugo 0.128–0.167 矩阵 + 反证与短代码参数规则回归）** | 1 |
+| Browser tests (chromium / firefox / webkit) | 响应式**抽样**审计（chromium 320–1440 共 7 视口；firefox / webkit 375/768/1440 共 3 视口）、交互回归、复制语义专项、灯箱 Focus Trap、搜索边界与竞态、**搜索高亮特殊字符安全**、**搜索结果日期本地化（zh-CN / en）**、**弹窗滚动锁定（三引擎）**、**对比度 AA（浅/深）**、**边界宽度横向溢出（含英文站）**、分片失败深层关键词语义、三种 baseURL 部署 | 3 |
 | Release full-site audit (chromium / firefox / webkit) | 仅 tag（`v*`）或手动触发：`AUDIT_FULL=1` 以构建产物 HTML inventory 为真值，全量加载审计（320/375/768/1440），并交叉验证分页覆盖 | 3 |
 
 **job 数量不手写**：`tools/check_ci_jobs.py` 按 GitHub matrix 展开规则算出每个 job 的
@@ -448,8 +1031,8 @@ TEST-RESULT: {"suite": "audit", "status": "PASS", "passed": 7, "failed": 0, "tot
 
 | 触发方式 | 预期 job 数 |
 | --- | --- |
-| tag 推送（`v*`）/ 手动触发 | **12**（含 3 个 Release） |
-| 普通 push / PR | **9**（Release job 被 `if` 跳过） |
+| tag 推送（`v*`）/ 手动触发 | **14**（含 3 个 Release） |
+| 普通 push / PR | **11**（Release job 被 `if` 跳过） |
 
 **Runner 与权限（有意固定）**
 
@@ -514,11 +1097,14 @@ python3 tools/serve.py public 8080 &   # 独立静态服务器（勿用 hugo ser
 
 python3 tools/link_check.py public                 # 死链（失败即 exit 1）
 python3 tools/check_index.py public/index.json     # 索引完整性
-python3 tools/check_features.py public             # 功能断言（26 项）
+python3 tools/check_features.py public             # 功能断言（35 项）
+python3 tools/check_new_features.py public         # 新增功能断言（画廊/外链/多作者/编辑/外观/Mermaid+KaTeX，40 项）
+python3 tools/check_new_features.py --selftest     # 上述门禁的故障注入自证（4 类注入必须变红）
+python3 tools/check_home_layouts.py                # 首页四种布局 + 回退 + feeds 不受影响
+python3 tools/check_reading_experience.py          # 阅读体验（含真实浏览器断言）
 python3 tools/check_i18n_hardcode.py               # UI 文案是否被写死进模板/脚本
 python3 tools/verify_i18n.py public zh-CN          # 渲染结果文案是否来自 i18n
-SITE_DIR=exampleSite HUGO_ARGS='--source . --themesDir ../..' \
-  python3 tools/verify_multisection.py             # 多 Section 完整回归
+python3 tools/verify_multisection.py               # 多 Section 完整回归（默认用仓库自带 exampleSite）
 AUDIT_BROWSERS=chromium python3 tools/audit.py http://127.0.0.1:8080
 AUDIT_FULL=1 AUDIT_BROWSERS=chromium AUDIT_VIEWPORTS=320,375,768,1440 \
   python3 tools/audit.py http://127.0.0.1:8080     # 等价于 Release 全站审计
@@ -571,7 +1157,7 @@ python3 tools/bench_index.py 500,1000,2000         # 索引规模压测（记录
   cache v6.1.0 / upload-artifact v7.0.2；actions-hugo v3.2.1 本身已是 node24）
 - 生产门禁 runner 固定 `ubuntu-24.04`；`ubuntu-latest` 兼容性另建 `compat-latest.yml`
 - 顶层 `permissions: contents: read`，无 write 权限，仅检出源码的 job 设 `permissions: {}`
-- **CI job 数量不再手写**：`tools/check_ci_jobs.py` 按 matrix 展开计算（tag 12 / push 9）
+- **CI job 数量不再手写**：`tools/check_ci_jobs.py` 按 matrix 展开计算（tag 14 / push 11）
 
 **搜索高亮安全回归**
 
@@ -590,7 +1176,7 @@ CI 结构 / 测试工具 / inventory / 分页 / 搜索 / Modal / i18n / 图片 /
 
 - 抽取 `createModalA11y` 轻量工厂（零依赖），**灯箱与搜索共用同一份契约**：
   焦点移入 / Tab 循环 / 背景 inert / Escape / 遮罩关闭 / 焦点恢复 / 幂等开关
-- 新增 `verify_search_modal.py`（14 类断言 19 项），含 zh-CN / en / zh-TW 可访问名称
+- 新增 `verify_search_modal.py`（19 项断言），含 zh-CN / en / zh-TW 可访问名称
 - 改进 `/` 快捷键：原先要求焦点恰为 body，关闭搜索后快捷键会失效
 
 **日期格式统一到 i18n**
@@ -768,9 +1354,20 @@ handler/第三方域名/unsafe 配置），并修复搜索结果 `it.url` 未转
 
 - 未内置 KaTeX / MathJax（数学公式不渲染为公式排版；可在 `layouts/partials/extra-head.html` 自行引入）
 - 正文内联链接的点击区域 < 24px（WCAG 2.2 内联豁免，放大 padding 会破坏排版）
-- 搜索分片需要 Hugo 0.167+
+- 搜索分片需要 Hugo 0.166+（默认 `auto` 在低版本会自动回退为单文件索引，见上文版本兼容表）
 - 移动端仅在 WebKit 引擎下模拟验证，未做真机测试
 - 访问统计与评论为可选外部服务，默认关闭，未与真实服务联调
+- **静态目录 / 外链图片**（`/img/a.png`、`https://…`）不输出 `width`/`height`：
+  它们的尺寸在构建期不可知。实测 CLS = 0，慢速网络下仍有轻微布局抖动风险（BUG-P3-004）
+- 触控目标：在 `≤900px` 视口，图标按钮（`icon-btn`）、主按钮、**搜索按钮**
+  与**品牌入口**均已提升到 44×44（WCAG 2.5.5 AAA 目标）；`chip` 类标签高度 24px、
+  正文内联链接未放大，二者满足 WCAG 2.5.8(AA) 24×24 / 内联豁免，**未达** AAA 44×44
+- 第三方脚本不预置 SRI 哈希、不写死 CSP（见上文"供应链与 CSP 建议"）：
+  **属可选设计**，需由使用者在自己的托管层配置；主题不代为承担第三方资源被篡改的风险
+- **`params.search.contentLimit` 是"软上限"**：经 partial 传参后，Hugo 对传入模板的
+  字符串 rune 计数与直接 `countrunes` 存在**有界偏差**（实测 `limit = 3000`、中文 + HTML
+  实体正文出现 3448 的条目）。该偏差**只会让结果偏长**（绝不因多截而丢失正文），也不会
+  panic 终止整站构建；要精确按可见字符硬截断，可显式降低 `contentLimit` 留出余量
 
 ## 许可证
 

@@ -7,6 +7,7 @@
 """
 import os
 import sys
+import time
 import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -59,10 +60,16 @@ def t_search(page):
     n = page.locator(".search-item").count()
     record("搜索返回结果", n > 0, f"{n} 条")
     record("搜索结果高亮", page.locator(".search-item mark").count() > 0)
-    first_href = page.locator(".search-item").first.get_attribute("href")
-    page.locator(".search-item").first.click()
-    page.wait_for_load_state("load")
-    record("点击搜索结果跳转", page.url.endswith((first_href or "").rstrip("/")) or (first_href or "") in page.url, page.url)
+    # TEST-DEFECT-010：旧断言里 `page.url.endswith((first_href or "").rstrip("/"))`
+    # 在 first_href 为 None 时退化成 page.url.endswith("") —— 恒真。
+    # 必须先证明 href 存在，再验证跳转。
+    first_href = page.locator(".search-item").first.get_attribute("href") if n > 0 else None
+    record("搜索结果带 href", bool(first_href), first_href)
+    if n > 0:
+        page.locator(".search-item").first.click()
+        page.wait_for_load_state("load")
+    record("点击搜索结果跳转",
+           bool(first_href) and (first_href.rstrip("/") in page.url), page.url)
 
     # 键盘：Ctrl+K 打开，Esc 关闭
     page.goto(BASE + "/", wait_until="load")
@@ -121,20 +128,31 @@ def t_code_copy(page):
         want = EXPECT_LANG_COPIED.get(lang)
         record(f"代码复制：{lang} 文案符合预期", want == expect, f'期望 "{want}" 实际 "{expect}"')
 
+    # 反馈文案出现时间取决于剪贴板 promise 的解析速度：CI 满负载实测可到数秒。
+    # 用"轮询到截止时间"而不是"固定 8×200ms 窗口"——断言不变（仍要求出现 expect
+    # 且随后恢复），只是不再把机器负载当成产品缺陷。
     btn.click()
     timeline, hit = [], False
-    for _ in range(8):
-        page.wait_for_timeout(200)
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        page.wait_for_timeout(150)
         txt = btn.inner_text().strip()
-        timeline.append(txt[:8])
+        if not timeline or timeline[-1] != txt[:8]:
+            timeline.append(txt[:8])
         if expect and expect in txt:
             hit = True
             break
     record(f"代码复制按钮反馈（期望「{expect}」）", hit, " → ".join(timeline))
     # 提示结束后应恢复原文案（不是永久变成"已复制"）
-    page.wait_for_timeout(2000)
-    record("代码复制按钮文案已恢复", expect not in btn.inner_text().strip(),
-           f'"{btn.inner_text().strip()}"')
+    recovered, cur = False, btn.inner_text().strip()
+    rdeadline = time.time() + 6.0
+    while time.time() < rdeadline:
+        cur = btn.inner_text().strip()
+        if expect not in cur:
+            recovered = True
+            break
+        page.wait_for_timeout(200)
+    record("代码复制按钮文案已恢复", recovered, f'"{cur}"')
     clip = page.evaluate("() => navigator.clipboard.readText().catch(() => '')")
     record("剪贴板内容非空", len((clip or "").strip()) > 0, (clip or "")[:40].replace("\n", " "))
 

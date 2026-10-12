@@ -1,0 +1,50 @@
+{{- /*
+  Blockquote 渲染钩子（功能三：Markdown 提示块 / GitHub Alerts 风格）
+
+  支持的写法（与 GitHub / Obsidian 的 alert 语法一致）：
+
+      > [!NOTE]
+      > 正文……
+
+      > [!WARNING] 自定义标题
+      > 正文……
+
+  设计要点
+  --------
+  1) **零 JavaScript**：纯 Render Hook + CSS，无脚本、无第三方请求；
+  2) **语义标记**：输出 <blockquote class="md-alert md-alert-<type>">，
+     类型只映射到 class，样式全部由 CSS 承担（可随暗色模式切换）；
+  3) **默认外观不变**：非提示块的普通引用与 Hugo 默认输出**逐字节相同**
+     （Hugo 默认 = "<blockquote>\n" + .Text + "</blockquote>"，且 .Text 自带
+     尾随换行；实测发现 Hugo 会在钩子输出之后**再追加一个换行**，因此本文件
+     末尾**不得有换行符**，否则每个引用块后会多出一个空行——已用 md5 对比确认）；
+  4) **非法类型不报错**：Hugo 自带 alert 解析会把**任意** "> [!FOO]" 都塞进
+     .AlertType（实测 0.148~0.167 一致），因此这里只放行已知的 5 种；未知类型
+     走普通引用分支，绝不生成错误的提示块，也不会让构建失败；
+  5) **多语言**：默认标题走 i18n（note/tip/important/warning/caution），
+     自定义标题（.AlertTitle）优先。
+
+  版本兼容
+  --------
+  blockquote 渲染钩子自 Hugo 0.148.0 起被调用（0.128.0 会静默忽略该文件，
+  行为同默认渲染——不报错、不改变输出）。这正好满足"不改最低 Hugo 版本"：
+  0.128.0 上提示块退化为普通引用（marker 行仍会显示），其余功能不受影响。
+*/ -}}
+{{- $known := slice "note" "tip" "important" "warning" "caution" -}}
+{{- $type := .AlertType | lower -}}
+{{- if in $known $type -}}
+{{- $label := i18n (printf "alert.%s" $type) -}}
+{{- with .AlertTitle -}}{{- $label = . -}}{{- end -}}
+<blockquote class="md-alert md-alert-{{ $type }}">
+  <div class="md-alert-head">
+    <span class="md-alert-icon" aria-hidden="true">{{ if eq $type "note" }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>{{ else if eq $type "tip" }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.3.3.5.7.5 1.1v1h6v-1c0-.4.2-.8.5-1.1A6 6 0 0012 3z"/></svg>{{ else if eq $type "important" }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v5M12 16h.01"/></svg>{{ else if eq $type "warning" }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>{{ else }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 4.2l-4 4a2 2 0 000 2.8l8.8 8.8a2 2 0 002.8 0l4-4a2 2 0 000-2.8L11 4.2a2 2 0 00-2.8 0z"/><path d="M12 9v4M12 17h.01"/></svg>{{ end }}</span>
+    <span class="md-alert-title">{{ $label }}</span>
+  </div>
+  <div class="md-alert-body">
+    {{ .Text | safeHTML }}
+  </div>
+</blockquote>{{ "\n" }}
+{{- else -}}
+<blockquote>
+{{ .Text | safeHTML }}</blockquote>{{ "\n" }}
+{{- end -}}

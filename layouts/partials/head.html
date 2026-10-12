@@ -3,7 +3,10 @@
 <meta http-equiv="X-UA-Compatible" content="ie=edge">
 <meta name="referrer" content="origin">
 
-<title>{{ if .IsHome }}{{ .Site.Title }}{{ if .Site.Params.subtitle }} - {{ .Site.Params.subtitle }}{{ end }}{{ else }}{{ .Title }} - {{ .Site.Title }}{{ end }}</title>
+<title>{{ if .IsHome }}{{ .Site.Title }}{{ if .Site.Params.subtitle }} - {{ .Site.Params.subtitle }}{{ end }}{{ else }}{{ with trim .Title " \t\r\n" }}{{ . }} - {{ end }}{{ .Site.Title }}{{ end }}</title>{{- /* OBS-R3-002：空 / 纯空白标题时不再输出前导 "- 星云…"，
+       回退为站点标题；非空标题输出不变（trim 处理 "   " 这类空白标题夹具）。
+       og:title / JSON-LD headline 维持空串（二者一致，
+       check_html_quality 的交叉校验不受影响） */}}
 
 {{ $desc := "" }}
 {{ with .Description }}
@@ -13,8 +16,37 @@
 {{ end }}
 {{ with $desc }}<meta name="description" content="{{ . }}">{{ end }}
 {{ with .Keywords }}<meta name="keywords" content="{{ delimit . "," }}">{{ end }}
-<meta name="author" content="{{ with .Params.author }}{{ . }}{{ else }}{{ .Site.Params.author }}{{ end }}">
+{{- /* 作者元信息（功能四 / 6.5）：与正文 / JSON-LD / RSS 同源于 util/authors.html。
+     多作者输出逗号分隔；无作者时 content 为空串（不虚构姓名，见 BUG-R2-005）。 */ -}}
+{{- $authors := partial "util/authors.html" (dict "page" .) -}}
+<meta name="author" content="{{ $authors.csv }}">
 <link rel="canonical" href="{{ .Permalink }}">
+
+{{- /* ---------- 阅读体验（功能二）开关 ----------
+      放在 head 里解析，并写入 .Store 供 baseof 读取 —— 这样"专注模式是否可用"
+      在 <head> 就已知（可以提前应用持久化状态，避免刷新时闪一下），
+      同时保证开关逻辑只有**一处**定义，baseof 不再重复计算。
+
+      站点级默认 params.reading.{progressBar,backToTop,focusMode}；
+      文章页可用 Front Matter 覆盖：showProgress / showBackToTop / showFocusMode。
+      默认值与历史观感严格一致：progressBar / backToTop 此前始终渲染（默认 true），
+      focusMode 为新增能力（默认 false）。
+
+      取值一律走 util/bool-param.html（返回 dict，须取 .value 才是真 bool）。
+      **不能**写成 {{ $p := partial "..." }} 再 {{ if $p }}：partial 的返回值恒为
+      template.HTML 字符串，字符串 "false" 在 if 里是真。 */ -}}
+{{- $rp := site.Params.reading | default dict -}}
+{{- $pbar := (partial "util/bool-param.html" (dict "params" $rp "key" "progressbar" "default" true)).value -}}
+{{- $stop := (partial "util/bool-param.html" (dict "params" $rp "key" "backtotop" "default" true)).value -}}
+{{- $sfoc := (partial "util/bool-param.html" (dict "params" $rp "key" "focusmode" "default" false)).value -}}
+{{- if .IsPage -}}
+  {{- $pbar = (partial "util/bool-param.html" (dict "page" . "key" "showprogress" "default" $pbar)).value -}}
+  {{- $stop = (partial "util/bool-param.html" (dict "page" . "key" "showbacktotop" "default" $stop)).value -}}
+  {{- $sfoc = (partial "util/bool-param.html" (dict "page" . "key" "showfocusmode" "default" $sfoc)).value -}}
+{{- end -}}
+{{- .Store.Set "nebula_pbar" $pbar -}}
+{{- .Store.Set "nebula_stop" $stop -}}
+{{- .Store.Set "nebula_focus" $sfoc -}}
 
 {{- /* Theme init: prevent flash of wrong theme */ -}}
 <script>
@@ -26,6 +58,15 @@
   } catch (e) {}
 })();
 </script>
+{{- /* 专注模式：提前应用持久化状态，避免刷新时"先亮后隐"的闪动（功能二）。
+       仅在当前页确实提供专注模式时才注入，默认关闭的站点多出的字节数为 0。 */ -}}
+{{- if and .IsPage $sfoc }}
+<script>
+(function () {
+  try { if (localStorage.getItem('nebula-focus') === 'on') document.documentElement.classList.add('focus-on'); } catch (e) {}
+})();
+</script>
+{{- end }}
 
 {{- /* Open Graph / Twitter */ -}}
 <meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}">
@@ -33,10 +74,11 @@
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }}{{ end }}">
 <meta property="og:description" content="{{ $desc }}">
 <meta property="og:url" content="{{ .Permalink }}">
-<meta property="og:locale" content="{{ replace (site.Language.LanguageCode | default site.Language.Lang) "-" "_" }}">
+<meta property="og:locale" content="{{ replace (partial "util/locale.html" site.Language) "-" "_" }}">
 {{- /* 多语言时附加其它语言的 og:locale:alternate */ -}}
-{{- range .AllTranslations }}{{ if ne .Language.LanguageCode (site.Language.LanguageCode) }}
-<meta property="og:locale:alternate" content="{{ replace .Language.LanguageCode "-" "_" }}">
+{{- $selfLocale := partial "util/locale.html" site.Language -}}
+{{- range .AllTranslations }}{{ if ne (partial "util/locale.html" .Language) $selfLocale }}
+<meta property="og:locale:alternate" content="{{ replace (partial "util/locale.html" .Language) "-" "_" }}">
 {{- end }}{{ end -}}
 {{ with .Params.cover }}
 <meta property="og:image" content="{{ partial "util/rel-url.html" . | absURL }}">
@@ -52,11 +94,13 @@
 {{ with .Params.cover }}<meta name="twitter:image" content="{{ partial "util/rel-url.html" . | absURL }}">{{ end }}
 
 {{- /* hreflang：多语言站点输出各语言版本（单语言无输出）。
-     用 LanguageCode（如 zh-CN / en-US）而非 Lang（Hugo 会输出小写 zh-cn），
-     保证 hreflang 值与配置里的 languageCode 大小写一致。 */ -}}
+     用 locale（zh-CN / en-US）而非 Lang（Hugo 会输出小写 zh-cn），
+     保证 hreflang 值与配置里的 languageCode 大小写一致。
+     取值走 util/locale.html：0.158+ 用 .Language.Locale（.LanguageCode 已弃用），
+     旧版本回退 LanguageCode —— 不再触发弃用 WARN（BUG-P3-005）。 */ -}}
 {{- if gt (len .AllTranslations) 1 }}
 {{- range .AllTranslations }}
-<link rel="alternate" hreflang="{{ .Language.LanguageCode | default .Language.Lang }}" href="{{ .Permalink }}">
+<link rel="alternate" hreflang="{{ partial "util/locale.html" .Language }}" href="{{ .Permalink }}">
 {{- end }}
 {{- end }}
 
@@ -69,46 +113,76 @@
 <link rel="alternate icon" type="image/x-icon" href="{{ "favicon.ico" | relURL }}">
 <link rel="apple-touch-icon" href="{{ "img/favicon.svg" | relURL }}">
 
-{{- /* 首页 WebSite + SearchAction（搜索框支持 ?q= 参数） */ -}}
+{{- /* 首页 WebSite + SearchAction（搜索框支持 ?q= 参数）。
+
+     为什么整体构建为 dict 再一次性 jsonify + safeJS，而不是在 <script> 里逐个
+     jsonify 片段：html/template 会把 <script> 内容当作 JS 上下文，对 jsonify 出来
+     的字符串**再做一次 JS 字符串转义**，于是值被再包一层引号
+     （"name": "\"站点名\""）—— 即 BUG-P2-004 的全站 JSON-LD 双重编码。
+     整体序列化 + safeJS 既避免二次转义，也从结构上保证输出一定是合法 JSON。
+     安全性：jsonify 会把 < > & 转义成 \u003c 等，无法 break out </script>。 */ -}}
 {{ if .IsHome }}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "name": {{ site.Title | jsonify }},
-  "url": {{ site.Home.Permalink | jsonify }},
-  "potentialAction": {
-    "@type": "SearchAction",
-    "target": {
-      "@type": "EntryPoint",
-      "urlTemplate": {{ printf "%s?q={search_term_string}" site.Home.Permalink | jsonify }}
-    },
-    "query-input": "required name=search_term_string"
-  }
-}
-</script>
+{{- $ldSite := dict
+    "@context" "https://schema.org"
+    "@type" "WebSite"
+    "name" site.Title
+    "url" site.Home.Permalink
+    "potentialAction" (dict
+      "@type" "SearchAction"
+      "target" (dict
+        "@type" "EntryPoint"
+        "urlTemplate" (printf "%s?q={search_term_string}" site.Home.Permalink))
+      "query-input" "required name=search_term_string") -}}
+<script type="application/ld+json">{{ $ldSite | jsonify | safeJS }}</script>
 {{ end }}
 
-{{- /* JSON-LD */ -}}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "{{ if .IsPage }}BlogPosting{{ else }}WebSite{{ end }}",
-  "headline": {{ if .IsHome }}{{ .Site.Title | jsonify }}{{ else }}{{ .Title | jsonify }}{{ end }},
-  {{ with $desc }}"description": {{ . | jsonify }},{{ end }}
-  {{ if .IsPage }}
-  {{/* 使用日期对象自身的时区偏移（RFC3339），不硬编码 +08:00 */}}
-  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}",
-  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}",
-  {{ end }}
-  "author": { "@type": "Person", "name": {{ with .Params.author }}{{ . | jsonify }}{{ else }}{{ .Site.Params.author | jsonify }}{{ end }} },
-  "url": "{{ .Permalink }}"
-}
-</script>
+{{- /* JSON-LD（BlogPosting / WebSite） —— 同上，整体序列化一次 */ -}}
+{{- $ldType := cond .IsPage "BlogPosting" "WebSite" -}}
+{{- $ldHeadline := cond .IsHome site.Title .Title -}}
+{{- $ld := dict
+    "@context" "https://schema.org"
+    "@type" $ldType
+    "headline" $ldHeadline
+    "url" .Permalink -}}
+{{- /* author：**无作者时省略 author 字段**，而不是输出 "name": null
+       （schema.org 要求 Person.name 为字符串；null 会被结构化数据校验器判为无效）。
+       有作者时输出 Person 姓名；**多作者**（front matter `authors` 列表）输出 Person 数组，
+       与正文 / RSS / 卡片同源于 util/authors.html —— 三处展示必须一致（功能四 / 6.5）。
+       空不虚构（BUG-R2-005）。 */ -}}
+{{- with $authors.names -}}
+  {{- if eq (len .) 1 -}}
+    {{- $ld = merge $ld (dict "author" (dict "@type" "Person" "name" (index . 0))) -}}
+  {{- else -}}
+    {{- $people := slice -}}
+    {{- range . -}}{{- $people = $people | append (dict "@type" "Person" "name" .) -}}{{- end -}}
+    {{- $ld = merge $ld (dict "author" $people) -}}
+  {{- end -}}
+{{- end -}}
+{{- with $desc }}{{ $ld = merge $ld (dict "description" .) }}{{ end -}}
+{{- if .IsPage -}}
+  {{- /* 缺日期（零值）时**不输出** datePublished/dateModified ——
+       否则结构化数据里会出现 "0001-01-01T00:00:00Z"（BUG-P3-001 的同类零值泄漏）。
+       使用日期对象自身的时区偏移（RFC3339），不硬编码 +08:00。 */ -}}
+  {{- if not .Date.IsZero -}}
+    {{- $ld = merge $ld (dict "datePublished" (.Date.Format "2006-01-02T15:04:05Z07:00")) -}}
+    {{- if not .Lastmod.IsZero -}}
+      {{- $ld = merge $ld (dict "dateModified" (.Lastmod.Format "2006-01-02T15:04:05Z07:00")) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+<script type="application/ld+json">{{ $ld | jsonify | safeJS }}</script>
 
 {{- /* Styles */ -}}
 {{ $css := resources.Get "css/main.css" | minify | fingerprint }}
 <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+
+{{- /* 外观配置（功能五 / 6.7）：把 params.appearance.* 翻译成 CSS 变量覆盖。
+     未配置时**不输出任何 <style>**，默认外观逐字节不变（见 partial 内说明）。 */ -}}
+{{ partial "util/appearance.html" . }}
+
+{{- /* 数学语法探测（功能四 / 6.3）：仅当正文确实含定界符时才标记，
+     供 scripts.html 决定是否按需注入 KaTeX。放在 head 保证探测先于脚本 partial 执行。 */ -}}
+{{- if .IsPage }}{{ partial "util/detect-math.html" . }}{{ end }}
 
 {{- /* Head hooks */ -}}
 {{ partial "extra-head.html" . }}

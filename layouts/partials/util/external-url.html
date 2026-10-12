@@ -1,0 +1,36 @@
+{{- /* 外链文章解析（功能四 / 6.6）。
+
+     用途：Front Matter 明确标记 `externalUrl` 的文章是"指向站外"的条目，
+     首页卡片 / 归档 / RSS / 搜索索引 / 文章页都要**一致地**识别并按外链处理。
+
+     识别规则：
+       * `externalUrl` 存在、非空、且通过 scheme 白名单（http/https/协议相对）
+         → 视为外链文章；
+       * 否则（缺失 / 空 / 危险 scheme 如 javascript:/data:/file:）→ 视为**普通文章**，
+         绝不把危险 URL 当作可点击目标（不信任任意输入）。
+
+     传入：Page 对象（.）
+     输出：dict
+       .isExternal : bool
+       .url        : string 外链地址（isExternal 时才有效；已做 scheme 校验）
+       .host       : string 外链主机名（用于卡片上显示来源域名）
+
+     注意：本 partial 只做判定与清洗，不拼接 HTML。站内文章仍走 .RelPermalink。 */ -}}
+{{- $page := . -}}
+{{- $raw := "" -}}
+{{- with $page.Params.externalUrl -}}{{- $raw = trim (printf "%v" .) " \t\r\n" -}}{{- end -}}
+{{- $isExt := false -}}
+{{- $url := "" -}}
+{{- $host := "" -}}
+{{- if $raw -}}
+  {{- $probe := lower (replaceRE `[\x00-\x20]+` "" $raw) -}}
+  {{- if or (hasPrefix $probe "http://") (hasPrefix $probe "https://") (hasPrefix $probe "//") -}}
+    {{- $isExt = true -}}
+    {{- $url = $raw -}}
+    {{- /* 提取主机名：协议相对补 http: 再取 host */ -}}
+    {{- $full := cond (hasPrefix $probe "//") (printf "https:%s" $raw) $raw -}}
+    {{- $u := urls.Parse $full -}}
+    {{- $host = $u.Host -}}
+  {{- end -}}
+{{- end -}}
+{{- return (dict "isExternal" $isExt "url" $url "host" $host) -}}

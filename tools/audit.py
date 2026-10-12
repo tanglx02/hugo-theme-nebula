@@ -63,17 +63,26 @@ NON_HTML_EXACT = ("/index.json", "/sitemap.xml", "/robots.txt", "/index.xml", "/
 # 不允许用 endswith 之类的宽松匹配（可能误豁免其它路径下的同名损坏资源）。
 INTENTIONAL_MISSING_PATHS = ("/not-exist.png",)
 
-# 全站模式下必须覆盖到的页面类型（缺失即判失败，防止"抽样冒充全站"）
+# 全站模式下必须覆盖到的页面类型（缺失即判失败，防止"抽样冒充全站"）。
+# 注意：分页项**不在常量里硬编码 /page/**，而是由 required_coverage(token)
+# 按检测到的 pagination token 动态生成 —— 站点配置 pagination.path = "p" 时，
+# 写死 /page/2/ 会让覆盖检查直接判失败（TEST-DEFECT-012）。
 REQUIRED_COVERAGE = (
     ("分类 term 页面", lambda p: re.fullmatch(r"/categories/[^/]+/", p)),
     ("标签 term 页面", lambda p: re.fullmatch(r"/tags/[^/]+/", p)),
-    ("分页 /page/2/", lambda p: p.endswith("/page/2/")),
-    ("分页 /page/3/", lambda p: p.endswith("/page/3/")),
     ("分类首页", lambda p: p == "/categories/"),
     ("标签首页", lambda p: p == "/tags/"),
     ("归档页", lambda p: p == "/archives/"),
     ("文章页", lambda p: re.fullmatch(r"/posts/[^/]+/", p)),
 )
+
+
+def required_coverage(token):
+    """按当前分页 token 生成覆盖要求。"""
+    return REQUIRED_COVERAGE + (
+        (f"分页 /{token}/2/", lambda p, t=token: p.endswith(f"/{t}/2/")),
+        (f"分页 /{token}/3/", lambda p, t=token: p.endswith(f"/{t}/3/")),
+    )
 
 VIEWPORTS = {
     "320": {"width": 320, "height": 720},
@@ -467,6 +476,12 @@ def get_urls(base, full=False):
     except Exception as e:
         print("sitemap error:", e)
 
+    # 存续的分页路径片段：优先从构建产物反推（站点若配置了 pagination.path
+    # 只认 page 就会漏），推不出来再走配置 / 默认值。
+    # 两个分支都要用，因此提到分支外统一计算（TEST-DEFECT-012）。
+    token = detect_pagination_token(html_pages) or pagination_path()
+    stats["pagination_path"] = token
+
     if full:
         # ---- Release 全站真值 = 构建产物 inventory（不是 sitemap）----
         inv = scan_inventory(BUILD_DIR)
@@ -480,9 +495,9 @@ def get_urls(base, full=False):
         stats["not_in_sitemap"] = [p for p in expected
                                    if p not in set(html_pages)]
 
-        # 存续的分页路径片段：优先从构建产物反推（站点若配置了 pagination.path
-        # 只认 page 就会漏），推不出来再走配置 / 默认值
-        token = detect_pagination_token(expected) or pagination_path()
+        # 用构建产物再确认一次 token（inventory 比 sitemap 更全，含分页页）
+        token = detect_pagination_token(expected) or token
+        stats["pagination_path"] = token
         # 分页发现：种子 = 构建产物中**所有可能产生分页的列表页**
         # = 非文章页（含首页 / section 列表 / 分类与标签 term / 归档 / 各种分页页），
         #   alias 页本身不含分页链接，抓它纯属浪费；但它仍在审计列表里
@@ -509,13 +524,12 @@ def get_urls(base, full=False):
                 1 for p in seeds
                 if p.strip("/") in set(secs) or p.startswith(seed_prefixes)),
             "分类 term 页": sum(1 for p in seeds if p.startswith("/categories/")
-                              and not p.startswith("/categories/page/")),
+                              and not p.startswith(f"/categories/{token}/")),
             "标签 term 页": sum(1 for p in seeds if p.startswith("/tags/")
-                             and not p.startswith("/tags/page/")),
+                             and not p.startswith(f"/tags/{token}/")),
             "归档页": sum(1 for p in seeds if p.startswith("/archives/")),
         }
         extra, crawl = discover_pagination(base, seeds, page_token=token)
-        stats["pagination_path"] = token
         stats["truth_pagination"] = truth_pagination
         found_set = set(extra)
         stats["pagination_missing"] = sorted(set(truth_pagination) - found_set)
@@ -533,16 +547,17 @@ def get_urls(base, full=False):
                 uniq.append(u)
         urls = uniq
         stats["audited_html"] = len(urls)
-        for name, pred in REQUIRED_COVERAGE:
+        for name, pred in required_coverage(token):
             if not any(pred(p) for p in urls):
                 stats["missing_specials"].append(name)
     else:
         posts = [p for p in html_pages if p.startswith("/posts/")]
         cats = [p for p in html_pages if p.startswith("/categories/")]
         tags = [p for p in html_pages if p.startswith("/tags/")]
-        pages = [p for p in html_pages if "/page/" in p]
+        pages = [p for p in html_pages if f"/{token}/" in p]
         if not pages:      # sitemap 不含分页，抽样时按需抓一份（抽样模式允许小额上限）
-            pages, _ = discover_pagination(base, ["/", "/posts/"], limit=20)
+            pages, _ = discover_pagination(base, ["/", "/posts/"], limit=20,
+                                           page_token=token)
             if pages:
                 stats["pagination_crawl_sampled"] = True
         other = [p for p in html_pages
@@ -550,10 +565,11 @@ def get_urls(base, full=False):
         sample = list(KEY_URLS) + posts[:6] + cats[:3] + tags[:3] + pages[:3] + other[:4]
         urls = []
         for p in sample:
-            if p in html_pages or p in KEY_URLS or "/page/" in p:
+            if p in html_pages or p in KEY_URLS or f"/{token}/" in p:
                 if p not in urls:
                     urls.append(p)
-        stats["audited_html"] = len([p for p in urls if p in html_pages or "/page/" in p])
+        stats["audited_html"] = len([p for p in urls
+                                     if p in html_pages or f"/{token}/" in p])
 
     # 404 页面探针：sitemap 不含 404.html，单独用一个不存在的 URL 触发
     urls.append("/this-page-does-not-exist/")
@@ -910,15 +926,46 @@ def run(h):
     if FULL:
         # ⓪ 与 check_html_quality 的 inventory 交叉验证
         # （两套检查必须用同一份规范化结果；任何一套漏掉都要 CI 红）
+        #
+        # TEST-DEFECT-R2-007：旧实现在 inventory JSON **缺失时只打印"跳过"**，
+        # 于是交叉验证可以被静默绕过（CI 里永远红不起来）；而且没有
+        # "这份 inventory 属于哪次构建" 的绑定，两次构建互相覆盖时会把
+        # 两份不同产物判成"一致"。
+        # 现在：AUDIT_REQUIRE_INVENTORY=1 时缺失即 fatal；并且比对构建指纹。
         inv_json = os.path.join(ROOT, "tools", "html_inventory.json")
-        if os.path.isfile(inv_json):
+        if not os.path.isfile(inv_json):
+            if os.environ.get("AUDIT_REQUIRE_INVENTORY", "").strip() not in ("", "0", "false", "False"):
+                h.fatal_error(
+                    "缺少 tools/html_inventory.json（交叉验证无法进行）",
+                    "本次要求强制交叉验证（AUDIT_REQUIRE_INVENTORY=1），"
+                    "但 inventory 文件不存在。CI 中 static-checks 必须先运行 "
+                    "tools/check_html_quality.py 生成它；缺失即判失败，不得静默跳过。")
+                return
+            print("交叉验证: 未找到 tools/html_inventory.json（本次未要求强制交叉验证，"
+                  "CI 中请置 AUDIT_REQUIRE_INVENTORY=1 使其成为硬门禁）")
+        else:
             with open(inv_json, encoding="utf-8") as f:
                 other = json.load(f)
             other_urls = set(other.get("expected_html_urls") or [])
+            # 构建指纹绑定：inventory 必须确实来自**本次**的构建产物
+            other_build = other.get("build_dir")
+            other_fp = other.get("build_id")
+            if other_build and os.path.abspath(other_build) != os.path.abspath(BUILD_DIR):
+                h.fatal_error(
+                    "交叉验证的 inventory 不属于本次构建产物",
+                    f"inventory.build_dir={other_build}，本次 AUDIT_BUILD_DIR={BUILD_DIR}；"
+                    f"两份 inventory 可能来自不同构建，比较结果不可信")
+                return
+            cur_fp = inv.get("build_id")
+            if other_fp and cur_fp and other_fp != cur_fp:
+                h.fatal_error(
+                    "交叉验证的 inventory 构建指纹不一致（疑似复用了旧构建的 inventory）",
+                    f"本次 {cur_fp} vs inventory 文件 {other_fp}")
+                return
             only_audit = sorted(expected - other_urls)
             only_other = sorted(other_urls - expected)
             print(f"交叉验证 check_html_quality inventory: "
-                  f"{len(other_urls)} 个 URL"
+                  f"{len(other_urls)} 个 URL（构建指纹 {other_fp or 'n/a'}）"
                   f"{'（一致）' if not only_audit and not only_other else '（不一致）'}")
             if only_audit or only_other:
                 h.fatal_error("audit 与 HTML quality 的 inventory 不一致",
@@ -926,10 +973,7 @@ def run(h):
                               f"仅 HTML quality 有: {only_other[:5]}")
                 return
             h.record("audit 与 HTML quality inventory 完全一致",
-                     True, f"{len(other_urls)} 个 URL")
-        else:
-            print("交叉验证: 未找到 tools/html_inventory.json（跳过，"
-                  "CI 中 static-checks 会先生成）")
+                     True, f"{len(other_urls)} 个 URL，指纹 {other_fp or 'n/a'}")
 
         # ① 构建产物 inventory 100% 被审计
         if missing:

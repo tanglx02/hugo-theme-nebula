@@ -1,10 +1,35 @@
 {{- /* 扩展点：用户可在站点内 layouts/partials/extra-footer.html 覆盖 */ -}}
 {{ partial "extra-footer.html" . }}
 
-{{- /* 浏览量统计（不蒜子，可选） */ -}}
+{{- /* 浏览量统计（不蒜子，可选）。
+     使用 https:// 绝对 URL 而非协议相对 `//host/...`：
+     协议相对在 HTTP 页面下会退化为明文加载（SEC-02），显式 https 更明确。
+     需要 SRI 时可设 params.busuanzi.integrity（见 README 第三方脚本章节）。 */ -}}
 {{ if site.Params.busuanzi.enable }}
-  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+    {{- with site.Params.busuanzi.integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }}></script>
 {{ end }}
+
+{{- /* ---------- 组件脚本（功能三：按需加载） ----------
+      标签页的渐进增强脚本**只在当前页确实用了 {{< tabs >}} 时**才输出，
+      普通页面因此多出的字节数为 0（第六节："不引入无必要的运行时依赖"）。
+      探测标记由 layouts/shortcodes/tabs.html 在渲染期写入 Page.Store：
+      内容先于本 partial 渲染，所以这里读得到。
+
+      `defer` 保证它不会阻塞首屏。**无 JS 时的"全展开"默认态完全由 CSS 保证**
+      （见 main.css §24：默认即"面板顺序展开 + 导航条隐藏"），不依赖任何脚本
+      打标记，因此脚本被禁用 / 被 CSP 拦掉时页面依然可用，也没有闪动。 */ -}}
+{{ if .Store.Get "nebula_has_tabs" }}
+{{ $tabsjs := resources.Get "js/tabs.js" | minify | fingerprint }}
+<script src="{{ $tabsjs.RelPermalink }}" integrity="{{ $tabsjs.Data.Integrity }}" defer></script>
+{{ end }}
+
+{{- /* ---------- Mermaid / KaTeX（功能四：6.2 / 6.3，按需加载） ----------
+     与 tabs 同一策略：只有当前页确实用到（render-codeblock 写 nebula_has_mermaid /
+     util/detect-math 写 nebula_has_math）**且**站点显式配置了来源时才注入。
+     普通页面 / 未配置站点的额外字节数为 0，保持"默认零第三方请求"。 */ -}}
+{{ partial "mermaid.html" . }}
+{{ partial "math.html" . }}
 
 {{- /* 把 i18n 文案注入给前端脚本，避免 JS 中硬编码文案 */ -}}
 <script>
@@ -26,6 +51,10 @@
     "zoom" (i18n "lightbox.zoom")
     "zoomPrefix" (i18n "lightbox.zoomPrefix")
     "loading" (i18n "common.loading")
+    "focusMode" (i18n "reading.focusMode")
+    "focusExit" (i18n "reading.focusExit")
+    "mermaidError" (i18n "mermaid.error")
+    "mathError" (i18n "math.error")
     | jsonify | safeJS }};
 </script>
 

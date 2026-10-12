@@ -13,6 +13,7 @@
 """
 import os
 import random
+import shutil
 import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -66,6 +67,14 @@ MARKERS_50K = {
     48000: "GOLF48000",
 }
 
+# **正文最末尾**的唯一标记（TEST-DEFECT-R2-001）。
+# 与上面的"位置埋点"不同：它们的价值在于——
+#   只要正文被任何程度的截断（哪怕是截到 10 字符），末尾标记必然消失。
+#   旧版 check_index 只在 `max_len > 30000` 时才检查深处关键词，
+#   于是"全部条目被截断成 10 字"时 max_len 只有 10，检查根本不触发 → 假绿 rc=0。
+TAILMARK = "TAILMARKER_9Z8Y7X"
+TAILMARK_50K = "TAILMARKER_50K_END"
+
 
 def filler(target_len, markers):
     """生成长度 >= target_len 的正文，并在指定字符位置插入唯一关键词。"""
@@ -98,6 +107,15 @@ def filler(target_len, markers):
     return "".join(buf)
 
 
+def tailmark_filler(target_len, markers, tailmark):
+    """同 filler，但在**正文最末尾**追加唯一标记（用于截断检测）。
+
+    标记前放一句普通中文：这样"按字符截断"与"按字节截断"都会把它切掉，
+    检测对两种截断方式都敏感。
+    """
+    return filler(target_len, markers) + f"\n\n末尾完整性标记：{tailmark}\n"
+
+
 def write(name, front, body):
     path = os.path.join(POSTS, PREFIX + name)
     with open(path, "w", encoding="utf-8") as f:
@@ -119,7 +137,7 @@ categories: ["压力测试"]
 """, "只有一句话。"))
 
     # 2. 1 万字文章（含 6 个定位埋点）
-    body10k = filler(10200, MARKERS_10K)
+    body10k = tailmark_filler(10200, MARKERS_10K, TAILMARK)
     created.append(write("02-10k.md", """
 title: "一万字长文与搜索埋点"
 date: 2026-05-04
@@ -130,7 +148,7 @@ cover: "/img/cover/lab.svg"
 """, "本篇在不同字符位置埋入唯一关键词，用于验证全文搜索覆盖范围。\n\n" + body10k))
 
     # 3. 5 万字文章（含 3 个定位埋点）
-    body50k = filler(50000, MARKERS_50K)
+    body50k = tailmark_filler(50000, MARKERS_50K, TAILMARK_50K)
     created.append(write("03-50k.md", """
 title: "五万字超长文章"
 date: 2026-05-06
@@ -461,18 +479,77 @@ categories: ["压力测试"]
     except ImportError:
         print("  (未安装 Pillow，跳过图片 bundle 生成)")
 
+    # 21. 边界内容（BUG-P1-003 回归 + TEST-DEFECT-013 覆盖盲区）
+    #     这些输入此前从未进入过 CI：空标题 / 单字符标题 / 单 CJK / 单 emoji /
+    #     纯空白标题 / 空正文 / author 为空 / 非 ASCII slug / BOM front matter。
+    #     它们必须能**成功构建**（旧实现 slicestr 越界会终止整站构建）。
+    edges = [
+        ("21-empty-title.md", 'title: ""', "边界：空标题。"),
+        ("22-one-char.md", 'title: "A"', "边界：单字符 ASCII 标题。"),
+        ("23-one-cjk.md", 'title: "中"', "边界：单字符 CJK 标题。"),
+        ("24-one-emoji.md", 'title: "😀"', "边界：单个 emoji 标题。"),
+        ("25-blank-title.md", 'title: "   "', "边界：纯空白标题。"),
+        ("26-empty-body.md", 'title: "空正文文章"', ""),
+        ("27-no-author.md", 'title: "无作者（author 为空）"\nauthor: ""', "边界：author 为空。"),
+        ("28-mixed-title.md",
+         'title: "中英混合 Emoji 🚀 长标题 ABCDEFG 一二三四五"', "边界：中英 emoji 混合标题。"),
+        ("29-中文-slug.md", 'title: "非 ASCII slug"', "边界：文件名含中文（非 ASCII slug）。"),
+    ]
+    for name, front, body in edges:
+        created.append(write(name, front + "\ndate: 2026-06-01", body))
+
+    # 21b. BOM front matter（部分编辑器会在文件头写入 UTF-8 BOM）
+    bom_path = os.path.join(POSTS, f"{PREFIX}30-bom.md")
+    with open(bom_path, "w", encoding="utf-8-sig") as f:
+        f.write('---\ntitle: "BOM front matter"\ndate: 2026-06-02\n---\n\n正文。\n')
+    created.append(bom_path)
+
+    # 21c. 完全没有 date 字段（BUG-P3-001 回归数据）：
+    #      页面侧必须显示本地化的"未标注日期"，绝不出现 0001 年 / 0001年1月1日。
+    created.append(write("31-no-date.md", 'title: "无日期文章（front matter 无 date）"',
+                         "边界：缺少 date 字段。"))
+
     print(f"已生成 {len(created)} 篇测试文章")
     for p in created:
         print("  ", os.path.basename(p), os.path.getsize(p) // 1024, "KB")
 
 
 def clean():
+    """清理测试数据。
+
+    TEST-DEFECT-014：旧实现只对 POSTS 里的 zz-* 调 os.remove，
+      - 遇到 `zz-images-bundle/` 这种**目录**会抛 IsADirectoryError 直接崩；
+      - 多 section 数据（content/tutorials|notes|projects）**永不清理**，
+        跨次运行会读到上一次的残留。
+    现在：目录用 rmtree，多 section 一并清理，并回收空目录。
+    """
     n = 0
-    for f in os.listdir(POSTS):
-        if f.startswith(PREFIX):
-            os.remove(os.path.join(POSTS, f))
-            n += 1
-    print(f"已清理 {n} 篇测试文章")
+    content = os.path.dirname(POSTS)
+    targets = [POSTS] + [os.path.join(content, s) for s in ("tutorials", "notes", "projects")]
+    for d in targets:
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(os.listdir(d)):
+            if not f.startswith(PREFIX):
+                continue
+            p = os.path.join(d, f)
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+                n += 1
+            except OSError as e:
+                print(f"  清理失败 {p}: {e}")
+    # 因测试数据而变空的多 section 目录一并回收
+    for s in ("tutorials", "notes", "projects"):
+        d = os.path.join(content, s)
+        try:
+            if os.path.isdir(d) and not os.listdir(d):
+                os.rmdir(d)
+        except OSError:
+            pass
+    print(f"已清理 {n} 项测试数据（含目录与多 section）")
 
 
 if __name__ == "__main__":

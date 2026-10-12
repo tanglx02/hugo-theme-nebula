@@ -26,7 +26,10 @@ import xml.etree.ElementTree as ET
 
 from _testlib import Harness, guard
 
-DIR = sys.argv[1] if len(sys.argv) > 1 else "public"
+REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+# 默认路径与 check_index / check_features 统一（TEST-DEFECT-016：基准不一致会让
+# 手工运行结果不可比）
+DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "public")
 
 LEAK_MARKS = ("NEBULA-PAGTEST", "pagination.test")
 
@@ -72,36 +75,58 @@ def run(h):
     h.record("RSS（/index.xml）可解析且 channel 信息完整", rss_ok, f"{rss_items} 个 item")
 
     # ---------- 文章页 meta description ----------
+    # 旧实现：posts/ 不存在时循环直接跳过 -> "缺失 0 篇" -> 真空 PASS（TEST-DEFECT-007）。
+    # 现在改为：优先 posts/，否则扫描所有 */*/index.html 的文章页；且**至少检查到 1 页**。
     missing_desc = []
+    candidates = []
     posts_dir = os.path.join(DIR, "posts")
     if os.path.isdir(posts_dir):
         for name in sorted(os.listdir(posts_dir)):
             page = os.path.join(posts_dir, name, "index.html")
-            if not os.path.isfile(page):
+            if os.path.isfile(page):
+                candidates.append(f"/posts/{name}/")
+    else:
+        for dirpath, _, names in os.walk(DIR):
+            if "index.html" not in names:
                 continue
-            html = open(page, encoding="utf-8").read()
-            # minify 会去掉属性引号（name=description），两种形态都接受
-            if '<meta name="description"' not in html and \
-                    re.search(r'<meta\s+name=description[\s>]', html) is None:
-                missing_desc.append(f"/posts/{name}/")
-    h.record("文章页均有 meta description", not missing_desc,
-             f"缺失 {len(missing_desc)}: {missing_desc[:4]}")
+            rel = os.path.relpath(dirpath, DIR).replace("\\", "/")
+            if rel.count("/") == 1:                 # 形如 <section>/<slug>
+                candidates.append(f"/{rel}/")
+    for url in candidates:
+        page = os.path.join(DIR, url.strip("/"), "index.html")
+        html = open(page, encoding="utf-8").read()
+        # minify 会去掉属性引号（name=description），两种形态都接受
+        if '<meta name="description"' not in html and \
+                re.search(r'<meta\s+name=description[\s>]', html) is None:
+            missing_desc.append(url)
+    if not candidates:
+        h.fatal_error("没有扫描到任何文章页（构建产物不完整，meta description 检查会空转）",
+                      f"posts 目录存在={os.path.isdir(posts_dir)}；考察路径={DIR}")
+    else:
+        h.record("文章页均有 meta description", not missing_desc,
+                 f"检查 {len(candidates)} 页，缺失 {len(missing_desc)}: {missing_desc[:4]}")
 
     # ---------- 测试数据泄漏 ----------
     leaks = []
+    scanned = 0
     for dirpath, _, names in os.walk(DIR):
         for n in names:
             p = os.path.join(dirpath, n)
+            if not n.endswith((".html", ".json", ".xml", ".txt")):
+                continue
             try:
-                if n.endswith((".html", ".json", ".xml", ".txt")):
-                    data = open(p, encoding="utf-8").read()
+                data = open(p, encoding="utf-8").read()
             except UnicodeDecodeError:
                 continue
+            scanned += 1
             for mark in LEAK_MARKS:
                 if mark in data:
                     leaks.append(f"{os.path.relpath(p, DIR)} :: {mark}")
-    h.record("无测试数据泄漏（分页自测标记 / 临时 baseURL）", not leaks,
-             f"{len(leaks)} 处" if leaks else "干净")
+    if scanned == 0:
+        h.fatal_error("泄漏扫描没有读到任何文件（构建产物缺失，检查会空转）", DIR)
+    else:
+        h.record("无测试数据泄漏（分页自测标记 / 临时 baseURL）", not leaks,
+                 f"{len(leaks)} 处" if leaks else f"干净（扫描 {scanned} 个文件）")
 
 
 if __name__ == "__main__":

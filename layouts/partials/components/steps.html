@@ -1,0 +1,21 @@
+{{- /* 步骤的**标记渲染**（功能三）。由 layouts/shortcodes/steps.html 调用。
+
+     拆成 partial 的原因同 components/tabs.html：shortcode 需要根据是否被嵌套
+     决定"直接输出"还是"登记为占位符"。
+
+     参数（dict）：
+       steps — [{title, html, idx}]，来自子 shortcode 写入的 Scratch 累积
+
+     输出：`<ol class="steps">`，序号由 CSS counter 生成（零 JavaScript）。 */ -}}
+<ol class="steps" aria-label="{{ i18n "steps.label" }}">
+  {{- range $i, $s := .steps }}
+  <li class="step" data-index="{{ $s.idx }}">
+    <div class="step-body">
+      {{- with $s.title }}
+      <p class="step-title">{{ . }}</p>
+      {{- end }}
+      {{ $s.html }}
+    </div>
+  </li>
+  {{- end }}
+</ol>

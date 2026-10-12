@@ -1,0 +1,87 @@
+{{- /* 图片渲染公共管线（render-image hook 与 gallery shortcode 共用，避免重复实现）。
+
+     传入（dict）：
+       page   — Page 对象（用于解析 page bundle 资源）
+       dest   — 图片目标：page bundle 相对名 / static 路径 / 外链 URL
+       alt    — 替代文本（可选）
+       title  — 题注（可选，输出为 figcaption）
+       cls    — figure 额外 class（可选，如画廊的 "nb-gallery-item"）
+
+     行为（与历史 render-image hook 完全一致，逐字节等价）：
+       1) page bundle 且是可处理的 raster 图 → Hugo Images Pipeline：
+          多尺寸 WebP + srcset/sizes/width/height（防 CLS），原图作灯箱源
+       2) 其它资源型图片（如 SVG）→ 输出原图
+       3) 外链 / static 路径 → 原路径（走 util/rel-url 保证子目录 baseURL 正确）
+
+     可处理性判断**不能用 reflect.IsImageResourceProcessable**（0.128.0 不存在），
+     改为按 MediaType raster 白名单，所有支持版本行为一致。
+
+     跨平台：Windows 上 `.Destination` / gallery 行里的路径可能带反斜杠，
+     但页面 URL 与资源名一律用正斜杠 —— 这里统一归一，否则 Windows 构建会
+     生成 `/posts/xxx\photo.png` 这种**不可达**的 src（浏览器把 \ 当普通字符）。 */ -}}
+{{- $page := .page -}}
+{{- $dest := replace (.dest | default "") "\\" "/" -}}
+{{- $alt := .alt | default "" -}}
+{{- $title := .title | default "" -}}
+{{- $cls := .cls | default "" -}}
+{{- /* 默认（未传 cls）时 figure 上不输出任何 class，与历史 render-image hook 逐字节一致；
+     仅画廊传入 cls 时才附加 class。
+
+     ⚠ 必须**整段**开标签一起 safeHTML，不能写成 `<figure{{ $figAttr }} …>`：
+     Go 的 html/template 是上下文感知的，`<figure` 紧跟一个动态表达式时会被当作
+     "标签名/属性名尚未结束"的位置，于是把整个字符串判为不安全并替换成
+     `zgotmplz`（实测产物变成 `<figurezgotmplz style=…>`，标签直接损坏）。
+     $cls 是主题内部常量（如 "nb-gallery-item"），不含任何用户输入，safeHTML 安全。 */ -}}
+{{- $figOpen := cond (ne $cls "")
+      (printf "<figure class=\"nb-figure %s\" style=\"margin:1.4em 0\">" $cls)
+      "<figure style=\"margin:1.4em 0\">" -}}
+{{- $img := "" -}}
+{{- with $page -}}{{- $img = .Resources.GetMatch $dest -}}{{- end -}}
+{{- $processable := false -}}
+{{- with $img -}}
+  {{- if eq .ResourceType "image" -}}
+    {{- $processable = in (slice "jpeg" "png" "webp" "gif" "bmp" "tiff") .MediaType.SubType -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $img $processable -}}
+  {{- with $img -}}
+  {{- $cfg := site.Params.images | default dict -}}
+  {{- $widths := $cfg.widths | default (slice 480 768 1200) -}}
+  {{- $quality := $cfg.quality | default 85 -}}
+  {{- $format := $cfg.format | default "webp" -}}
+  {{- $sizes := $cfg.sizes | default "(max-width: 768px) 100vw, 900px" -}}
+  {{- $srcset := slice -}}
+  {{- $fallback := .RelPermalink -}}
+  {{- range $widths -}}
+    {{- if ge $img.Width . -}}
+      {{- $r := $img.Resize (printf "%dx %s q%d" . $format $quality) -}}
+      {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $srcset -}}
+    {{- $r := $img.Resize (printf "%dx %s q%d" $img.Width $format $quality) -}}
+    {{- $srcset = $srcset | append (printf "%s %dw" $r.RelPermalink $r.Width) -}}
+  {{- end -}}
+  {{ $figOpen | safeHTML }}
+    <img src="{{ $fallback }}" srcset="{{ delimit $srcset ", " }}" sizes="{{ $sizes }}"
+         width="{{ .Width }}" height="{{ .Height }}" alt="{{ $alt }}"
+         loading="lazy" decoding="async" data-zoom-src="{{ .RelPermalink }}"
+         {{ with $title }}title="{{ . }}"{{ end }}>
+    {{ with $title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+  {{- end -}}
+{{- else if $img -}}
+  {{ $figOpen | safeHTML }}
+    <img src="{{ $img.RelPermalink }}" alt="{{ $alt }}" loading="lazy" decoding="async"
+         data-zoom-src="{{ $img.RelPermalink }}"
+      {{ with $title }}title="{{ . }}"{{ end }}>
+    {{ with $title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+{{- else -}}
+  {{- $src := partial "util/rel-url.html" $dest | safeURL -}}
+  {{ $figOpen | safeHTML }}
+    <img src="{{ $src }}" alt="{{ $alt }}" loading="lazy" decoding="async"
+      {{ with $title }}title="{{ . }}"{{ end }}>
+    {{ with $title }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+  </figure>
+{{- end -}}

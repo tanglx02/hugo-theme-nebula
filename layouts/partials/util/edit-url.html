@@ -1,0 +1,87 @@
+{{- /* 编辑此页 URL（功能四 / 6.4）。
+
+     配置（站点级，全部可选；未配置 repo 时**不输出任何链接**）：
+       [params.editUrl]
+         repo       = 'https://github.com/owner/repo'   # 仓库地址（必须 http/https）
+         branch     = 'main'                            # 目标分支，默认 main
+         contentDir = 'content'                          # 内容目录，默认 content
+         provider   = 'github'                           # github | gitlab | gitee | custom
+         urlTemplate = 'https://host/edit/{branch}/{path}'  # provider=custom 时使用
+
+     关闭方式：
+       * 站点级：不写 params.editUrl（或 repo 为空/false）
+       * 文章级：Front Matter `editUrl: false` 或 `edit: false`
+
+     传入：Page 对象（.）
+     输出：dict
+       .enabled : bool   是否输出
+       .url     : string 编辑 URL（enabled 时才有效）
+
+     要点：
+       * 区分"网站文章 URL"与"Markdown 源文件 URL" —— 后者由 contentDir + .File.Path 组成，
+         且必须逐段 URL 编码（中文 / 空格 / 特殊字符），不能直接拼原始路径。
+       * repo 与生成结果都做 scheme 校验：非 http/https 一律视为未配置（拒绝 javascript: 等）。
+       * 无 .File（如 taxonomy / 首页等生成页）不输出。 */ -}}
+
+{{- $page := . -}}
+{{- $cfg := site.Params.editUrl | default dict -}}
+{{- $enabled := false -}}
+{{- $url := "" -}}
+
+{{- if $cfg -}}
+  {{- /* 文章级显式关闭 */ -}}
+  {{- $fe := true -}}
+  {{- $has1 := false -}}
+  {{- range $k, $v := $page.Params -}}
+    {{- if in (slice "editurl" "edit") (lower (printf "%v" $k)) -}}
+      {{- $has1 = true -}}
+      {{- $t := printf "%T" $v -}}
+      {{- if eq $t "bool" -}}
+        {{- $fe = $v -}}
+      {{- else if eq $t "string" -}}
+        {{- $s := lower (trim $v " \t\r\n") -}}
+        {{- if $s -}}{{- $fe = not (in (slice "false" "0" "no" "off") $s) -}}{{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and $fe $page.File -}}
+    {{- $repo := trim (printf "%v" ($cfg.repo | default "")) " \t\r\n" -}}
+    {{- $probe := lower (replaceRE `[\x00-\x20]+` "" $repo) -}}
+    {{- if or (hasPrefix $probe "http://") (hasPrefix $probe "https://") -}}
+      {{- $branch := trim (printf "%v" ($cfg.branch | default "main")) " \t\r\n" -}}
+      {{- $contentDir := trim (printf "%v" ($cfg.contentDir | default "content")) " \t\r\n" | strings.TrimPrefix "/" | strings.TrimSuffix "/" -}}
+      {{- $provider := lower (trim (printf "%v" ($cfg.provider | default "github")) " \t\r\n") -}}
+      {{- /* 源文件相对路径：contentDir + .File.Path（逐段编码）。
+           跨平台：Windows 上 .File.Path 用反斜杠，但 GitHub/GitLab 仓库路径一律用
+           正斜杠，且 urlquery 会把 `\` 编码成 %5C —— 直接拼会得到
+           `posts%5Ca.md` 这种**打不开**的编辑链接。故先归一为 `/` 再逐段编码。 */ -}}
+      {{- $filePath := replace ($page.File.Path | default "") "\\" "/" -}}
+      {{- $segments := slice -}}
+      {{- if $contentDir -}}{{- range (split (replace $contentDir "\\" "/") "/") -}}{{- $segments = $segments | append (urlquery .) -}}{{- end -}}{{- end -}}
+      {{- range (split $filePath "/") -}}{{- $segments = $segments | append (urlquery .) -}}{{- end -}}
+      {{- $path := delimit $segments "/" -}}
+      {{- $repoBase := strings.TrimSuffix "/" $repo -}}
+      {{- if eq $provider "custom" -}}
+        {{- $tpl := printf "%v" ($cfg.urlTemplate | default "") -}}
+        {{- if $tpl -}}
+          {{- $url = replace (replace $tpl "{branch}" $branch) "{path}" $path -}}
+        {{- end -}}
+      {{- else if eq $provider "gitlab" -}}
+        {{- $url = printf "%s/-/edit/%s/%s" $repoBase $branch $path -}}
+      {{- else if eq $provider "gitee" -}}
+        {{- $url = printf "%s/edit/%s/%s" $repoBase $branch $path -}}
+      {{- else -}}
+        {{- /* github 及默认 */ -}}
+        {{- $url = printf "%s/edit/%s/%s" $repoBase $branch $path -}}
+      {{- end -}}
+      {{- /* 最终结果再做一次 scheme 校验 */ -}}
+      {{- $uprobe := lower (replaceRE `[\x00-\x20]+` "" $url) -}}
+      {{- if and $url (or (hasPrefix $uprobe "http://") (hasPrefix $uprobe "https://")) -}}
+        {{- $enabled = true -}}
+      {{- else -}}
+        {{- $url = "" -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- return (dict "enabled" $enabled "url" $url) -}}

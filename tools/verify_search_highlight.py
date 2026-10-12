@@ -227,19 +227,25 @@ def _run_all():
                  else "未命中")
 
         # ---------- ⑥ XSS ----------
+        # ⚠ 非空断言：旧实现用 all(r["imgs"] == 0 for r in rows)，
+        #   当 rows 为空时 all() 恒为 True -> XSS 检查"全空过"（TEST-DEFECT-010）。
+        #   必须先证明"确实搜到了注入条目"，再看它有没有被渲染成真实元素。
         rows = search(page, "onerror")
+        H.record("注入型条目确实被搜到（否则后面的 XSS 断言是空转）",
+                 len(rows) >= 1, f"{len(rows)} 条")
         H.record("注入型内容渲染为文本：结果里没有真实 <img> 元素",
-                 all(r["imgs"] == 0 for r in rows),
-                 f"{sum(r['imgs'] for r in rows)} 个 img 元素")
+                 len(rows) >= 1 and all(r["imgs"] == 0 for r in rows),
+                 f"{sum(r['imgs'] for r in rows)} 个 img 元素（{len(rows)} 条结果）")
         H.record("注入型内容未执行脚本（window.__xss 未定义）",
                  page.evaluate("() => typeof window.__xss === 'undefined'"),
                  "window.__xss 未定义")
         H.record("结果里没有 <script> 元素",
-                 all(r["scripts"] == 0 for r in rows),
-                 f"{sum(r['scripts'] for r in rows)} 个 script")
+                 len(rows) >= 1 and all(r["scripts"] == 0 for r in rows),
+                 f"{sum(r['scripts'] for r in rows)} 个 script（{len(rows)} 条结果）")
         rows = search(page, "payload")
+        H.record("XSS 条目确实被搜到", len(rows) >= 1, f"{len(rows)} 条")
         H.record("XSS 条目的 href 仍是构造时的相对 URL（未被注入协议）",
-                 all(r["href"] in ("", "/posts/xss/") for r in rows),
+                 len(rows) >= 1 and all(r["href"] in ("", "/posts/xss/") for r in rows),
                  f"href={[r['href'] for r in rows][:3]}")
 
         # ---------- ⑦ 源文本里本身就带 HTML 实体 ----------

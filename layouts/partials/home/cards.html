@@ -1,0 +1,49 @@
+{{- /* 首页布局：cards（默认，与历史外观一致）。
+       焦点区（hero，置顶 + 最新最多 3 篇）+ 卡片流 + 侧栏。 */ -}}
+{{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+{{- $posts := where site.RegularPages "Section" "in" $contentSections -}}
+{{- $ordered := sort $posts "Date" "desc" -}}
+{{- $pinned := where $posts "Params.sticky" true -}}
+{{- $heroPages := first 3 (union $pinned $ordered) -}}
+{{- $restPages := complement $heroPages $ordered -}}
+
+{{ if $heroPages }}
+<section class="hero">
+  {{- $main := index $heroPages 0 -}}
+  <a class="hero-main" href="{{ $main.RelPermalink }}">
+    {{- $cover := "" -}}
+    {{- with $main.Params.cover }}{{ $cover = . }}{{ else }}{{ with $main.Params.images }}{{ $cover = index . 0 }}{{ end }}{{ end -}}
+    {{ if $cover }}<img src="{{ partial "util/rel-url.html" $cover | safeURL }}" alt="{{ $main.Title }}">{{ end }}
+    <div class="hero-mask"></div>
+    <div class="hero-body">
+      <div class="hero-badges">
+        {{ if $main.Params.sticky }}<span class="chip chip-sticky">{{ i18n "common.sticky" }}</span>{{ end }}
+        {{ range first 1 ($main.Params.categories | default slice) }}<span class="chip" style="background:rgba(255,255,255,.2);color:#fff">{{ . }}</span>{{ end }}
+      </div>
+      <h2 class="hero-title">{{ $main.Title }}</h2>
+      <p class="hero-desc">{{ with $main.Description }}{{ . }}{{ else }}{{ $main.Summary | plainify | truncate 90 }}{{ end }}</p>
+    </div>
+  </a>
+
+  {{ if gt (len $heroPages) 1 }}
+  <div class="hero-side">
+    {{ range after 1 $heroPages }}
+      {{- $c := "" -}}
+      {{- with .Params.cover }}{{ $c = . }}{{ else }}{{ with .Params.images }}{{ $c = index . 0 }}{{ end }}{{ end -}}
+      <a class="hero-mini" href="{{ .RelPermalink }}">
+        {{ if $c }}<img src="{{ partial "util/rel-url.html" $c | safeURL }}" alt="{{ .Title }}">{{ end }}
+        <div class="hero-mini-body"><h3 class="hero-mini-title">{{ .Title }}</h3></div>
+      </a>
+    {{ end }}
+  </div>
+  {{ end }}
+</section>
+{{ end }}
+
+<div class="layout">
+  <div>
+    {{ partial "home/latest.html" $restPages }}
+  </div>
+
+  <aside class="sidebar">{{ partial "sidebar.html" . }}</aside>
+</div>

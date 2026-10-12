@@ -1,0 +1,36 @@
+{{- /* 数学语法探测（功能四 / 6.3）—— 在 <head> 阶段判断"本页正文是否含数学定界符"，
+     把结果写入 Page.Store，供 scripts.html 决定是否按需注入 KaTeX。
+
+     为什么不用"页面级 front matter 开关"做按需：作者极易忘记开；而"有语法即加载"
+     更符合直觉（写了 $x$ 就会渲染）。同时保留 params.math.enable 与逐页 math:false 两种关闭方式。
+
+     探测规则（避免误报）：
+       1. 先剔除 **围栏代码块**（``` / ~~~ 包裹）—— 代码示例里的 $ 不算公式；
+       2. 再剔除 **行内代码**（`…`）；
+       3. 把转义的 \\$ 替换为占位符（价格 "\\$100" 不应触发）；
+       4. 命中任一即可：$$（块级）、\\( 或 \\[（行内/块级定界符）、
+          $…$（行内，要求 $ 后紧跟非空白且非 $，避免孤立美元符号误判）。
+
+     RE2 不支持 lookbehind，故"转义"用替换法处理而非负向断言。 */ -}}
+
+{{- $rc := "" -}}
+{{- with .RawContent -}}{{- $rc = . -}}{{- end -}}
+{{- if $rc -}}
+  {{- /* 反引号在 Go 模板里是原始字符串定界符，不能直接写字面量——用 %c 96 生成。 */ -}}
+  {{- $bt := printf "%c" 96 -}}
+  {{- $triple := printf "%s%s%s" $bt $bt $bt -}}
+  {{- $fenceRe := printf `(?s)%s.*?%s|~~~.*?~~~` $triple $triple -}}
+  {{- $inlineRe := printf `%s[^%s]*%s` $bt $bt $bt -}}
+  {{- $s := replaceRE $fenceRe "" $rc -}}
+  {{- $s = replaceRE $inlineRe "" $s -}}
+  {{- $s = replace $s "\\$" "__NB_ESC_DOLLAR__" -}}
+  {{- $has := false -}}
+  {{- if findRE `\$\$` $s 1 -}}
+    {{- $has = true -}}
+  {{- else if or (in $s "\\(") (in $s "\\[") -}}
+    {{- $has = true -}}
+  {{- else if findRE `\$[^\s$][^$\n]*\$` $s 1 -}}
+    {{- $has = true -}}
+  {{- end -}}
+  {{- if $has -}}{{- .Store.Set "nebula_has_math" true -}}{{- end -}}
+{{- end -}}

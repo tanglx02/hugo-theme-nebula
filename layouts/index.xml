@@ -21,16 +21,21 @@
     <generator>Hugo -- gohugo.io</generator>
     <atom:link href="{{ "index.xml" | absURL }}" rel="self" type="application/rss+xml"/>
     {{- range first $limit (where site.RegularPages "Section" "in" $contentSections) }}
+    {{- $authors := partial "util/authors.html" (dict "page" .) -}}
+    {{- $ext := partial "util/external-url.html" . -}}
+    {{- $link := cond $ext.isExternal $ext.url .Permalink -}}
     <item>
       <title>{{ .Title }}</title>
-      <link>{{ .Permalink }}</link>
-      <guid isPermaLink="true">{{ .Permalink }}</guid>
+      <link>{{ $link }}</link>
+      <guid isPermaLink="{{ if $ext.isExternal }}false{{ else }}true{{ end }}">{{ $link }}</guid>
       <pubDate>{{ .Date.Format "Mon, 02 Jan 2006 15:04:05 -0700" }}</pubDate>
       {{- if ne (.Lastmod.Format "2006-01-02") (.Date.Format "2006-01-02") }} {{- /* machine-format: pubDate 比较（决定 atom:updated），非 UI */}}
       <atom:updated>{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}</atom:updated>
       {{- end }}
-      {{- with .Params.author }}<author>{{ . }}</author>{{ end }}
-      {{- with site.Params.author }}<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">{{ . }}</dc:creator>{{ end }}
+      {{- /* 作者（功能四 / 6.5）：每位作者一个 <author>，与正文 / JSON-LD 一致。 */ -}}
+      {{- range $authors.names }}<author>{{ . }}</author>
+      {{- end }}
+      {{- with $authors.primary }}<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">{{ . }}</dc:creator>{{ end }}
       {{- range .Params.categories }}<category>{{ . }}</category>{{ end }}
       {{- range .Params.tags }}<category>{{ . }}</category>{{ end }}
       <description>{{ (.Description | default (.Summary | plainify)) | html }}</description>

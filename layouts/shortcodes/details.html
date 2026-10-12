@@ -1,0 +1,45 @@
+{{- /* 折叠块：可选展开的补充说明，零 JavaScript（原生 <details>/<summary>）。
+
+     用法（只支持 {{< >}} 形式）：
+       {{< details "为什么这里的 false 一定生效？" >}}
+       正文…
+       {{< /details >}}
+
+     要指定展开状态时，**必须全部用具名参数** —— Hugo 不允许混用位置参数与
+     具名参数（会直接报 `Cannot mix named and positional parameters`）：
+
+       {{< details title="默认展开" open="true" >}}    ✅ 全具名
+       正文…
+       {{< /details >}}
+
+     这条限制对**所有** shortcode 生效，不只是本组件：`{{< details "标题" open="true" >}}`
+     会构建失败（已作为回归断言记录在 tools/check_content_components.py 的 D9 小节）。
+
+     为什么需要它（修掉的一个真实内容丢失缺陷）：
+       主题默认 `markup.goldmark.renderer.unsafe = false`（安全默认值），
+       直接写在 Markdown 里的裸 `<details>` 会被 goldmark 当作原始 HTML **整段
+       丢弃**，只在构建日志里留一行 `WARN Raw HTML omitted`——正文没了，构建却
+       成功（exampleSite 的 reading-experience.md 就踩了这个坑）。
+       改用 shortcode 后，`.Inner` 走正常的 markdownify 管线，内容完整渲染，
+       日志也不再出现该警告。
+
+     可访问性：<details> 是原生元素，键盘（Enter/Space）与读屏天然可用，
+     不需要 tabindex / role / aria-* 之类的补丁，也不需要任何脚本。
+     `open` 只接受真值（true / 1 / yes / on，不区分大小写），默认闭合。
+
+     可嵌套：与 tabs/steps/filetree 一致，被嵌在其它组件里时以占位符
+     token 返回，避免父级 markdownify 再次丢弃原始 HTML。 */ -}}
+{{- $title := .Get 0 | default (.Get "title") -}}
+{{- $open := .Get "open" -}}
+{{- $isopen := false -}}
+{{- if $open -}}
+  {{- $v := lower (printf "%v" $open) -}}
+  {{- $isopen = in (slice "true" "1" "yes" "on") $v -}}
+{{- end -}}
+{{- $inner := .Inner | markdownify -}}
+{{- $out := printf "<details class=\"nb-details\"%s>\n<summary class=\"nb-details-summary\">%s</summary>\n<div class=\"nb-details-body\">%s</div>\n</details>" (cond $isopen " open" "") (htmlEscape $title) $inner | safeHTML -}}
+{{- if .Parent -}}
+  {{- partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) -}}
+{{- else -}}
+  {{- $out -}}
+{{- end -}}

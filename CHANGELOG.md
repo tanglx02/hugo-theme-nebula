@@ -3,6 +3,199 @@
 本文件记录 Nebula 主题的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 第三轮：功能完善与最终收尾（功能冻结候选版本）
+
+功能完善轮 + 最终收尾总任务。**功能冻结候选**：等待独立第三方全面验收，未打 tag、未发 Release。
+问题全量追踪见 `docs/final-cleanup-issue-tracker.md`（R4 系列）；本轮交接报告见
+`docs/最终交接报告-功能冻结候选版.md`。
+
+### 新增功能
+
+- **画廊**：`{{</* gallery */>}}` shortcode，复用图片 Pipeline 自动补尺寸，灯箱联动。
+- **Mermaid / KaTeX（按需加载 + SRI）**：`detect-math` 探测正文是否含公式/图表，仅命中时
+  加载 `static/vendor` 内置资源（示例站），生产构建默认零外部 CDN 请求。
+- **作者工作流（功能四 / 6.5）**：`util/authors.html` 统一来源，贯通 meta / JSON-LD /
+  RSS / 卡片 / 正文；**外链文章（6.6）**：正文页顶部提示条 + 卡片/搜索/RSS 按站外地址直达；
+  **编辑此页（6.4）**：`editURL` 模板函数安全拼装（禁 javascript: 等 scheme）。
+- **作者档案页（功能四 / M16，可选启用）**：`util/author-config.html` 单点配置；
+  默认 `params.authors.pages=false`：主题**不渲染任何作者资料结构**（`pages` 只控制主题资料
+  结构渲染，**不控制** Hugo taxonomy 页面生成）；**URL 与历史逐字节一致的前提是站点未注册
+  `authors` taxonomy**（Hugo 是否生成 `/authors/` 页面由 taxonomy 注册决定）；
+  启用（注册 `authors` taxonomy + `pages=true`）后生成 `/authors/` 索引与 `/authors/<term>/`
+  档案页并打通文章互链。CJK/特殊字符走 `site.Taxonomies` 按标题匹配（**不用 `urlize`**，规避 CJK `GetPage` NONE）。
+  门禁 `check_author_pages.py` **43 项（设 `HUGO_MATRIX_DIR` 时 47 项）**。**原「M16 接受为限制」的顾虑（破坏默认 URL 结构）已由可选启用设计化解**，M16 转为已实现。
+  （口径澄清：默认 URL 零改变由"站点**不注册 `authors` taxonomy**"保证；仅设 `params.authors.pages=false`
+  而 taxonomy 仍注册时 Hugo 依旧生成 `/authors/`，页数不变。详见交接报告 §8.1。）
+- **外观配置完善（功能五 / 6.1）**：`util/appearance.html`，主题色/圆角/字体等外观参数
+  收敛为单一生效链，避免配置互相覆盖。
+- **exampleSite 完整功能展示站**：新增「作者与外观」「外链阅读」「媒体与图表」演示文章
+  （中英双语），内置 mermaid/katex 本地资源（带 SRI）。
+
+### 修复（本轮自测暴露，R4 系列）
+
+- **R5-001（产品 · M16 引入的可访问性回归）**：新增的 `.author-link` 首版只写 `color`/`text-decoration`，
+  `<a>` 仍是 **inline** —— `min-height` 对 inline 元素无效（同 R4-007 根因），320–430px 实测 40×24px，
+  被 `audit.py` 的 `small-tap-target`（WCAG 2.5.8）报 24 处。改为 `display:inline-flex; align-items:center;
+  min-height:26px`；并在 `check_author_pages.py` 新增 ON22–ON24 断言**构建产物 CSS** 的触控目标契约。
+  复验：chromium 7 视口 `TOTAL PROBLEMS: 0`；故障注入（退回 inline）→ ON23/ON24 变红。
+- **R4-007（产品）**：外链提示条 flex 块级化导致链接触控目标 98×23px 低于 24px（WCAG 2.5.8），
+  `.article-external-notice a` 改 `inline-flex + min-height:26px`。
+- **R4-008（测试）**：`verify_search_shard.py` 断言双读 DOM 造成 firefox 偶发假红，
+  改「一次快照 + 有界稳定重试」后 3 连跑全绿。
+- **R4-001~006**：测试工具默认路径修复（`link_check` / `verify_baseurl` / `verify_multisection`
+  裸跑可用）、假守卫改结构级判据、残留清理，详见 tracker。
+
+### 测试与文档
+
+- 故障注入自证：7 组关键门禁全部证明"能失败"（见 tracker §10.5）。
+- 五版本固定矩阵构建全绿（`0.128.0 / 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0`）；
+  三浏览器（chromium/firefox/webkit）全量门禁回归通过。
+  > 更正：此前写作"六版本"，但本地矩阵脚本（`tools/check_content_components.py`
+  > `HUGO_VERSIONS`、`tools/check_author_pages.py` MX 断言）实际只跑 **5 个固定版本**。
+  > CI `build` job 的 matrix 确实有 **6 个条目**，第 6 个是 `latest`（由
+  > `peaceiris/actions-hugo` 动态解析，非固定版本号，无法给出具体版本号/原始日志）。
+  > 两者不可混为一谈，故此处统一更正为"五版本固定矩阵 + CI 含 latest 动态条目"。
+- README 重写（含功能一~五独立小节与完整配置参考）、10 张正式截图（JPG，共 2.75 MB）、
+  `theme.toml` 同步。
+
+## [未发布] — 第二轮集中修复（独立复验报告）
+
+针对 `Nebula-v1.0.9-修复分支-独立复验报告.md` 确认的问题做**有范围控制的修复**：
+不改技术栈、不加无关功能、不降低任何断言。**尚未发布**（未打 tag、未创建 Release）。
+基线为已复验的 `90b1f50`，修复分支 `fix/third-party-audit-v1.0.9-r2`。
+
+### 产品缺陷
+
+- **BUG-R2-003（回归）未配置头像渲染破损图**：SEC-03 加固把判断从 `{{ with site.Params.avatar }}`
+  改成 `{{ if $avatarURL }}`，而 `rel-url.html` 对空串返回站点根（`/` 或 `/blog/`）→
+  卡片与侧栏输出 `<img src="/">` 破损图，字母头像兜底成死代码。
+  新增 `partial "util/avatar-url.html"`：空/纯空白/危险 scheme/**解析成站点根**一律视为无头像，
+  调用方据此回退（卡片→字母头像，侧栏→内置 `img/avatar.svg`）。子目录部署同样正确。
+- **BUG-R2-001 contentLimit 中国中文正文截断越界**：`index.json` 用**字节数** `len` 判断，
+  却拿该字节数当 **rune** 结束索引调用 `slicestr` → 中文正文（rune 数 < limit < 字节数）
+  越界 panic、整站构建失败（BUG-P1-003 同根因清扫遗漏）。改用
+  `partial "util/slice-runes.html"`（`countrunes` 语义）。
+- **BUG-R2-002 / DOC-R2-001 能力门限保守一个小版本**：`resources.Publish` 自 **Hugo 0.166.0**
+  起提供，此前误设 0.167.0。版本探测改为语义化数值比较（major/minor），
+  报错信息、README、`theme.toml`、`docs/稳定基线.md`、`docs/测试说明.md` 同步修正为 0.166+。
+- **BUG-R2-004 关闭弹窗后页面滚动跳变**：焦点归还触发按钮时未用 `preventScroll`，
+  Chromium/WebKit 会把文档滚回触发元素在流中的位置。工厂 `close()` 与移动菜单 Escape
+  改用 `focus({ preventScroll: true })`，保留焦点可访问性。
+  `verify_modal_scroll.py` 新增断言 **2d**：关闭弹窗后 scrollY 相对打开位置漂移须 ≤60px
+  （修复前 Chromium −358px / WebKit −65px，修复后三引擎 0px）；`SCROLL_FOCUS_BUG=1`
+  可注入"未阻止滚动"自证该断言会变红（原测试只验证"能滚动"，未验证"位置不变"）。
+- **BUG-R2-005 JSON-LD `author.name: null`**：无作者时不再输出 `"author":{"name":null}`，
+  而是**省略 author 字段**；有作者（站点级或文章级）时输出正常字符串姓名。
+
+### 测试体系缺陷
+
+- **TEST-DEFECT-R2-006 子目录测试假绿**：`subdir_test.py` 复用 `tmp/public-blog` 不清空，
+  删源文章后旧 HTML 仍在 → 假绿。构建前清理，且负向场景必须能失败。
+- **TEST-DEFECT-R2-001 索引正文异常截断仍通过**：`check_index.py` 增加尾部标记 +
+  按 `contentLimit` 约定的截断校验，异常缩短即判错。
+- **TEST-DEFECT-R2-002 CI 步骤静默消失仍通过**：`check_ci_jobs.py` 增加关键步骤 /
+  运行命令 / 条件 / `continue-on-error` / job 级恒假条件 / 三引擎门控结构契约；
+  删除、禁用、假条件替代命令均判红。新增 `check_ci_jobs.py --selftest`：
+  对 7 类故障注入**逐一自证门禁必红**（删除步骤 / 步骤 `if:false` / job `if:false` /
+  `continue-on-error` / 空转 `echo` / 单引擎门控 / 替换 matrix 取值）。
+  同时把 6 个涉及浏览器差异的检查从 chromium 单引擎改为**三引擎**运行。
+- **TEST-DEFECT-R2-008 忽略 Hugo 退出码**：`verify_baseurl.py` 显式检查构建退出码；
+  新增 `--selftest-exitcode`：用"残留产物 + 非零退出码"的假 hugo 自证绝不读残留产物得 PASS。
+  构建目录加入 PID 保证并发安全、构建前清空目录、`--noBuildLock` 避免锁残留。
+- **TEST-DEFECT-R2-007 HTML inventory 缺失静默跳过**：缺文件 / 与本次产物不符即硬失败；
+  inventory 增加 `build_id` 构建指纹，跨构建复用即 FATAL。
+- **TEST-DEFECT-R2-003/004/005 临时产物与路径**：默认路径基准统一、失败/中断清理、
+  `tools/_ml-giscus.toml` 纳入 `.gitignore`。
+- **BUG-P3-006 触控目标覆盖不全**：`≤900px` 把搜索按钮与品牌入口一并提升到 44×44
+  （用 `min-height` 避免窄屏溢出）；README 明确区分"已提升"与"仍为 AA 24×24 / 内联豁免"项。
+- **BUG-P3-004 图片尺寸 / CLS 限制**：README 已知限制明确标注为**已记录限制**，不声称完全解决。
+- **第三方 SRI / CSP**：README 说明为**可选设计**，由使用者自行配置，主题不代为承担风险。
+
+---
+
+## [未发布] — 独立第三方测试报告的集中修复轮
+
+针对 `Nebula-v1.0.9-独立第三方全面测试报告.md` 确认的问题做**有范围控制的修复**：
+不改技术栈、不加无关功能、不降低任何断言。**尚未发布**（未打 tag、未创建 Release）。
+
+### 已修复（P1，均已在三版本 / 三引擎实测复现后修复并回归）
+
+- **BUG-P1-001 搜索弹窗关闭后页面滚动锁死**：`body.overflow` 的锁定与恢复原先写在
+  搜索模块自己的 `open()/close()` 里，遮罩点击与 Escape 走的是 `createModalA11y`
+  内部的 `close()`，于是这两条路径关闭后 overflow 永久停在 `hidden`。
+  现在滚动锁由工厂用**引用计数**统一管理：恢复打开前的真实值、多模态互不干扰、
+  任何关闭路径都无法绕过。新增 `tools/verify_modal_scroll.py`（19 项，三引擎）。
+- **BUG-P1-002 默认 auto 在 Hugo 0.128–0.162 上构建失败**：分片分支调用
+  `resources.Publish`（0.167 起才提供）。现在做**版本能力探测**：旧版本 `auto`
+  超过阈值时自动回退为单文件索引（WARN，构建成功、全文能力不变）；显式
+  `mode = "shard"` 仍明确报错并给出替代方案。新增 `tools/check_search_modes.py`
+  按**真实索引字节数**验证 below/equal/above 边界与显式模式。
+- **BUG-P1-003 `slicestr` 越界终止整站构建**：空/单字符/单 CJK/单 emoji/纯空白标题、
+  空站点标题、无头像且 author 为空都会让构建失败。新增
+  `partial "util/slice-runes.html"`（用 `countrunes` 判断 rune 长度，而非 `len` 的字节数），
+  统一替换三处越界调用。
+
+### 已修复（P2）
+
+- **BUG-P2-002 英文站 769–869px 横向溢出**：头部导航断点由 768px 提升到 **900px**
+  （英文导航更长），新增 `tools/check_responsive_overflow.py`
+- **BUG-P2-003 浅色主题对比度不足 WCAG AA**：引入用途分离的颜色 token
+  （`--brand-solid` 承载白字 / `--brand-ink`·`--accent-ink` 作文字色 / 加深 `--text-muted`），
+  深浅两套主题全部达标；新增 `tools/verify_contrast.py`
+- **BUG-P2-004 JSON-LD 双重编码（785 页）**：改为整体 `dict` 序列化后一次
+  `jsonify | safeJS` 输出，从结构上杜绝二次编码
+- **BUG-P2-001** burger 增加 `aria-expanded` / `aria-controls`，Escape 可关闭菜单
+- **BUG-P2-005** 搜索 `score()` 纳入 `series` 字段
+
+### 已修复（P3 / 安全 / 文档）
+
+- **BUG-P3-001** 缺 `date` 的文章不再显示 `0001年1月1日`：页面显示本地化
+  "未标注日期"或省略，JSON-LD 不输出日期字段；新增 `zero-date` 门禁规则
+- **BUG-P3-002** 增加 `<noscript>` 提示（搜索与主题切换需要 JS）
+- **BUG-P3-003 / SEC-02** busuanzi 改用 `https://` 绝对地址；`integrity` 可选配置；
+  README 新增"供应链与 CSP 建议"
+- **BUG-P3-005** `.Language.LanguageCode`（0.158 起弃用）改走
+  `util/locale.html`，按版本用 `.Locale` 或回退，消除弃用 WARN
+- **BUG-P3-006** ≤900px 时图标按钮与主按钮提升到 44×44
+- **BUG-P3-007** 空正文不再显示"0 分钟 / 0 字"
+- **SEC-01** 搜索结果链接增加 scheme 白名单，非法项渲染为不可点击文本
+- **SEC-03** `util/rel-url.html` 在源头拒绝 `javascript:` / `vbscript:` / `data:`(非 image)
+- **DOC-01/02** README 与 `theme.toml` 说明 auto 回退行为与漏配 `outputs` 的后果
+- **DOC-03** 移除被跟踪的 `exampleSite/.hugo_build.lock`；截图 6.67MB → 3.84MB
+
+### 测试体系缺陷修复（TEST-DEFECT）
+
+- **001** JSON-LD 校验因 minify 去引号而恒真 → 正则容忍无引号属性 + **双重编码检测**
+  + og:title 交叉校验 + "全站 0 块即失败"兜底
+- **002** 安全门禁的 URL/事件属性正则只认双引号 → 兼容单引号 / 无引号；
+  同时补上"站点自身域名视为同源"避免误报
+- **003** job 级 `permissions: write-all` 被 `continue` 放过 → 现在判红
+- **004** 40 位 SHA 固定被当成"版本号解析失败"判红 → 现在接受并打印提示
+- **005** `verify_multisection` 源码扫描路径不存在导致恒真 → 路径修正 + 空转即硬失败
+- **006** 索引正文为空不判错、截断仅 WARN、分片模式不校验正文 → 全部改为判错
+  （空正文按 ≥25% 比例阈值判定，避免误伤"作者确实没写正文"）
+- **007** `check_seo` 无 posts 目录时真空通过 → 至少检查到 1 页否则硬失败
+- **008** 安全门禁 0 个 HTML 仍 PASS → 空产物硬失败
+- **009** `subdir_test.py` 无退出码 → 接入统一 Harness
+- **010** 多处恒真断言（空串 endswith、`n >= 0`、结果为空时 XSS 断言全空过等）→ 补非空断言
+- **011** `check_docs` 版本硬编码 1.0.7 → 按 git tag / CHANGELOG 推断并与基线文档交叉核对
+- **012** `audit.py` 采样硬编码分页 token `page` → 全部改用检测到的 token
+- **013** 测试数据未覆盖空标题 / 单字符标题 / 无 author / 空正文 / 非 ASCII slug / BOM → 已补齐夹具
+- **014** `gen_testdata.clean()` 遇 `zz-images-bundle/` 目录崩溃、多 section 数据不清理 → 已修复
+- **015** `check_ci_jobs` 只比数量、注释自指 → 增加 job 集合 / matrix 取值 / tag 门控结构校验
+- **016** 三个脚本默认路径基准不一致 → 统一为 `<repo>/public`
+- **019** `verify_search_modal` 语言覆盖不足只提示 → CI 设 `REQUIRE_SEARCH_LANGS=1` 后判失败
+- **020** chromium 专属步骤可能静默不执行 → 校验 `matrix.*` 条件取值真实存在
+
+### 额外发现（不在原报告内，修复过程中定位）
+
+- **Hugo 0.128 不支持 `reflect.IsImageResourceProcessable`**，而 `render-image.html`
+  直接使用它；CI 的 build job 未安装 Pillow，永远走不到图片处理分支，因此长期未被发现。
+  现改为 MediaType 白名单（全版本一致），并让 build job 安装 Pillow + 断言图片管线生效。
+- **未配置 `taxonomies` 的站点无法构建**：`sidebar.html` 对
+  `site.Taxonomies.categories` 直接 `len` 会报 `reflect.Value.Type on zero Value`。
+  已用 `default dict` 兜底。
+
 ## [1.0.9] — 2026-10-09
 
 最终封版：搜索日期 i18n、pagination crawler 判定、GitHub Actions 现代化。
@@ -101,7 +294,7 @@ Release 全站 inventory、pagination crawler、search / modal / i18n / image / 
   焦点移入 / Tab·Shift+Tab 循环 / 背景 `inert`+`aria-hidden` / Escape /
   遮罩关闭 / 焦点恢复 / 幂等开关 / 深链无触发元素时退化为聚焦 dialog 自身
 - 移除两个组件各自重复的键盘处理（避免双重触发），灯箱行为无回归（21/21）
-- 新增 `tools/verify_search_modal.py`：14 类断言共 19 项，含 zh-CN / en / zh-TW
+- 新增 `tools/verify_search_modal.py`：19 项断言，含 zh-CN / en / zh-TW
   可访问名称（en 站不得出现硬编码中文）
 - 改进 `/` 快捷键：原先要求焦点**恰为** body，实际关闭搜索后焦点停在触发器上导致
   快捷键失效；改为「非输入上下文」判断

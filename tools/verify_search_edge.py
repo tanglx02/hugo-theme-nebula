@@ -18,6 +18,10 @@ from _testlib import Harness, launch as _launch, reachable, guard  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8088"
+# 引擎参数（TEST-DEFECT-R2-002）：本脚本验证搜索交互与竞态，属浏览器差异项，
+# 因此支持在 chromium / firefox / webkit 上运行（默认 chromium 保持向后兼容）。
+BROWSER = sys.argv[2] if len(sys.argv) > 2 else (
+    os.environ.get("PW_BROWSERS") or "chromium")
 
 DATE_LOCALE = os.environ.get("SEARCH_DATE_LOCALE", "zh-CN")
 EXPECTED_DATE = {
@@ -49,10 +53,12 @@ def search(page, kw, wait=700):
 
 def _run_all():
     with sync_playwright() as p:
+        launcher = {"chromium": p.chromium, "firefox": p.firefox,
+                    "webkit": p.webkit}.get(BROWSER, p.chromium)
         try:
-            b = _launch(p.chromium)
+            b = _launch(launcher)
         except Exception as e:
-            H.fatal_error("chromium 浏览器启动失败", str(e)[:200])
+            H.fatal_error(f"{BROWSER} 浏览器启动失败", str(e)[:200])
             return
         ctx = b.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = ctx.new_page()
@@ -69,8 +75,6 @@ def _run_all():
             ("英文小写", "docker", lambda n: n > 0),
             ("数字关键词", "48000", lambda n: n > 0),
             ("emoji 关键词", "🚀", lambda n: n > 0),
-            ("标点/符号", "&", lambda n: n >= 0),
-            ("正则特殊字符", "REGEX.*+?^${}()|[]\\", lambda n: n >= 0),
             ("多关键词 AND", "docker 逃逸", lambda n: n > 0),
             ("多关键词 AND（不相关）", "docker zzzzzz", lambda n: n == 0),
             ("文章末尾关键词", "FOXTROT10000", lambda n: n > 0),
@@ -88,6 +92,20 @@ def _run_all():
         # 结果上限
         n = search(page, "安全")
         rec("结果数上限 <= 20", n <= 20, f"{n} 条")
+
+        # 标点 / 正则元字符 / 尖括号 / 引号：
+        # TEST-DEFECT-010：旧断言 `lambda n: n >= 0` 恒真，等于什么都没查。
+        # 正确语义是"必须落到一个确定状态"：要么有结果，要么显示明确的空态提示，
+        # 且全过程不产生 JS 异常（正则未转义会让 RegExp 抛错）。
+        js_errs = []
+        page.on("pageerror", lambda e: js_errs.append(str(e)[:120]))
+        for kw in ("&", "REGEX.*+?^${}()|[]\\", "<hello>", '"quoted"', "'single'"):
+            cnt = search(page, kw)
+            empty = page.locator(".search-empty").count()
+            rec(f'特殊查询「{kw[:16]}」有确定结果状态（有结果或明确空态）',
+                (cnt > 0) or (empty > 0), f"{cnt} 条结果 / 空态提示={empty}")
+        rec("特殊查询未产生 JS 异常（正则元字符已正确转义）",
+            not js_errs, f"{js_errs[:2]}")
 
         # 搜索结果日期本地化（构建期 i18n，前端不参与格式化）
         pattern = EXPECTED_DATE.get(DATE_LOCALE)

@@ -3,8 +3,22 @@
 <head>
   {{ partial "head.html" . }}
 </head>
-<body data-lightbox="{{ .Params.lightbox | default true }}">
-  <div class="progress-bar" id="progressBar"></div>
+{{- /* ---------- 阅读体验（功能二）开关 ----------
+      站点级默认与文章级覆盖**统一在 head.html 解析**并写入 .Store，
+      这里只做读取 —— 保证开关逻辑只有一处定义，且"专注模式是否可用"
+      在 <head> 就已知（可提前应用持久化状态，避免刷新闪动）。
+
+      默认值与历史观感严格一致：
+        - progressBar / backToTop 此前**始终渲染**，故默认 true（默认外观不变）；
+        - focusMode 是新增能力，默认 false（不改变既有行为）。
+      详见 layouts/partials/head.html 与 layouts/partials/util/bool-param.html。 */ -}}
+{{- $isPage := .IsPage -}}
+{{- $pbar := .Store.Get "nebula_pbar" -}}
+{{- $stop := .Store.Get "nebula_stop" -}}
+{{- $sfoc := .Store.Get "nebula_focus" -}}
+<body data-lightbox="{{ (partial "util/bool-param.html" (dict "page" . "key" "lightbox" "default" true)).value }}"
+      data-progress="{{ $pbar }}" data-focus="{{ $sfoc }}">
+  {{ if $pbar }}<div class="progress-bar" id="progressBar" role="presentation"></div>{{ end }}
 
   {{ partial "header.html" . }}
 
@@ -15,9 +29,22 @@
   {{ partial "footer.html" . }}
   {{ partial "search-modal.html" . }}
 
+  {{ if $stop }}
   <button type="button" class="to-top" id="toTop" aria-label="{{ i18n "common.backToTop" }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
   </button>
+  {{ end }}
+
+  {{- /* 专注模式入口：仅在文章页且该页开启时输出。
+       按钮常驻 DOM，由 main.js 维护 aria-pressed；html.focus-on 为激活态。 */ -}}
+  {{ if and $isPage $sfoc }}
+  <button type="button" class="focus-toggle" id="focusToggle"
+          aria-pressed="false" aria-label="{{ i18n "reading.focusMode" }}" title="{{ i18n "reading.focusMode" }}">
+    <svg class="i-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"/></svg>
+    <svg class="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 00-1 1v4M15 4h4a1 1 0 011 1v4M9 20H5a1 1 0 01-1-1v-4M15 20h4a1 1 0 001-1v-4"/></svg>
+    <span class="focus-label">{{ i18n "reading.focusMode" }}</span>
+  </button>
+  {{ end }}
 
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true"
        aria-label="{{ i18n "lightbox.label" }}" tabindex="-1" aria-hidden="true">
@@ -26,7 +53,7 @@
          审计脚本会把它误判成"懒加载图片未加载"。 */}}
     <img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
     <button class="lightbox-close" type="button" aria-label="{{ i18n "lightbox.close" }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
   </div>
 

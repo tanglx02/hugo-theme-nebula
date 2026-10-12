@@ -3,8 +3,46 @@ locale = 'zh-CN'
 title = '星云技术笔记'
 theme = 'hugo-theme-nebula'
 hasCJKLanguage = true
-defaultContentLanguage = 'zh'
+# ⚠ 语言键**必须**与 i18n 文件名一致（这里对应 i18n/zh-CN.yaml）。
+#   写成 'zh' 在 Hugo ≥ 0.162 上会被宽松解析为 zh-CN 而"看起来正常"，
+#   但在 0.128 / 0.148 上找不到 i18n/zh.yaml，于是**全部 UI 文案变空字符串**
+#   （导航、aria-label、按钮、日期格式一起失效，且构建不报错）。
+#   已由 tools/check_features.py 的 i18n 一致性断言与 build job 的
+#   verify_i18n 门禁双重守住，详见 README「多语言（i18n）」。
+defaultContentLanguage = 'zh-CN'
 enableRobotsTXT = true
+
+# ⚠ 这里的字段是**跨版本唯一零告警**的组合，改动前请先看下面的实测矩阵。
+#
+#   语言键（[languages.<key>]）必须：
+#     1) 与 i18n/ 下的文件名（不分大小写）精确一致 —— 即 'zh-CN'，不是 'zh'；
+#     2) **同时**在根上存在 `locale`，否则 0.162+ 会报
+#        language name "zh-CN" is invalid（带地区后缀的语言键必须配 locale）。
+#
+#   以下字段**不能**写在这个层级（会在部分版本上产生弃用告警或直接报错）：
+#     * `label`         —— 0.112 起弃用（< 0.129 会报 ERROR deprecated）
+#     * `languageCode`  —— 0.158 起弃用（≥ 0.158 会报 WARN deprecated）
+#     * `locale`        —— 0.112~0.129 之间弃用（且 0.128 上会吞掉 i18n 文案）
+#   语言显示名请放 [languages.zh-CN.params].label，或交给站点外部的语言切换配置
+#   （tools/lang-*.toml 里的 label 就是这么用的）。
+#
+#   五版本 × 三种写法的实测结果（tools/check_features.py 8c 会持续守住）：
+#
+#     写法                                      0.128.0   0.148.0  0.162~0.167
+#     ---------------------------------------------------------------
+#     A 无 [languages] 块，只有 defaultContentLanguage='zh-CN'
+#                                              构建失败  构建失败  构建失败
+#     B label + languageCode（曾用写法）        ERROR     OK        WARN×2
+#     C root locale + weight/contentDir（本文件）OK       OK        OK（零告警）
+#
+#   locale 在 0.158+ 才作为 i18n 语言生效，因此 0.128/0.148 上的 i18n 归属
+#   完全来自语言键本身 —— 这正是语言键必须是 'zh-CN' 的原因。
+[languages]
+  [languages.zh-CN]
+    weight = 1
+    contentDir = 'content'
+    [languages.zh-CN.params]
+      label = '简体中文'
 [pagination]
   pagerSize = 8            # 每页文章数（Hugo >= 0.128 使用 pagination.pagerSize）
 rssLimit = 20
@@ -33,6 +71,68 @@ rssLimit = 20
 
   [params.search]
     enable = true
+
+  # 阅读体验（功能二）：进度条 / 返回顶部 / 专注模式
+  # 示例站点把专注模式**打开**以便演示与测试；主题默认值是 false（不改既有行为）。
+  # 文章级可用 Front Matter 覆盖：showProgress / showBackToTop / showFocusMode。
+  [params.reading]
+    progressBar = true
+    backToTop = true
+    focusMode = true
+
+  # 编辑此页（功能四 / 6.4）：配置了才输出，且逐文章可用 `editUrl: false` 关闭。
+  [params.editUrl]
+    repo = 'https://github.com/tanglx02/hugo-theme-nebula'
+    branch = 'main'
+    contentDir = 'exampleSite/content'
+    provider = 'github'
+
+  # 作者档案页（功能四 / M16）：**可选启用**，默认关闭。
+  # 两个独立开关，勿混淆：
+  #   1) [taxonomies] 注册了作者 taxonomy（见文件下方 `authors = 'authors'`）
+  #      —— 注册本身就会让 Hugo 生成 /authors/ 索引页与 term 页；
+  #   2) 这里 pages = true —— 只控制**主题**是否渲染作者资料结构
+  #      （资料卡 / 互链 / 档案页布局）。
+  # pages = false **不会阻止** Hugo 生成 /authors/ taxonomy 页面；
+  # 若要完全不产生 /authors/ 页面、保持原 URL 与页面数量，
+  # 请删除 [taxonomies] 中的 authors 注册。
+  # profiles 为可选资料：作者名 -> { bio, role, location, avatar, url, links }
+  [params.authors]
+    pages = true
+    [params.authors.profiles]
+      [params.authors.profiles.Tanglx]
+        role = '网络安全工程师'
+        location = '中国 · 杭州'
+        bio = '长期折腾渗透测试、主机加固与自动化运维，喜欢把踩过的坑写成可复用的清单。'
+        url = 'https://github.com/tanglx02'
+        [[params.authors.profiles.Tanglx.links]]
+          name = 'GitHub'
+          url = 'https://github.com/tanglx02'
+      [params.authors.profiles."Nebula Bot"]
+        role = '自动化助手'
+        bio = '主题演示用的虚拟作者，用于展示多作者与作者档案页联动。'
+
+  # Mermaid 图表（功能四 / 6.2）：**自托管**（exampleSite 已内置 js/vendor/mermaid.min.js），
+  # 不依赖任何 CDN，离线可用。默认按需加载：只有含 ```mermaid 围栏的页面才注入脚本。
+  # 若要改用 CDN，请同时提供 integrity（SRI），见 README「Mermaid / 数学公式」。
+  [params.mermaid]
+    enable = true
+    local = 'js/vendor/mermaid.min.js'
+
+  # KaTeX 数学公式（功能四 / 6.3）：同样自托管（static/vendor/katex/），按需加载。
+  [params.math]
+    enable = true
+    css = 'vendor/katex/katex.min.css'
+    js = 'vendor/katex/katex.min.js'
+    autoRender = 'vendor/katex/contrib/auto-render.min.js'
+
+  # 外观配置（功能五 / 6.7）：演示"强调色预设 + 正文宽度 + 行高 + 卡片密度"。
+  # 全部可选；**留空即为主题默认外观**（浅蓝 #409eff / 1220px / 1.85 / 舒适）。
+  # 非法值一律安全回退（不产生破坏性输出）。可用 accent = 'teal' / 'violet' 等切换配色。
+  [params.appearance]
+    accent = 'blue'
+    contentWidth = '1220px'
+    cardDensity = 'comfortable'
 
   [params.views]
     enable = false
@@ -77,6 +177,16 @@ rssLimit = 20
 [taxonomies]
   category = 'categories'
   tag = 'tags'
+  # 作者档案页（功能四 / M16）：**可选启用**。
+  # ⚠ 注册 author taxonomy 本身就会让 Hugo 生成 /authors/ 索引页与
+  #   /authors/<name>/ 档案页（taxonomy 页面生成是 Hugo 机制，与
+  #   params.authors.pages 无关；pages 只控制主题的资料结构渲染）。
+  #   若要完全不产生 /authors/ 页面，请删除本行注册。
+  # 注册后，front matter 里 `authors = ["A", "B"]`（列表）
+  # 会生成 /authors/<name>/ 档案页与 /authors/ 索引页。
+  # ⚠ 只有**列表形式 authors** 会建立 term；单数 `author: "X"` 仅作署名回退
+  #   （Hugo 既有机制，主题不改），详见 README「作者档案页」。
+  authors = 'authors'
 
 [outputs]
   home = ['HTML', 'RSS', 'JSON']

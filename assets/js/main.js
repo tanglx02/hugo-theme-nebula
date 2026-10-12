@@ -30,29 +30,125 @@
     });
   }
 
-  /* ---------- Mobile menu ---------- */
+  /* ---------- Mobile menu ----------
+     下拉面板（非全屏 modal），因此不锁定背景滚动。
+     可访问性：aria-expanded 必须反映展开状态（WCAG 4.1.2），Escape 可关闭（WCAG 2.1.2）。 */
   var burger = $('#burger'), nav = $('#mainNav');
   if (burger && nav) {
-    burger.addEventListener('click', function () { nav.classList.toggle('mobile-open'); });
+    var setMenu = function (open) {
+      nav.classList.toggle('mobile-open', open);
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    if (!burger.hasAttribute('aria-controls') && nav.id) {
+      burger.setAttribute('aria-controls', nav.id);
+    }
+    burger.setAttribute('aria-expanded',
+      nav.classList.contains('mobile-open') ? 'true' : 'false');
+    burger.addEventListener('click', function () {
+      setMenu(!nav.classList.contains('mobile-open'));
+    });
     document.addEventListener('click', function (e) {
-      if (!nav.contains(e.target) && !burger.contains(e.target)) nav.classList.remove('mobile-open');
+      if (!nav.contains(e.target) && !burger.contains(e.target)) setMenu(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && nav.classList.contains('mobile-open')) {
+        setMenu(false);
+        /* preventScroll：焦点归还汉堡按钮，但**不得**改变页面滚动位置
+           （BUG-R2-004：Chromium/WebKit 会因 focus() 把文档滚到触发元素处）。 */
+        try { burger.focus({ preventScroll: true }); } catch (err) { try { burger.focus(); } catch (e2) {} }
+      }
     });
   }
 
-  /* ---------- Scroll: progress / header shadow / back to top ---------- */
+  /* ---------- Scroll: progress / header shadow / back to top ----------
+     进度条（功能二）：宽度按**真实阅读区**计算，而不是整篇文档。
+       - 阅读区优先取 .post-content（正文 prose），退化为 <article>，再退化为整篇文档；
+       - 起点 = 阅读区顶部与视口顶端对齐时；终点 = 阅读区底部抵达视口底部时；
+         正文比视口还短时直接记满（ratio=1），不会卡在 0 或冲出 100。
+     默认外观（位置 / 尺寸 / 渐变 / 过渡）与历史完全一致，只是"滚动量→宽度"的
+     映射改为围绕正文，语义更准确（此前是整篇文档，含页脚 / 相关文章）。 */
   var header = $('#siteHeader'), bar = $('#progressBar'), toTop = $('#toTop');
+
+  /* 尊重系统"减少动态效果"：平滑滚动降级为瞬时跳转 */
+  var REDUCE_MOTION = false;
+  try { REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+  function readingArea() {
+    var pc = $('.post-content');
+    if (pc) return pc;
+    return $('article');
+  }
+
   function onScroll() {
-    var st = window.pageYOffset || document.documentElement.scrollTop;
-    var h = document.documentElement.scrollHeight - window.innerHeight;
-    if (bar) bar.style.width = (h > 0 ? (st / h) * 100 : 0) + '%';
+    var st = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (bar) {
+      var area = readingArea();
+      var ratio;
+      if (area && area.offsetHeight > 0) {
+        var top = area.getBoundingClientRect().top + st;   // 阅读区顶部的文档绝对坐标
+        var start = top;
+        var end = top + area.offsetHeight - window.innerHeight;
+        var span = end - start;
+        ratio = span > 0 ? (st - start) / span : (st >= start ? 1 : 0);
+      } else {
+        var h = document.documentElement.scrollHeight - window.innerHeight;
+        ratio = h > 0 ? st / h : 0;
+      }
+      if (!isFinite(ratio)) ratio = 0;
+      ratio = Math.min(1, Math.max(0, ratio));
+      bar.style.width = (ratio * 100) + '%';
+    }
     if (header) header.classList.toggle('is-scrolled', st > 10);
     if (toTop) toTop.classList.toggle('show', st > 400);
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
   onScroll();
+  /* 返回顶部：<button> 天然键盘可达（Tab 聚焦、Enter / Space 触发），
+     此处只需在减少动效时避免平滑滚动。 */
   if (toTop) toTop.addEventListener('click', function () {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { window.scrollTo({ top: 0, behavior: REDUCE_MOTION ? 'auto' : 'smooth' }); }
+    catch (e) { window.scrollTo(0, 0); }
   });
+
+  /* ---------- Focus mode（功能二：专注阅读） ----------
+     设计约束（对应验收要求）：
+       - **不隐藏正文**：只收起侧栏 / 相关文章 / 系列 等次要区块（CSS 负责）；
+       - **不失去导航**：站点头部导航始终保留，随时可离开当前页；
+       - **不破坏焦点**：被收起元素用 display:none（移除 Tab 序），
+         按钮本身是原生 <button>，aria-pressed 反映当前状态；
+       - 偏好持久化到 localStorage，并在 head 中**提前应用**避免刷新闪动；
+       - Escape 可退出（有浮层打开时让位给浮层的 Escape）。 */
+  var focusBtn = $('#focusToggle');
+  if (focusBtn) {
+    var focusLabel = $('.focus-label', focusBtn);
+    var setFocus = function (on, persist) {
+      document.documentElement.classList.toggle('focus-on', on);
+      focusBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var text = on ? (T_.focusExit || 'Exit focus mode') : (T_.focusMode || 'Focus mode');
+      if (focusLabel) focusLabel.textContent = text;
+      focusBtn.setAttribute('aria-label', text);
+      focusBtn.setAttribute('title', text);
+      if (persist) {
+        try {
+          if (on) localStorage.setItem('nebula-focus', 'on');
+          else localStorage.removeItem('nebula-focus');
+        } catch (e) {}
+      }
+    };
+    /* 初始态由 head 里的提前脚本写入 html.focus-on，这里同步按钮状态即可 */
+    setFocus(document.documentElement.classList.contains('focus-on'), false);
+    focusBtn.addEventListener('click', function () {
+      setFocus(!document.documentElement.classList.contains('focus-on'), true);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!document.documentElement.classList.contains('focus-on')) return;
+      /* 浮层打开时 Escape 属于浮层（工厂会处理），这里不抢 */
+      if ($('.lightbox.open') || $('.search-overlay.open')) return;
+      setFocus(false, true);
+    });
+  }
 
   /* ---------- Clipboard（统一实现） ----------
      代码块复制 / 分享复制 / 微信复制共用同一实现，结果只有 success / failure。
@@ -110,7 +206,14 @@
     var code = block ? block.querySelector('pre') : null;
     if (!code) return;
     var text = code.innerText || code.textContent || '';
-    var old = btn.innerHTML;
+    /* 恢复用的原文案取自按钮**服务端渲染**的内容（首次点击时缓存），
+       而不是 JS 里再拼一个常量：文案随站点语言（i18n）走，也不会因
+       按钮内含 SVG 而被清空。 */
+    var old = btn.getAttribute('data-label');
+    if (old == null) {
+      old = (btn.textContent || '').trim();
+      btn.setAttribute('data-label', old);
+    }
     var ICON_OK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
 
     copyText(text, function (ok) {
@@ -120,7 +223,7 @@
       btn.classList.toggle('copied', ok);
       btn.classList.toggle('copy-failed', !ok);
       setTimeout(function () {
-        btn.innerHTML = old;
+        btn.textContent = old;
         btn.classList.remove('copied', 'copy-failed');
       }, ok ? 1600 : 2200);
     });
@@ -175,14 +278,46 @@
   }
 
   /* ================================================================
+   * 页面滚动锁定（多模态安全，引用计数）
+   *
+   * 所有 dialog 型浮层（搜索弹窗 / 灯箱）共用这一份锁：
+   *   - 打开时记住 body **打开前真实的 inline overflow**，再置 hidden
+   *   - 只有最后一个打开的浮层关闭时才恢复原值（不是无条件置空）
+   *   - 嵌套 / 快速重复开关按计数平衡，不会残留 hidden，也不会误解锁
+   *
+   * 为什么集中在这里：历史缺陷（BUG-P1-001）是搜索模块**自己的** close() 才恢复
+   * overflow，而遮罩点击与 Escape 走的是 createModalA11y 内部的 close()，
+   * 于是 Overflow 永远停在 hidden，页面彻底滚不动。把锁交给工厂后，
+   * 无论从哪条路径关闭都必然走到同一处恢复逻辑。
+   * ================================================================ */
+  var scrollLockCount = 0;
+  var scrollLockPrev = null;
+
+  function lockBodyScroll() {
+    if (scrollLockCount === 0) {
+      scrollLockPrev = document.body.style.overflow;   // 记住打开前的真实值
+      document.body.style.overflow = 'hidden';
+    }
+    scrollLockCount++;
+  }
+
+  function unlockBodyScroll() {
+    if (scrollLockCount > 0) scrollLockCount--;
+    if (scrollLockCount === 0) {
+      document.body.style.overflow = (scrollLockPrev == null) ? '' : scrollLockPrev;
+      scrollLockPrev = null;
+    }
+  }
+
+  /* ================================================================
    * createModalA11y —— 轻量 Modal 无障碍工厂（零依赖）
    *
    * 为所有 dialog 型浮层（搜索弹窗、灯箱）提供同一套交互契约：
-   *   - 打开：焦点移入 initialFocus；背景 inert + aria-hidden
+   *   - 打开：焦点移入 initialFocus；背景 inert + aria-hidden；锁定页面滚动
    *   - Tab / Shift+Tab 在 dialog 内循环，焦点无法逃出
    *   - Escape 关闭；可选点击遮罩关闭
-   *   - 关闭：解除 inert，并把焦点还给触发元素
-   *   - 快速重复 open/close 幂等，不会残留 inert 或焦点错乱
+   *   - 关闭：解除 inert、恢复滚动、并把焦点还给触发元素
+   *   - 快速重复 open/close 幂等，不会残留 inert / 滚动锁 / 焦点错乱
    *   - 无触发元素时（如 ?q= 深链自动打开）退化为聚焦 dialog 自身，不报错
    *
    * 抽成工厂而不是各自复制：任何新增 modal 调用它即可满足同一份契约
@@ -194,6 +329,7 @@
 
     var OPEN_CLASS = opts.openClass || 'open';
     var CLOSE_ON_OVERLAY = opts.closeOnOverlay !== false;
+    var LOCK_SCROLL = opts.lockScroll !== false;   // 默认开启；如需禁用可显式传 false
     var BG_SELECTORS = ['.progress-bar', '.site-header', 'main', '.site-footer', '.to-top'];
     var inertNodes = [];
     var lastTrigger = null;
@@ -268,6 +404,7 @@
       root.setAttribute('aria-hidden', 'false');
       if (root.getAttribute('tabindex') === null) root.setAttribute('tabindex', '-1');
       setBackgroundInert(true);
+      if (LOCK_SCROLL) lockBodyScroll();
       keyHandler = onKeydown;
       document.addEventListener('keydown', keyHandler, true);
       if (initialText != null) {
@@ -284,16 +421,22 @@
       root.classList.remove(OPEN_CLASS);
       root.setAttribute('aria-hidden', 'true');
       setBackgroundInert(false);
+      if (LOCK_SCROLL) unlockBodyScroll();
       if (keyHandler) {
         document.removeEventListener('keydown', keyHandler, true);
         keyHandler = null;
       }
-      /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身 */
+      /* 焦点恢复：优先还给触发元素；深链等无触发场景退化为 dialog 自身。
+         **preventScroll:true** —— 只归还焦点，绝不改变页面滚动位置。
+         历史缺陷（BUG-R2-004）：触发按钮（如 .search-trigger）在文档流中位于页面顶部，
+         Chromium/WebKit 会因 focus() 把文档滚回其静态位置，用户读完长文开关搜索后
+         页面位置被拉走。preventScroll 在不牺牲焦点可访问性的前提下消除该副作用。 */
       if (lastTrigger && document.contains(lastTrigger) &&
           typeof lastTrigger.focus === 'function') {
-        try { lastTrigger.focus(); } catch (e) { try { root.focus(); } catch (e2) {} }
+        try { lastTrigger.focus({ preventScroll: true }); }
+        catch (e) { try { lastTrigger.focus(); } catch (e2) { try { root.focus({ preventScroll: true }); } catch (e3) {} } }
       } else if (!root.contains(document.activeElement)) {
-        try { root.focus(); } catch (e) {}
+        try { root.focus({ preventScroll: true }); } catch (e) {}
       }
       lastTrigger = null;
     }
@@ -486,6 +629,18 @@
       });
     }
 
+    /* 搜索结果链接的 scheme 白名单（SEC-01）。
+       索引数据若被篡改（例如把 url 改成 javascript:alert(1)），直接写进 href
+       就会在用户点击时执行脚本。这里只放行同源相对路径与 http(s) 绝对地址，
+       其余（javascript: / data: / vbscript: …）返回 null，渲染为不可点击的文本。 */
+    function safeHref(u) {
+      var s = String(u == null ? '' : u).trim();
+      if (!s) return null;
+      if (/^https?:\/\//i.test(s)) return s;
+      if (s.charAt(0) === '/' || s.charAt(0) === '.' || s.charAt(0) === '#') return s;
+      return null;
+    }
+
     /* 日期标签：直接取构建产物里的 dateDisplay（Hugo 在构建期已按站点语言格式化）。
 
        前端**不做**语言判断、也不重复实现日期格式化 —— 否则会和模板里的一分为二，
@@ -517,9 +672,13 @@
         var content = (item.content || '').toLowerCase();
         var tags = (item.tags || []).join(' ').toLowerCase();
         var cats = (item.categories || []).join(' ').toLowerCase();
+        var series = (item.series || []).join(' ').toLowerCase();
         if (title.indexOf(t) > -1) s += 12;
         if (tags.indexOf(t) > -1) s += 6;
         if (cats.indexOf(t) > -1) s += 5;
+        /* series 与 tags 同为"用户自定义的多值分组标签"，此前索引写了 series
+           却从不参与匹配（BUG-P2-005），导致按系列名搜索 0 结果。 */
+        if (series.indexOf(t) > -1) s += 6;
         if (summary.indexOf(t) > -1) s += 4;
         if (content.indexOf(t) > -1) s += 2;
         if (s === 0) return 0; // AND semantics
@@ -598,13 +757,21 @@
         var it = x.it;
         var snippet = snippetFor(it, terms);
         var dateText = dateLabel(it);
-        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(it.url) + '">' +
+        var inner =
           '<div class="t">' + highlight(it.title, terms) + '</div>' +
           '<div class="p">' +
             (dateText ? esc(dateText) : '') +
             (snippet ? (dateText ? ' · ' : '') + highlight(snippet, terms) : '') +
-          '</div>' +
-          '</a>';
+          '</div>';
+        var href = safeHref(it.url);
+        if (!href) {
+          // 非法 scheme：不生成链接，避免 javascript: 之类被点击执行
+          return '<span class="search-item' + (i === 0 ? ' sel' : '') +
+                 ' no-link" title="blocked by scheme allowlist">' + inner + '</span>';
+        }
+        return '<a class="search-item' + (i === 0 ? ' sel' : '') + '" href="' + esc(href) + '"' +
+          (it.external ? ' target="_blank" rel="noopener"' : '') + '>' +
+          inner + '</a>';
       }).join('');
       bindHover();
     }
@@ -637,7 +804,9 @@
     }
 
     /* 搜索弹窗接入统一 Modal 契约：焦点 trap / 背景 inert / Escape /
-       遮罩关闭 / 焦点恢复 / 幂等开关，全部由工厂实现 */
+       遮罩关闭 / 焦点恢复 / 幂等开关 / **页面滚动锁定与恢复**，
+       全部由工厂实现 —— 这里不再自己动 body.style.overflow，
+       否则遮罩点击与 Escape 走工厂 close() 时会绕过它（历史 BUG-P1-001）。 */
     var searchA11y = createModalA11y({
       root: overlay,
       input: input,
@@ -645,13 +814,11 @@
     });
 
     function open(initialQuery, triggerEl) {
-      document.body.style.overflow = 'hidden';
-      searchA11y.open(triggerEl || null, initialQuery);   // 工厂负责其余交互
+      searchA11y.open(triggerEl || null, initialQuery);   // 工厂负责其余交互（含滚动锁）
       loadIndex();            // 打开即预取索引
       render(input.value);    // render 内部会 await 索引，避免竞态
     }
     function close() {
-      document.body.style.overflow = '';
       searchA11y.close();
     }
 
@@ -683,7 +850,10 @@
       else if (e.key === 'ArrowUp') { e.preventDefault(); select(selected - 1); }
       else if (e.key === 'Enter') {
         var els = $$('.search-item', results);
-        if (els[selected]) { e.preventDefault(); window.location.href = els[selected].getAttribute('href'); }
+        var target = els[selected];
+        var href = target && target.getAttribute ? target.getAttribute('href') : null;
+        // href 为 null 表示该条被 scheme 白名单拦截（SEC-01），不跳转
+        if (target && href) { e.preventDefault(); window.location.href = href; }
       } else if (e.key === 'Escape') { close(); }
     });
 

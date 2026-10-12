@@ -1,0 +1,21 @@
+{{- /* 安全的"按字符（rune）截断"：长度不足时原样返回，绝不越界。
+
+       为什么需要它：
+         Go 的 slicestr **按 rune 计数**，长度不足会 panic
+         `slice bounds out of range` 并终止**整站**构建
+         （一个空标题 / 单字标题就能让整个站点构建失败）。
+         而 len 返回的是**字节数**，不能用来判断 rune 长度
+         （"中" 的 len 是 3，countrunes 才是 1），因此统一用 countrunes 判断。
+
+       传入：dict "text" <string> "n" <rune 数>
+       输出：截断后的字符串；不足 n 个字符时**原样返回**（空串仍是空串）
+
+       调用：{{ partial "util/slice-runes.html" (dict "text" $p.Title "n" 2) }}
+  */ -}}
+{{- $text := .text | default "" -}}
+{{- $n := int (.n | default 0) -}}
+{{- if and (gt $n 0) (gt (countrunes $text) $n) -}}
+  {{- slicestr $text 0 $n -}}
+{{- else -}}
+  {{- $text -}}
+{{- end -}}

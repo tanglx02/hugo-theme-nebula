@@ -1,0 +1,57 @@
+{{- /* 文件树：把一段目录结构原样、安全地渲染成等宽树形块。
+
+     用法（**块级**短代码，必须成对闭合）：
+       {{< filetree "项目结构" >}}
+       my-app/
+       ├── package.json
+       ├── src/
+       │   ├── index.ts
+       │   └── utils/helper.ts
+       └── README.md
+       {{< /filetree >}}
+
+     为什么需要它（纯 Markdown 写树的三个真实痛点）：
+       1. 缩进被吞 —— 4 空格缩进会被 Markdown 当代码块，2 空格缩进会被折行；
+          树形符号靠的是「行首空格 + box-drawing 字符」，Markdown 不保证保留；
+       2. 换行被合并 —— 不在代码块里的连续行会被合并成一个段落；
+       3. 行内多空格折叠 —— HTML 会把连续空格折叠成一个。
+
+     设计取舍（第六节：「文件名路径特殊字符安全」「零 JS」「禁止默认注入外部脚本」）：
+       * **不做 markdownify** —— 逐行当纯文本，因此文件名里的 `*` `_` `[` `]` `#`
+         `( )` 反引号都不会被当成 Markdown 标记解析（这是"路径特殊字符安全"的前提）；
+       * **显式 htmlEscape 再 safeHTML** —— 双重保证：即使有人把 <script> 或
+         `{{ }}` 写进文件名，输出的也只有实体字符，不会变成标签或模板（有断言）；
+       * **零 JavaScript / 零第三方请求** —— 纯 CSS 排版，不注入任何脚本；
+       * **自动去公共缩进 + 去首尾空行** —— 树块写在列表项、引用块或 shortcode
+         嵌套里时不会带上多余缩进，也不会多出空行。
+
+     可嵌套：若本组件被嵌在 tabs / steps 内，为避免父级 markdownify 在
+     `unsafe = false` 下丢弃原始 HTML，改以占位符 token 返回（机制见
+     layouts/partials/util/nested-block.html）。 */ -}}
+{{- $title := .Get 0 | default (.Get "title") -}}
+{{- $raw := .InnerDeindent | default "" -}}
+{{- $lines := split (replaceRE `\r` "" $raw) "\n" -}}
+{{- $n := len $lines -}}
+{{- /* 前导空行：从头部连续跳过 */ -}}
+{{- $i := 0 -}}
+{{- range $k, $l := $lines -}}
+  {{- if and (eq $i $k) (eq (trim $l " \t") "") -}}{{- $i = add $i 1 -}}{{- end -}}
+{{- end -}}
+{{- /* 尾部空行：从尾部连续跳过 */ -}}
+{{- $j := sub $n 1 -}}
+{{- range $k, $l := $lines -}}
+  {{- if and (eq $j (sub (sub $n 1) $k)) (eq (trim $l " \t") "") -}}{{- $j = sub $j 1 -}}{{- end -}}
+{{- end -}}
+{{- $sel := slice -}}
+{{- if le $i $j -}}
+  {{- /* after + first 取 [i, j] 闭区间（Go 模板的 slice 函数不支持区间截取） */ -}}
+  {{- $sel = after $i $lines | first (add 1 (sub $j $i)) -}}
+{{- end -}}
+{{- $body := delimit $sel "\n" -}}
+{{- $esc := htmlEscape $body -}}
+{{- $out := printf "<figure class=\"filetree\"%s>\n%s<pre class=\"filetree-body\">%s</pre>\n</figure>" (cond (ne $title "") (printf " role=\"group\" aria-label=\"%s\"" (htmlEscape $title)) "") (cond (ne $title "") (printf "<figcaption class=\"filetree-title\">%s</figcaption>\n" (htmlEscape $title)) "") $esc | safeHTML -}}
+{{- if .Parent -}}
+  {{- partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) -}}
+{{- else -}}
+  {{- $out -}}
+{{- end -}}

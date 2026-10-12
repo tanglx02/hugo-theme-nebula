@@ -1,0 +1,18 @@
+{{- /* 术语页模板（功能四 / M16）。
+
+     职责：**仅**为作者 taxonomy 的 term 页附加"作者资料头"；
+     其余 taxonomy（categories / tags 等）完全委托 list-main.html，
+     输出与历史 list.html 逐字节一致（不会因新增本模板而改变既有页面）。
+
+     为什么需要单独的 term.html：Hugo 的模板查找顺序是
+        layouts/<type>/term.html -> layouts/_default/term.html -> layouts/_default/list.html
+     若不提供 term.html，作者档案页也会落到 list.html，就无法插入资料头。
+     这里通过"非作者 taxonomy 直接委托 list-main"保证零副作用。 */ -}}
+{{ define "main" }}
+{{- $cfg := partial "util/author-config.html" (dict) -}}
+{{- $isAuthor := and $cfg.enabled (eq .Type $cfg.taxonomy) -}}
+{{- if $isAuthor -}}
+  {{- .Store.Set "nebula_author_name" .Title -}}
+{{- end -}}
+{{- partial "list-main.html" . -}}
+{{ end }}

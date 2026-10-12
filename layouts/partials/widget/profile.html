@@ -1,0 +1,46 @@
+{{- /* 站长名片（可复用模块）。
+       原为 sidebar.html 内联；功能一抽出以便首页 profile / landing 布局复用，
+       避免重复模块。输出与抽取前逐字节一致。 */ -}}
+<div class="widget profile">
+  {{- /* 头像：URL 为空 / 纯空白 / 危险 scheme / 解析成站点根时退回到主题内置头像，
+       而不是渲染 <img src="/">（SEC-03 + BUG-R2-003）。 */ -}}
+{{- $avatarURL := partial "util/avatar-url.html" (site.Params.avatar | default "") -}}
+{{ if $avatarURL }}
+    <img class="profile-avatar" src="{{ $avatarURL | safeURL }}" alt="{{ site.Params.author }}">
+{{ else }}
+    <img class="profile-avatar" src="{{ "img/avatar.svg" | relURL }}" alt="{{ site.Params.author }}">
+{{ end }}
+  <h2 class="profile-name">{{ site.Params.author }}</h2>
+  <p class="profile-desc">{{ site.Params.profile.bio | default site.Params.description }}</p>
+
+  <div class="profile-stats">
+    {{- $contentSections := site.Params.content.sections | default (slice (site.Params.content.section | default "posts")) -}}
+    {{- /* 站点未配置 taxonomies 时 site.Taxonomies.categories 是零值，
+           直接 len 会报 "reflect: call of reflect.Value.Type on zero Value"
+           并**终止整站构建**。这里统一用 default dict 兜底：
+           没有分类/标签的站点也应能正常构建。 */ -}}
+    {{- $cats := site.Taxonomies.categories | default dict -}}
+    {{- $tags := site.Taxonomies.tags | default dict -}}
+    <div><span class="num">{{ len (where site.RegularPages "Section" "in" $contentSections) }}</span><span class="lbl">{{ i18n "common.posts" }}</span></div>
+    <div><span class="num">{{ len $cats }}</span><span class="lbl">{{ i18n "common.categories" }}</span></div>
+    <div><span class="num">{{ len $tags }}</span><span class="lbl">{{ i18n "common.tags" }}</span></div>
+  </div>
+
+  <div class="socials">
+    {{ range $k, $v := site.Params.socials }}
+      <a href="{{ $v }}" target="_blank" rel="noopener" aria-label="{{ $k }}" title="{{ $k }}">
+        {{ if eq $k "github" }}
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 015.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.51 11.51 0 0023.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+        {{ else if eq $k "email" }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M3 7l9 6 9-6"/></svg>
+        {{ else if eq $k "twitter" }}
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 2.5h3.3l-7.2 8.2 8.5 11.3h-6.6l-5.2-6.8-6 6.8H2.4l7.7-8.8L1.8 2.5h6.8l4.7 6.2 5.6-6.2z"/></svg>
+        {{ else if eq $k "bilibili" }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2.5" y="6.5" width="19" height="14" rx="3"/><path d="M6.5 2.5L9 6.5M17.5 2.5L15 6.5M8 12v3M16 12v3"/></svg>
+        {{ else }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 8v8M8 12h8"/></svg>
+        {{ end }}
+      </a>
+    {{ end }}
+  </div>
+</div>

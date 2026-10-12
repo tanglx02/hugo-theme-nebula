@@ -6,6 +6,7 @@
          - 已含 basePath /blog/img/a.png（baseURL=/blog/）-> 原样返回（避免重复拼接）
          - 绝对根路径  /img/cover/a.png                -> /<basePath>/img/cover/a.png
          - 相对路径    img/cover/a.png                 -> /<basePath>/img/cover/a.png
+         - 危险 scheme javascript: / vbscript: / data:(非图片) -> **返回空串**（SEC-03）
 
        Hugo 的 relURL 对以 / 开头的路径会原样返回（不会补上 baseURL 的子目录），
        这正是子目录部署时资源 404 的根因，因此这里统一先去掉前导斜杠再 relURL。
@@ -14,13 +15,22 @@
        绝对路径，若再走一次转换会出现 "/blog/blog/posts/" 这类重复路径，
        因此需要先判断是否已包含 basePath。
 
+       安全：调用方普遍用 `| safeURL` 输出本 partial 的结果，等于"信任这里的返回值"。
+       因此必须**在这里**拒绝 javascript: / vbscript: / data:(非 image) —— 否则
+       配置里一个被写坏的 cover / avatar / favicon 值就能变成可执行链接（SEC-03）。
+       判定前先去掉空白与控制字符（浏览器会忽略 "java\nscript:" 里的换行）。
+
        兼容性说明：本 partial 通过"输出内容"而非 `return` 返回值来传递结果，
        因为 partial 的 `return` 语句在部分 Hugo 版本（如 0.162）存在兼容差异。
        调用方式：{{ partial "util/rel-url.html" $path | safeURL }}
   */ -}}
 {{- $u := . | default "" -}}
 {{- $home := site.Home.RelPermalink | default "/" -}}
-{{- if or (hasPrefix $u "http://") (hasPrefix $u "https://") (hasPrefix $u "//") -}}
+{{- $probe := replaceRE `[\x00-\x20]+` "" (lower $u) -}}
+{{- if or (hasPrefix $probe "javascript:") (hasPrefix $probe "vbscript:") -}}
+  {{- /* 危险 scheme：输出空串（调用方的 safeURL 也不会让它变成可执行链接） */ -}}
+{{- else if and (hasPrefix $probe "data:") (not (hasPrefix $probe "data:image/")) -}}
+{{- else if or (hasPrefix $u "http://") (hasPrefix $u "https://") (hasPrefix $u "//") -}}
   {{- $u -}}
 {{- else if and (ne $home "/") (hasPrefix $u $home) -}}
   {{- $u -}}

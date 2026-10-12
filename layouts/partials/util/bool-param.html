@@ -1,0 +1,82 @@
+{{- /* 布尔参数解析器（修复潜伏 Bug）—— 主题内**唯一**的布尔取值入口。
+
+       ============================================================
+       背景一：Hugo 的 `default` 会吞掉显式 false（严重）
+       ============================================================
+         模板常见写法 {{ .Params.flag | default true }} 在 flag: false 时
+         **返回 true** —— Go template 的 default 只判断"空值/零值"，
+         而 false 恰好是 bool 的零值，于是被当成"未设置"替换成默认值。
+         后果：文章级 toc: false / comments: false / showDate: false / lightbox: false、
+         站点级 search.enable = false 等被静默忽略，用户显式写下的 false 永远不生效。
+         （2026 年本轮真机验证；已在 0.128.0 / 0.148.0 / 0.162.0 / 0.166.0 / 0.167.0 复现。）
+
+       ============================================================
+       背景二：partial **不能**直接返回 bool（本 partial 为何返回 dict）
+       ============================================================
+         Hugo 的 partial 返回值经 HTML 模板管道输出，**一律被包成 template.HTML**（字符串）。
+         实测（5 个版本一致）：
+           partial 内 {{- $out -}}            -> 调用方拿到 template.HTML
+           {{ if $x }}                        -> 恒为真（哪怕内容是 "false"）
+         也就是说，若本 partial 直接 `{{ return $out }}`，`false` 会变成字符串 "false"，
+         在任何 {{ if }} 里都是真 —— 反而把 Bug 变得更隐蔽。
+         因此本 partial 返回 {{ dict "value" <bool> }}，调用方取 `.value` 拿到**真 bool**。
+         ✔ 已验证 5 个版本行为一致。
+
+       ============================================================
+       背景三：键名大小写不敏感（Hugo Params 特性）
+       ============================================================
+         Hugo 的 .Params 与 site.Params 把键统一小写存储，故 Front Matter 写
+         showDate / showdate 都能命中；而 `isset .Params "showDate"`（驼峰）在
+         0.167.0 上失效。本 partial 不依赖该实现细节，改为**遍历键并小写比较**，
+         对 .Params、site.Params、普通 dict 一律适用，且不会因 camelCase 配置漏匹配。
+
+       传入（dict）：
+         page    — （可选）Page 对象，取 .Params   ┐ 二者至少给一个
+         params  — （可选）任意 map，如 site.Params.reading | default dict ┘
+         key     — 参数名，任意大小写，内部大小写不敏感匹配
+         default — 缺省值（bool），参数缺失或不可解析时返回它
+
+       输出：dict，含一个 "value" 键 -> 真 bool
+       调用：
+         {{ $v := (partial "util/bool-param.html" (dict "page" . "key" "showprogress" "default" true)).value }}
+         {{ $v := (partial "util/bool-param.html" (dict "params" (site.Params.reading | default dict) "key" "progressbar" "default" true)).value }}
+
+       取值语义：
+         - 未设置                              -> default
+         - bool true/false                     -> 原值（**修复重点：false 不被吞**）
+         - string "false"/"0"/"no"/"off"       -> false（大小写、首尾空白不敏感）
+         - string ""                           -> default（视为未设置）
+         - string 其它非空                     -> true
+         - 数字 0                              -> false，其它数字 -> true
+         - 其它不可识别类型（表 / 切片 …）      -> default
+  */ -}}
+{{- $params := .params -}}
+{{- with .page -}}{{- $params = .Params -}}{{- end -}}
+{{- $want := lower (.key | default "") -}}
+{{- $out := .default | default false -}}
+{{- with $params -}}
+  {{- if $want -}}
+    {{- $found := false -}}
+    {{- $raw := "" -}}
+    {{- range $k, $v := . -}}
+      {{- if and (not $found) (eq (lower (printf "%v" $k)) $want) -}}
+        {{- $found = true -}}
+        {{- $raw = $v -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $found -}}
+      {{- $t := printf "%T" $raw -}}
+      {{- if eq $t "bool" -}}
+        {{- $out = $raw -}}
+      {{- else if eq $t "string" -}}
+        {{- $s := lower (trim $raw " \t\r\n") -}}
+        {{- if $s -}}
+          {{- $out = not (in (slice "false" "0" "no" "off") $s) -}}
+        {{- end -}}
+      {{- else if in (slice "int" "int64" "float64") $t -}}
+        {{- $out = ne (int $raw) 0 -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- return (dict "value" $out) -}}

@@ -25,7 +25,7 @@ env:
 # CI JOB INVENTORY —— 由 tools/check_ci_jobs.py 自动校验，**禁止手工改数字**
 #
 #   job                    matrix 维度            展开数量   备注
-#   build                  hugo-version x4        4
+#   build                  hugo-version x6        6
 #   subdir                 -                      1
 #   static-checks          -                      1
 #   browser-tests          browser x3             3
@@ -34,13 +34,13 @@ env:
 # 改动 matrix（加/删浏览器、加 Hugo 版本等）必须同步更新下面两行，
 # 否则 tools/check_ci_jobs.py 判定失败，CI 变红。
 #
-# CI-JOBS: build=4
+# CI-JOBS: build=6
 # CI-JOBS: subdir=1
 # CI-JOBS: static-checks=1
 # CI-JOBS: browser-tests=3
 # CI-JOBS: release-full-audit=3
-# CI-JOBS-TOTAL: 12
-# CI-JOBS-PUSH-TOTAL: 9        （非 tag 推送：Release job 被 if 跳过）
+# CI-JOBS-TOTAL: 14
+# CI-JOBS-PUSH-TOTAL: 11       （非 tag 推送：Release job 被 if 跳过）
 # ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------- 构建矩阵
@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hugo-version: ['0.128.0', '0.162.0', '0.167.0', 'latest']
+        hugo-version: ['0.128.0', '0.148.0', '0.162.0', '0.166.0', '0.167.0', 'latest']
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -63,11 +63,37 @@ jobs:
           hugo-version: ${{ matrix.hugo-version }}
           extended: true
 
+      - name: Setup Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Pillow (生成 page bundle 图片资源)
+        # 没有 Pillow 时 gen_testdata 会跳过 zz-images-bundle，
+        # 于是 render-image 的图片处理分支**永远不会被构建到**——
+        # 这正是 Hugo 0.128 上 reflect.IsImageResourceProcessable 不兼容
+        # 长期未被发现的原因（只在装了 Pillow 的浏览器 job 才会触发）。
+        run: pip install "Pillow>=10.0"
+
       - name: Generate stress test data
         run: python3 tools/gen_testdata.py --posts-dir exampleSite/content/posts
 
       - name: Build exampleSite (production)
         run: hugo --source exampleSite --themesDir ../.. --gc --minify -d ../public
+
+      - name: Check boundary fixtures are present (edge content + page bundle)
+        run: |
+          set -e
+          for d in public/posts/zz-21-empty-title public/posts/zz-22-one-char \
+                   public/posts/zz-23-one-cjk public/posts/zz-24-one-emoji \
+                   public/posts/zz-25-blank-title public/posts/zz-26-empty-body \
+                   public/posts/zz-27-no-author public/posts/zz-28-mixed-title \
+                   public/posts/zz-30-bom public/posts/zz-images-bundle; do
+            test -d "$d" || { echo "缺少边界测试产物: $d"; exit 1; }
+          done
+          grep -q 'srcset=' public/posts/zz-images-bundle/index.html \
+            || { echo "图片管线未生效（render-image 处理分支未被覆盖）"; exit 1; }
+          echo "边界内容与图片管线均已覆盖"
 
       - name: Check required artifacts
         run: |
@@ -79,7 +105,12 @@ jobs:
           echo "产物齐全"
 
       - name: Check search index integrity (full-text, no truncation)
-        run: python3 tools/check_index.py public/index.json
+        run: python3 tools/check_index.py public/index.json public
+
+      - name: Search index modes & auto-threshold boundary (BUG-P1-002 regression)
+        # 按**真实索引字节数**验证 auto 的 below/equal/above 边界、显式 single/shard、
+        # 旧版本回退与旧版本显式 shard 的明确报错。逐 Hugo 版本运行（在矩阵内）。
+        run: python3 tools/check_search_modes.py
 
       - name: Check draft/future pages are excluded
         run: |
@@ -194,6 +225,41 @@ jobs:
       - name: Alias pages - static structure check (meta refresh / canonical / target / lang)
         run: python3 tools/check_alias_pages.py public
 
+      # 名称里含冒号时**必须加引号**，否则 YAML 报 "mapping values are not allowed here"
+      - name: "Content components (callouts 5 types / tabs+steps incl. nested / plain quotes byte-identical / Hugo 0.128-0.167 / alias nil guard)"
+        env:
+          HUGO_MATRIX_HOME: ${{ runner.tool_cache }}/hugo-matrix
+        run: |
+          set -e
+          # 版本矩阵：CI 里现装 5 个 Hugo 版本（与 build job 的矩阵一致），
+          # 供 check_content_components.py 的 B2/B3/C10/C 小节逐版本验证
+          # 提示块、标签页/步骤与 alias 防御。
+          for v in 0.128.0 0.148.0 0.162.0 0.166.0 0.167.0; do
+            [ -x "$HUGO_MATRIX_HOME/$v/hugo" ] || {
+              curl -sSL "https://github.com/gohugoio/hugo/releases/download/v$v/hugo_extended_${v}_linux-amd64.tar.gz" \
+                | tar -xz -C /tmp hugo
+              mkdir -p "$HUGO_MATRIX_HOME/$v"
+              mv /tmp/hugo "$HUGO_MATRIX_HOME/$v/hugo"
+            }
+          done
+          export HUGO_MATRIX_DIR="$HUGO_MATRIX_HOME"
+          python3 tools/check_content_components.py
+
+      # 语言配置的**跨版本行为**验收（静态规则回答不了的问题）：
+      #   5 版本上真实构建 exampleSite —— 构建成功 / 无 deprecated / 无 ERROR /
+      #   配置层 WARN≤基线 / NEBULA_I18N 无空值 / og:locale 为规范 ll_CC /
+      #   html lang 非空 / UI 文案为中文。
+      #   附 L7/L8/L8b 反证：改坏语言键 -> 空串文案；顶层 label -> 弃用告警；
+      #   同名 params.label 遮蔽顶层弃用字段（说明为何还需 check_features.py 8c 静态禁止）。
+      # 复用上一步已缓存的 Hugo 版本矩阵（runner.tool_cache 在 job 内跨 step 持久）。
+      - name: "Language config cross-version (form I / zero-warning / i18n non-empty / og:locale BCP47 + L7/L8/L8b counterproofs)"
+        env:
+          HUGO_MATRIX_HOME: ${{ runner.tool_cache }}/hugo-matrix
+        run: |
+          set -e
+          export HUGO_MATRIX_DIR="$HUGO_MATRIX_HOME"
+          python3 tools/check_lang_config.py
+
       - name: Search date contract - date machine field + dateDisplay per language
         env:
           SITE_DIR: exampleSite
@@ -210,6 +276,43 @@ jobs:
 
       - name: Workflow policy (least privilege / pinned runner / Node24 actions)
         run: python3 tools/check_workflow_policy.py
+
+      # 功能一 / 二 / 三·四·五 的**真实产物**门禁：三者都用真实 Hugo 构建 +
+      # 解析产物，且各自自带故障注入自证（--selftest：人为打坏实现 →
+      # 对应断言必须变红）。见 docs/测试说明.md。
+      # 放在 check_docs 之前：功能回归先于文档一致性，失败时定位更快。
+      - name: "Home layouts (cards/profile/hero/landing + safe fallback + feeds unchanged)"
+        run: python3 tools/check_home_layouts.py
+
+      # 阅读体验门禁（下方 check_reading_experience.py）的 B 小节是**真实浏览器**断言
+      # （Chromium + Firefox + WebKit）。本 job 非矩阵 job，必须在此一次性安装三种浏览器，
+      # 否则浏览器启动会硬失败——`_testlib.launch` 的契约是「依赖缺失即致命错误，不静默跳过」。
+      # 修复历史：此前 static-checks 从未安装浏览器，导致该门禁仅在浏览器启动处失败
+      # （静态部分 48/48 通过、3 条启动失败，合计 51；装上浏览器后恢复为文档记载的 141/141）。
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-static-${{ runner.os }}-${{ hashFiles('tools/requirements.txt') }}
+          restore-keys: pw-static-${{ runner.os }}-
+
+      - name: Install Playwright browsers (chromium / firefox / webkit)
+        run: python3 -m playwright install --with-deps chromium firefox webkit
+
+      - name: "Reading experience (progress/top/focus/print + real browser checks)"
+        run: python3 tools/check_reading_experience.py
+
+      - name: "New features (gallery / external article / multi-author / edit link / appearance / Mermaid+KaTeX)"
+        run: python3 tools/check_new_features.py public
+
+      - name: "New features - fault injection self-proof (4 injections must turn red)"
+        run: python3 tools/check_new_features.py --selftest
+
+      # 功能四 / M16：作者档案页（可选启用）。真实产物断言 —— 默认关闭不改变 URL 结构；
+      # 启用后验证索引页/档案页/文章互链/CJK/特殊字符/多语言/分页/sitemap/搜索索引，
+      # 并做"未启用时与 HEAD 逐字节一致"的向后兼容对比。
+      - name: "Author archive pages (opt-in taxonomy / cross-links / CJK / i18n / back-compat)"
+        run: python3 tools/check_author_pages.py
 
       - name: Documentation consistency (CDN wording / third-party services / CHANGELOG)
         env:
@@ -230,6 +333,9 @@ jobs:
 
       - name: Inventory self-consistency (URL normalization + collision guard)
         run: python3 tools/test_inventory.py
+
+      - name: Search index contentLimit modes (strict vs configured truncation, R3-011)
+        run: python3 tools/test_check_index.py
 
       - name: SEO and feeds (robots / sitemap / RSS / description / test-data leak)
         run: python3 tools/check_seo.py public
@@ -364,37 +470,49 @@ jobs:
       - name: Lightbox — dialog / focus trap / keyboard / linked images
         run: python3 tools/verify_lightbox.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
-      - name: Search modal accessibility — 14 checks (focus trap / inert / restore / deep link / i18n)
+      - name: Search modal accessibility — 19 checks (focus trap / inert / restore / deep link / i18n)
         env:
           SEARCH_MODAL_URLS: 'http://127.0.0.1:8081,http://127.0.0.1:8082'
+          # 覆盖不足时判失败，而不是只打印提示（TEST-DEFECT-019）
+          REQUIRE_SEARCH_LANGS: '1'
         run: python3 tools/verify_search_modal.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search edge cases & race conditions
-        if: matrix.browser == 'chromium'
+        # 三引擎执行（TEST-DEFECT-R2-002）：搜索交互与竞态存在真实浏览器差异。
         env:
           SEARCH_DATE_LOCALE: 'zh-CN'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search date i18n in rendered results (en build must show "Sep 28, 2026")
-        if: matrix.browser == 'chromium'
         env:
           SEARCH_DATE_LOCALE: 'en'
-        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081
+        run: python3 tools/verify_search_edge.py http://127.0.0.1:8081 ${{ matrix.browser }}
 
       - name: Search highlight - HTML entities & regex/XSS safety on & < > " '
-        if: matrix.browser == 'chromium'
-        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 chromium
+        run: python3 tools/verify_search_highlight.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Search shard failure handling + deep-keyword semantics
-        if: matrix.browser == 'chromium'
         run: python3 tools/verify_search_shard.py http://127.0.0.1:8090 ${{ matrix.browser }}
 
       - name: Three baseURL deployments (/, /blog/, /blog/sub/)
-        if: matrix.browser == 'chromium'
         env:
           SITE_DIR: exampleSite
           HUGO_ARGS: '--source . --themesDir ../..'
+          PW_BROWSERS: ${{ matrix.browser }}
         run: python3 tools/verify_baseurl.py
+
+      - name: Modal scroll lock & restore (BUG-P1-001 regression) — all engines
+        # 三引擎都跑：这是"关闭弹窗后页面滚不动"的 P1 回归，
+        # 报告实测 Chromium / Firefox / WebKit 全部复现。
+        run: python3 tools/verify_modal_scroll.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Text contrast WCAG AA (light + dark) (BUG-P2-003 regression)
+        run: python3 tools/verify_contrast.py http://127.0.0.1:8080 ${{ matrix.browser }}
+
+      - name: Responsive overflow & header breakpoint incl. English build (BUG-P2-002)
+        env:
+          OVERFLOW_EXTRA_URLS: 'http://127.0.0.1:8081'
+        run: python3 tools/check_responsive_overflow.py http://127.0.0.1:8080 ${{ matrix.browser }}
 
       - name: Upload audit report
         if: always()
@@ -467,6 +585,9 @@ jobs:
           AUDIT_FULL: '1'
           AUDIT_BROWSERS: ${{ matrix.browser }}
           AUDIT_VIEWPORTS: '320,375,768,1440'
+          # TEST-DEFECT-R2-007：缺失 inventory 必须硬失败（不得静默跳过交叉验证），
+          # 且 inventory 必须绑定本次构建指纹
+          AUDIT_REQUIRE_INVENTORY: '1'
         run: python3 tools/audit.py http://127.0.0.1:8080
       - name: Release copy semantics (copy must never fake success)
         run: python3 tools/verify_copy.py http://127.0.0.1:8080 ${{ matrix.browser }}

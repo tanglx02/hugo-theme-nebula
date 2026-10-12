@@ -1,0 +1,23 @@
+{{- /* 步骤容器：把一串 {{< step >}} 渲染成带编号的 <ol>。
+
+     为什么用 <ol>：步骤天然有序，有序列表语义对读屏友好（会读"N of M"），
+     比一堆 <div> 更准确。
+
+     序号来自 CSS counter（见 main.css `.steps`），**零 JavaScript**；
+     标题与正文由子 shortcode 经 markdownify 渲染后写入 `.Scratch`。
+
+     可嵌套：若本组件被嵌在别的组件里（如某个标签页面板内），整段标记改以
+     占位符 token 返回给父级 —— 否则父级的 markdownify 会在
+     `unsafe = false` 下把这段 HTML 整段丢掉（根因见 util/nested-block.html）。 */ -}}
+{{- $noop := .InnerDeindent -}}
+{{- $steps := .Scratch.Get "steps" | default slice -}}
+{{- if $steps -}}
+{{- $out := partial "components/steps.html" (dict "steps" $steps) -}}
+{{- if .Parent -}}
+  {{- partial "util/nested-block.html" (dict "scratch" .Parent.Scratch "html" $out) -}}
+{{- else -}}
+  {{- $out -}}
+{{- end -}}
+{{- else -}}
+{{- warnf "shortcode steps: 未检测到任何 {{< step >}} 子项（位置 %s）" .Position -}}
+{{- end -}}

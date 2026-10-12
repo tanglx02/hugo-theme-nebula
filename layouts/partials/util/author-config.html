@@ -1,0 +1,33 @@
+{{- /* 作者档案页解析（功能四 / M16）—— 主题**唯一**的作者档案配置入口。
+
+     设计目标（**向后兼容的可选启用**）：
+       * 默认（未配置 / pages=false）时，本 partial 返回 enabled=false，
+         主题**不输出任何作者档案相关结构**，所有站点的 URL 结构与历史完全一致。
+       * 仅当站点显式同时满足以下两项时才启用：
+           1) 站点配置注册了作者 taxonomy：`[taxonomies] author = 'authors'`（或自定义名）
+           2) `[params.authors] pages = true`
+       * 因此"作者档案页会改变 URL 结构"这一顾虑被完全消除：不配置就不会多出任何页面。
+
+     taxonomy 名称可自定义（params.authors.taxonomy，默认 "authors"），
+     以便与站点既有的 taxonomy 命名习惯一致，也避免与用户内容目录冲突。
+
+     返回 dict：
+       .enabled   bool   是否启用作者档案页
+       .taxonomy  string 生效的 taxonomy 复数名（如 "authors"）
+       .profiles  map    params.authors.profiles（作者名 -> 附加信息），可为空
+  */ -}}
+{{- $cfg := site.Params.authors | default dict -}}
+{{- $enabled := (partial "util/bool-param.html" (dict "params" $cfg "key" "pages" "default" false)).value -}}
+{{- $tax := "authors" -}}
+{{- with $cfg.taxonomy -}}{{- $tax = printf "%v" . -}}{{- end -}}
+{{- /* taxonomy 必须真的注册过（site.Taxonomies 里有该键），否则启用也无页可生成；
+       此时降级为 enabled=false，避免输出指向不存在页面的死链。 */ -}}
+{{- if $enabled -}}
+  {{- $hasTax := false -}}
+  {{- range $k, $v := site.Taxonomies -}}
+    {{- if eq $k $tax -}}{{- $hasTax = true -}}{{- end -}}
+  {{- end -}}
+  {{- if not $hasTax -}}{{- $enabled = false -}}{{- end -}}
+{{- end -}}
+{{- $profiles := $cfg.profiles | default dict -}}
+{{- return (dict "enabled" $enabled "taxonomy" $tax "profiles" $profiles) -}}

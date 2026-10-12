@@ -1,9 +1,12 @@
 # 测试 / CI 用：切换到英文，验证 i18n 实际生效
-# 注意：Hugo >= 0.158 用 locale 决定翻译包，仅改 defaultContentLanguage 不够
+# 注意：Hugo >= 0.158 用 locale 决定翻译包，仅改 defaultContentLanguage 不够。
+# 显示名统一放 [languages.<key>.params].label —— 与 exampleSite 同一约定：
+# 顶层 label 在 0.112 起弃用（0.128 报 ERROR），languageCode 在 0.158 起弃用。
 defaultContentLanguage = "en"
 locale = "en-US"
 
 [languages]
   [languages.en]
-    label = "English"
     weight = 1
+    [languages.en.params]
+      label = "English"

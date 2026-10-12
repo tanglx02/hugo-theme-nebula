@@ -1,0 +1,24 @@
+{{- /* 作者内联渲染（功能四 / M16）—— 供文章页 article-meta 的作者段使用。
+
+     为什么单独抽一个 partial：文章页那段必须是"inline 输出"，才能保证
+     **未启用作者档案页时与历史逐字节一致**（不能多出任何空白/换行）。
+     本 partial 的所有分支都用 trim 标记（{{- -}}）收口，输出不含首尾空白。
+
+     语义：
+       * 有可链接作者 -> 逐个输出 <a class="author-link">，用 listSep 分隔
+       * 无可链接作者 -> 原样输出 text（即 util/authors.html 的 .csv），
+                         与历史 `{{ .csv }}` 完全一致
+     转义：姓名走 {{ }} 自动转义；href 走 safeURL 防危险 scheme。 */ -}}
+{{- $text := .text | default "" -}}
+{{- $links := .links | default slice -}}
+{{- $anyLink := false -}}
+{{- range $links -}}{{ if .url }}{{ $anyLink = true }}{{ end }}{{ end -}}
+{{- if $anyLink -}}
+  {{- $n := len $links -}}
+  {{- range $i, $a := $links -}}
+    {{- if $a.url -}}<a class="author-link" href="{{ $a.url | safeURL }}">{{ $a.name }}</a>{{- else -}}{{- $a.name -}}{{- end -}}
+    {{- if lt (add $i 1) $n }}{{ i18n "common.listSep" | default "、" }}{{ end -}}
+  {{- end -}}
+{{- else -}}
+  {{- $text -}}
+{{- end -}}

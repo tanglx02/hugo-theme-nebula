@@ -9,8 +9,8 @@ import os
 import re
 import sys
 
-PUBLIC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "public")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PUBLIC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "public")
 PUBLIC = os.path.normpath(PUBLIC)
 
 errors = []
@@ -33,6 +33,20 @@ def read(path):
     if not os.path.exists(p):
         return None
     return open(p, encoding="utf-8", errors="ignore").read()
+
+
+def _read_switchers():
+    """把 tools/lang-*.toml（语言切换配置）拼成一个字符串，供语言键一致性检查引用。"""
+    out = []
+    tdir = os.path.dirname(os.path.abspath(__file__))
+    for n in sorted(os.listdir(tdir)):
+        if n.startswith("lang-") and n.endswith(".toml"):
+            try:
+                out.append(open(os.path.join(tdir, n), encoding="utf-8",
+                                errors="ignore").read())
+            except OSError:
+                pass
+    return "\n".join(out)
 
 
 # ---------- 1. 图片 Pipeline ----------
@@ -113,6 +127,153 @@ if home is not None:
 # ---------- 7. 草稿/未来排除 ----------
 for slug, label in (("zz-14-draft", "草稿"), ("zz-15-future", "未来文章")):
     ok(f"{label}未出现在产物中") if not os.path.isdir(os.path.join(PUBLIC, "posts", slug)) else bad(f"{label}泄漏")
+
+
+# ---------- 8. i18n 语言键 ↔ 文件名一致性（回归：BUG-R3-001） ----------
+# 背景：exampleSite 曾把 defaultContentLanguage 写成 'zh'，而主题只提供
+# i18n/zh-CN.yaml。实测（Hugo 0.128.0 / 0.148.0，见 tmp 探针记录）：
+#   * i18n 语言的**大小写不敏感精确匹配**发生在「语言键 vs 文件名去扩展名」之间，
+#     且**不做别名扩展**（zh → zh-CN / zh-Hans 都不会命中）；
+#   * `locale` 在 0.162+ 会作为 i18n 语言覆盖语言键，于是 `zh` 也能"碰巧"命中
+#     `zh-CN.yaml` —— 但在 0.128.0 / 0.148.0 上不生效；
+#   * 结果是全部 UI 文案变成**空字符串**，而构建**成功且不报错**，静默退化。
+# CI 的 build 矩阵虽然覆盖 0.128.0，但此前 static-checks 只在 0.167.0 上跑
+# verify_i18n，所以这个缺陷长期没被发现。本小节把它钉死在**静态 + 行为**两层：
+#   8a 静态：exampleSite 的语言键必须与 i18n/*.yaml 文件名（不分大小写）一致；
+#   8b 行为：真实构建产物里 NEBULA_I18N 的每个值都必须非空。
+cfg_path = os.path.join(REPO, "exampleSite", "hugo.toml")
+i18n_dir = os.path.join(REPO, "i18n")
+dcl_m = None          # 供 8c 判地区后缀；先置空，防 cfg 缺失时未定义
+if not os.path.isfile(cfg_path):
+    bad("exampleSite/hugo.toml 存在", cfg_path)
+else:
+    cfg = open(cfg_path, encoding="utf-8", errors="ignore").read()
+    m = re.search(r"^\s*defaultContentLanguage\s*=\s*['\"]([^'\"]+)['\"]", cfg, re.M)
+    # 独立保存，供后面 8c 使用（8b 会覆盖 m —— 见 8c 处说明）。
+    dcl_m = m
+    if not m:
+        bad("exampleSite 声明了 defaultContentLanguage")
+    else:
+        dcl = m.group(1)
+        stems = set()
+        if os.path.isdir(i18n_dir):
+            stems = {f.rsplit(".", 1)[0].lower()
+                     for f in os.listdir(i18n_dir) if f.endswith(".yaml")}
+        # 主语言键必须能命中一个 i18n 文件（否则 0.128/0.148 上全站文案为空）
+        ok("8a exampleSite 语言键 '" + dcl + "' 命中 i18n 文件") \
+            if dcl.lower() in stems else bad(
+                "8a exampleSite 语言键 '" + dcl + "' 命中 i18n 文件",
+                "i18n 文件: " + ", ".join(sorted(stems)) + "（大小写不敏感；zh 不会展开成 zh-CN）")
+        # 反向：每个 i18n 文件都应能在某个语言键下被用到（避免新增了文件却忘记接线）
+        lang_keys = set(re.findall(r"^\s*\[languages\.([^\]]+)\]", cfg, re.M))
+        lang_keys.add(dcl)
+        unused = sorted(s for s in stems if s not in {k.lower() for k in lang_keys})
+        # 允许"供语言切换配置 tools/lang-*.toml 使用"的文件（en / zh-TW）
+        switcher_keys = set()
+        for sw in re.findall(r"defaultContentLanguage\s*=\s*[\"']([^\"']+)[\"']",
+                             _read_switchers(), re.M):
+            switcher_keys.add(sw.lower())
+        unused = [s for s in unused if s not in switcher_keys]
+        ok("8a 每个 i18n 文件都有语言接线（无孤儿文件）") \
+            if not unused else bad("8a 每个 i18n 文件都有语言接线（无孤儿文件）", str(unused))
+
+# 8b 行为层：NEBULA_I18N 注入的**每个值**都必须非空。
+# 语言键不匹配时，i18n 全部返回空串，注入块会变成 {"copied":"","copy":""...}——
+# 这正是静默退化的指纹。用真实产物断言，比只读配置更接近"用户看到的东西"。
+#
+# 注意：不能直接 json.loads —— `--minify` 会去掉合法 JS 标识符键的引号
+# （`copied:"已复制"`），那是**合法 JS 但不是合法 JSON**。因此这里用容错解析：
+# 同时接受带引号与裸标识符两种键形态，只关心"值是否为空"。
+if home is not None:
+    m = re.search(r"NEBULA_I18N\s*=\s*(\{.*?\})\s*[;<]", home, re.S)
+    if not m:
+        bad("8b NEBULA_I18N 注入块可解析")
+    else:
+        blob = m.group(1)
+        pairs = re.findall(
+            r'(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*"((?:[^"\\]|\\.)*)"', blob)
+        items = {(a or b): c for a, b, c in pairs}
+        ok("8b NEBULA_I18N 注入块可解析（兼容 --minify 裸键）") \
+            if items else bad("8b NEBULA_I18N 注入块可解析（兼容 --minify 裸键）", blob[:120])
+        if items:
+            empties = sorted(k for k, v in items.items() if not v.strip())
+            ok("8b NEBULA_I18N 无空值（语言键与 i18n 文件名匹配）") \
+                if not empties else bad(
+                    "8b NEBULA_I18N 无空值（语言键与 i18n 文件名匹配）",
+                    "空值键: " + ", ".join(empties[:8]) + f"（共 {len(empties)} 个）")
+            ok("8b NEBULA_I18N 键数量合理（>=10）") \
+                if len(items) >= 10 else bad("8b NEBULA_I18N 键数量合理（>=10）", str(len(items)))
+
+# ---------- 8c [languages] 层级字段的跨版本兼容（回归：BUG-R3-002） ----------
+# 背景：8a 把语言键从 'zh' 改成 'zh-CN' 后，为保留"显示名"曾在
+# [languages.zh-CN] 下写 label / languageCode。但这两个字段在**不同版本上
+# 分别是弃用的**（Hugo 把语言顶层字段逐步收进 params，并把 languageCode 改名 locale）：
+#
+#     label          Hugo 0.112 起弃用，0.129 移除 -> 0.128.0 报 ERROR deprecated
+#     languageCode   Hugo 0.158 起弃用            -> 0.158+ 报 WARN deprecated
+#     locale         0.112~0.129 之间弃用；且实测 0.128.0 上会**吞掉 i18n 文案**
+#     weight / contentDir / params.*              始终有效，零告警
+#
+# 另外带地区后缀的语言键（zh-CN）在 0.162+ **必须**同时有根级 `locale`，
+# 否则报 `language name "zh-CN" is invalid`；但它不能写在 [languages.*] 里（见上）。
+# 唯一同时满足"五版本零告警 + i18n 命中 + og:locale 规范"的写法是：
+#     根上 locale='zh-CN' + [languages.zh-CN] 只放 weight/contentDir(+params.label)
+#
+# 本小节把它钉成静态规则；逐版本"构建无 ERROR/WARN"的行为证据由
+# tools/check_lang_config.py 在 CI 上跑（见 README「多语言」）。
+#
+# ⚠ 为什么必须是**静态**禁止而不是只靠运行时告警：实测发现 Hugo 的 TOML 解码器
+#   有遮蔽行为 —— 若 [languages.X] 顶层放了弃用字段 `label`，而 [languages.X.params]
+#   里**恰好也有同名 `label`**，顶层 label 的弃用 ERROR 会被静默吞掉、不告警
+#   （0.128.0 实测：P1 label-only 告警 / P2 空 params 告警 / P4 params 他键告警 /
+#   **P3 params.label 同键则不告警**）。因此运行时告警不足以守住这条规则，
+#   必须由本静态检查兜底（check_lang_config.py L8b 记录了该遮蔽行为）。
+langs_cfg = open(cfg_path, encoding="utf-8", errors="ignore").read() \
+    if os.path.isfile(cfg_path) else ""
+BANNED_IN_LANG = {
+    "label": "0.112 起弃用（0.128.0 报 ERROR）；改用 [languages.<key>.params].label",
+    "languageCode": "0.158 起弃用（新版本报 WARN）；i18n 归属由语言键决定即可",
+    "locale": "0.112~0.129 弃用，且 0.128.0 上会吞掉 i18n 文案",
+}
+# 静态扫描：**所有** [languages.<key>] 表的**直接**字段行（与缩进无关）。
+# ⚠ 不能只抓 "[languages]" 父表的体 —— TOML 里父表体在首个 [languages.X] 头处
+#   就结束，`(?=^\[)` 前瞻会让 _lang_blk 变成空串，既漏报顶层 label、也没有
+#   真正的守卫力（本轮 8c 一度因此假红）。改为遍历所有 `[languages.<key>]`
+#   （恰好一层点号）头、切到下一个 `[...]` 头之前逐段检查；并**排除**
+#   `[languages.<key>.params]`（label 放那里是官方推荐写法、合法）。
+_found = {f: None for f in BANNED_IN_LANG}
+for _h in re.finditer(r"^[ \t]*\[(languages\.[^\]\s.]+)\][ \t]*$", langs_cfg, re.M):
+    _body = langs_cfg[_h.end():]
+    _stop = re.search(r"^[ \t]*\[", _body, re.M)
+    if _stop:
+        _body = _body[:_stop.start()]
+    for _field in BANNED_IN_LANG:
+        if _found[_field] is None and re.search(rf"^[ \t]*{_field}[ \t]*=", _body, re.M):
+            _found[_field] = _h.group(1)
+# 兜底：行内点号写法 `languages.<key>.<field> = ...`
+for _field in BANNED_IN_LANG:
+    if _found[_field] is None and re.search(
+            rf"^[ \t]*languages\.[^\]\s.]+\.{_field}[ \t]*=", langs_cfg, re.M):
+        _found[_field] = "languages.*." + _field
+for _field, _why in BANNED_IN_LANG.items():
+    ok(f"8c [languages] 块内不使用 {_field}") if not _found[_field] else bad(
+        f"8c [languages] 块内不使用 {_field}",
+        f"{_why}（实际出现在 [{_found[_field]}]）")
+# ⚠ 注意：这里必须用**独立变量**保存 defaultContentLanguage 的匹配结果。
+#   历史上此处复用了变量 `m`，而 8b 段（NEBULA_I18N）在中间把 `m` 覆盖成了
+#   另一个匹配 —— 于是 8c 读到的根本不是 'zh-CN'，`"-" in _dcl` 永远为假，
+#   分支恒走"无地区后缀"，断言形同虚设（本轮修复）。因此统一改用 dcl_m。
+if dcl_m:
+    _dcl = dcl_m.group(1)
+    if "-" in _dcl:
+        ok("8c 带地区后缀的默认语言键配有根级 locale（0.162+ 必需）") \
+            if re.search(r"^\s*locale\s*=\s*['\"]", langs_cfg, re.M) else bad(
+                "8c 带地区后缀的默认语言键配有根级 locale（0.162+ 必需）",
+                '否则 0.162+ 报 language name "%s" is invalid' % _dcl)
+    else:
+        ok("8c 默认语言键无地区后缀（无需根级 locale）")
+else:
+    bad("8c 未读到 defaultContentLanguage（无法判定地区后缀与根级 locale）")
 
 print()
 if not checks:

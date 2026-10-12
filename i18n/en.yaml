@@ -10,6 +10,7 @@ nav:
 common:
   close: Close
   copy: Copy
+  copyCode: Copy code
   copied: Copied
   copyFailed: Copy failed, please copy manually
   retry: Retry
@@ -27,11 +28,14 @@ common:
   tags: Tags
   minutes: '{{ .n }} min'
   dateFormat: 'Jan 2, 2006'
+  noDate: No date
+  noScript: Search and theme switching require JavaScript. Content, the table of contents and images remain usable without it.
   anchor: Anchor link
   licenseDefault: Please credit the source when reprinting.
   pagination: Pagination
   prevPage: Previous page
   nextPage: Next page
+  listSep: ', '
 
 search:
   hint: Type keywords to search titles, tags and full text
@@ -59,6 +63,16 @@ post:
   license: License
   author: Author
   toTop: Back to top
+  external: External
+  externalNotice: This is an external article; clicking will open an off-site page
+  externalHost: Source
+
+# Reading experience (feature 2): progress bar / back-to-top / focus / edit
+reading:
+  focusMode: Focus mode
+  focusExit: Exit focus mode
+  editPage: Edit this page
+  authors: Authors
 
 home:
   latest: Latest posts
@@ -126,3 +140,41 @@ menu:
   archives: Archives
   about: About
   aboutMe: About me
+
+# Markdown alerts (feature 3): default titles
+alert:
+  note: Note
+  tip: Tip
+  important: Important
+  warning: Warning
+  caution: Caution
+
+# Technical content components (feature 3): tabs / steps helper strings
+tabs:
+  label: Content switch
+  untitled: Untitled
+steps:
+  label: Steps
+
+# Technical content components (feature 3): placeholder when a button URL is blocked
+components:
+  linkBlocked: Link unavailable (unsafe address blocked)
+
+# Responsive gallery (feature 3 / 6.1)
+gallery:
+  label: Image gallery
+  missing: Image not found
+  caption: View larger
+
+# Multiple authors & author profile (feature 4 / 6.5)
+authors:
+  title: Authors
+  by: by
+
+# Diagrams and math (feature 4 / 6.2 / 6.3)
+mermaid:
+  loading: Rendering diagram…
+  error: Failed to render diagram
+math:
+  loading: Rendering formula…
+  error: Failed to render formula

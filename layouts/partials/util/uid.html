@@ -1,0 +1,21 @@
+{{- /* 页面内唯一 id 前缀生成器（功能三：标签页 / 折叠块等需要唯一 id 的组件）。
+
+     为什么需要它：ARIA tablist 要求 `aria-controls` / `aria-labelledby` 引用唯一的
+     id。同一页可以有多个 tabs 组件，因此 id 必须带页内序号。
+
+     为什么不用全局变量：Hugo 的模板变量在并发渲染下不可靠，而 `.Page.Scratch`
+     的生命周期与页面一致（每次构建重置），是唯一安全的计数器载体。
+
+     为什么不用「父 shortcode 的 .Ordinal」：实测 `{{< tabs >}}` 的 `.Ordinal` 是
+     文档顺序（0,1,2…），但 **label 走的是父级 Scratch 的累积顺序**；两者在本主题
+     的场景下一致，可是为了让"id 唯一"这件事只有一个来源，仍统一走本 partial。
+
+     用法（必须传 dict）：
+       {{ $uid := partial "util/uid.html" (dict "page" .Page "prefix" "tabs") }}
+     返回字符串（如 `tabs-1`）。partial 的返回值恒为 template.HTML 字符串，
+     这里只做纯文本拼接，不涉及 HTML，因此无双重转义风险。 */ -}}
+{{- $page := .page -}}
+{{- $prefix := .prefix | default "nb" -}}
+{{- $n := add (int ($page.Scratch.Get "nebula_uid_seq" | default 0)) 1 -}}
+{{- $page.Scratch.Set "nebula_uid_seq" $n -}}
+{{- printf "%s-%d" $prefix $n -}}
